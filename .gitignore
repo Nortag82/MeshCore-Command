@@ -1,0 +1,16 @@
+# Generated files and local data
+**/node_modules/
+**/.pio/
+**/.build/
+**/__pycache__/
+**/build/
+**/dist*/
+**/*.pyc
+**/*.exe
+**/*.bin
+**/*.zip
+**/*.log
+.env
+.env.*
+MeshCore Desktop/firmware/
+MeshCore Desktop/radio.html

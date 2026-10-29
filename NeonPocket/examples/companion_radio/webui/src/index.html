@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#050608">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="application-name" content="NeonPocketMC">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://s3.amazonaws.com/elevation-tiles-prod/terrarium/; img-src 'self' data: https://tile.openstreetmap.org https://*.tile.openstreetmap.org; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; object-src 'none'">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23050608'/%3E%3Cpath d='M10 22h44v34H10z' fill='none' stroke='%2339e7ff' stroke-width='4'/%3E%3Cpath d='m32 30-14 18h28z' fill='none' stroke='%232457ff' stroke-width='4' stroke-linejoin='round'/%3E%3Cpath d='M16 14h6M31 6v8M44 11l5-3' fill='none' stroke='%2339e7ff' stroke-width='4'/%3E%3Cpath d='M28 26h8v8h-8zM14 44h8v8h-8zM42 44h8v8h-8z' fill='%2344f08a'/%3E%3C/svg%3E">
+  <title>NeonPocketMC · Ultimate</title>
+  <style>/*__RCC6_CSS__*/</style>
+</head>
+<body>
+  <div class="window-controls" id="window-controls" hidden role="group" aria-label="Window controls"><button type="button" id="window-minimize" title="Minimise" aria-label="Minimise">&#x2212;</button><button type="button" id="window-restore" title="Restore or full screen (F11)" aria-label="Restore or full screen">&#x25A1;</button><button type="button" id="window-exit" title="Exit MeshCore Command" aria-label="Exit MeshCore Command">&#x2715;</button></div>
+  <svg class="svg-defs" aria-hidden="true">
+    <symbol id="brand-pocket" viewBox="0 0 64 64">
+      <path d="M10 22h44v34H10z" fill="none" stroke="#39e7ff" stroke-width="4"/>
+      <path d="m32 30-14 18h28z" fill="none" stroke="#2457ff" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M16 14h6M31 6v8M44 11l5-3" fill="none" stroke="#39e7ff" stroke-width="4"/>
+      <path d="M28 26h8v8h-8zM14 44h8v8h-8zM42 44h8v8h-8z" fill="#44f08a" stroke="none"/>
+    </symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5v8a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-msg" viewBox="0 0 24 24"><path d="M4 5.5h16v11H9l-5 3z"/></symbol>
+    <symbol id="i-near" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4m8.4-8.4a6 6 0 0 1 0 8.4M4.6 4.6a10.5 10.5 0 0 0 0 14.8m14.8-14.8a10.5 10.5 0 0 1 0 14.8"/></symbol>
+    <symbol id="i-radio" viewBox="0 0 24 24"><path d="M5 20V10m5 10V6m5 14V9m5 11V3"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="m3 4 18 8-18 8 3-8zM6 12h15"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5m9.5-4A8 8 0 0 0 5 9m.5 8A8 8 0 0 0 19 15"/></symbol>
+  </svg>
+
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><svg class="brand-mark" aria-hidden="true"><use href="#brand-pocket"/></svg><span>NeonPocketMC<small>Ultimate Companion</small></span></div>
+      <nav class="nav" aria-label="Primary">
+        <button class="active" data-view="home"><svg><use href="#i-home"/></svg><span>Overview</span></button>
+        <button data-view="messages"><svg><use href="#i-msg"/></svg><span>Messages</span><b id="nav-unread" hidden>0</b></button>
+        <button data-view="contacts"><svg><use href="#i-near"/></svg><span>Contacts</span></button><button data-view="contactmap"><svg><use href="#i-near"/></svg><span>Contact map</span></button>
+        <button data-view="secure"><svg><use href="#i-msg"/></svg><span>Secure Coms</span></button>
+        <button data-view="watch"><svg><use href="#i-msg"/></svg><span>Word alerts</span></button>
+        <button data-view="monitoring"><svg><use href="#i-radio"/></svg><span>Monitoring</span></button><button data-view="repeaters"><svg><use href="#i-near"/></svg><span>Repeaters</span></button><button data-view="terrain"><svg><use href="#i-near"/></svg><span>Terrain tools</span></button>
+        <button data-view="radio"><svg><use href="#i-radio"/></svg><span>Radio</span></button>
+        <button data-view="ultimate"><svg><use href="#i-more"/></svg><span>Settings</span></button>
+      </nav>
+      <div class="sidebar-foot"><span class="status-dot" id="side-dot"></span><span id="side-status">Connecting</span><span class="app-build" id="desktop-build" hidden></span></div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div><p class="eyebrow" id="screen-kicker">NEONPOCKETMC</p><h1 id="screen-title">Overview</h1></div>
+        <div class="top-actions">
+          <span class="battery" id="battery-chip">— V</span>
+          <button class="link-chip" id="connect-button"><span class="status-dot"></span><span id="link-label">Connecting</span></button>
+        </div>
+      </header>
+
+      <section class="screen active" data-screen="home">
+        <article class="hero card">
+          <div class="hero-copy">
+            <p class="eyebrow">YOUR MESH, RIGHT NOW</p>
+            <h2 id="node-name">RADIO</h2>
+            <p id="node-id">Waiting for companion link…</p>
+          </div>
+          <div class="mesh-orbit" aria-hidden="true"><i></i><i></i><i></i><span></span></div>
+          <div class="hero-stats">
+            <div><small>CONNECTION</small><strong id="hero-link">Starting</strong></div>
+            <div><small>KNOWN NODES</small><strong id="hero-contacts">—</strong></div>
+            <div><small>APP SESSION</small><strong id="hero-uptime">—</strong></div>
+          </div>
+        </article>
+
+        <article class="card overview-actions"><strong>Quick actions</strong><button class="secondary-button" type="button" id="home-sync">Sync radio</button><button class="secondary-button" type="button" id="home-local-advert">Local advert</button><button class="secondary-button" type="button" id="home-flood-advert">Flood advert</button><button class="secondary-button" type="button" data-open="contactmap">Contact map</button><button class="secondary-button" type="button" data-open="monitoring">Monitoring</button><span id="home-action-status" class="quiet" aria-live="polite"></span></article>
+        <article class="card network-banner">
+          <div class="network-icon" aria-hidden="true"><svg><use href="#i-near"/></svg></div>
+          <div><p class="eyebrow">LOCAL CONNECTION</p><h3 id="network-title">Set up local Wi-Fi</h3><p id="network-summary">Use your 2.4 GHz home network instead of staying on the setup hotspot.</p></div>
+          <button class="primary-button" id="network-setup-button">Set up local Wi-Fi</button>
+        </article>
+
+        <div class="dashboard-grid">
+          <article class="card home-monitor-card"><div class="card-head"><div><p class="eyebrow">NODE HEALTH</p><h3>Monitored nodes</h3></div><span id="home-monitor-count" class="quiet">0 monitored</span></div><div id="home-monitors" aria-live="polite"><p class="quiet">Add repeaters or contacts in Monitoring.</p></div><button class="text-action" type="button" data-open="monitoring">Open monitoring <span>→</span></button></article>
+          <article class="card feature-card accent-yellow">
+            <div class="card-head"><div><p class="eyebrow">INBOX</p><h3>Unread messages</h3></div><span class="count" id="home-unread">0</span></div>
+            <div class="preview empty" id="message-preview">No unread messages</div>
+            <button class="text-action" id="home-open-unread" type="button">Open latest unread <span>→</span></button>
+          </article>
+
+          <article class="card feature-card accent-orange">
+            <div class="card-head"><div><p class="eyebrow">MESH ACTIVITY</p><h3>Recently nearby</h3></div><span class="signal-bars"><i></i><i></i><i></i></span></div>
+            <div class="preview empty" id="nearby-preview">Waiting for adverts</div>
+            <button class="text-action" data-open="contacts">See contacts <span>→</span></button>
+          </article>
+
+          <article class="card radio-strip">
+            <div><p class="eyebrow">LIVE RADIO</p><strong id="home-rssi">— dBm</strong><span id="home-snr">SNR —</span></div>
+            <div class="radio-meter"><i id="radio-meter-fill"></i></div>
+            <div class="radio-meta"><span id="home-frequency">— MHz</span><span id="home-packets">— packets</span></div>
+          </article>
+          <article class="card dashboard-activity">
+            <div class="card-head"><div><p class="eyebrow">LAST 24 HOURS</p><h3>Message activity</h3></div><span id="dashboard-activity-total" class="quiet">No samples yet</span></div>
+            <canvas id="dashboard-activity-chart" height="116" aria-label="Hourly received, sent and failed messages in local history"></canvas>
+            <div class="chart-legend"><span><i class="green"></i>Received</span><span><i class="blue"></i>Sent</span><span><i class="red"></i>Failed</span></div>
+          </article>
+          <div class="dashboard-health">
+            <article class="card health-tile"><small>RECEIVED</small><strong id="dashboard-rx">—</strong><span>packets</span></article>
+            <article class="card health-tile"><small>SENT</small><strong id="dashboard-tx">—</strong><span>packets</span></article>
+            <article class="card health-tile"><small>DELIVERY</small><strong id="dashboard-delivery">IDLE</strong><span id="dashboard-delivery-note">No local send</span></article>
+            <article class="card health-tile"><small>HISTORY</small><strong id="dashboard-history">—</strong><span id="dashboard-history-note">stored messages</span></article>
+          </div>
+          <div class="dashboard-analytics">
+            <article class="card analytics-card">
+              <div class="card-head"><div><p class="eyebrow">SIGNAL SAMPLES</p><h3>What the radio has heard</h3></div><span id="dashboard-signal-note" class="quiet">Waiting for packets</span></div>
+              <canvas id="dashboard-signal-chart" height="138" aria-label="Distribution of recent RSSI samples"></canvas>
+              <div class="signal-scale"><span>Very weak</span><span>Usable</span><span>Strong</span></div>
+            </article>
+            <article class="card analytics-card">
+              <div class="card-head"><div><p class="eyebrow">RECENTLY HEARD</p><h3>Freshest nearby nodes</h3></div><button class="text-action" data-open="contacts">See contacts →</button></div>
+              <div id="dashboard-nearby-bars" class="nearby-bars"><p class="empty-state">Waiting for node adverts.</p></div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" data-screen="contacts">
+        <div class="section-head page-head"><div><p class="eyebrow">MESHCORE</p><h2>Contacts</h2><p>Search discovered contacts and inspect their saved routes.</p></div><div class="action-buttons"><button class="primary-button" id="contacts-discover" type="button">Discover contacts</button><button class="secondary-button" id="contacts-refresh" type="button">Refresh</button></div></div>
+        <div class="contacts-layout"><section class="card contacts-list-panel"><label for="contacts-search">Search contacts</label><input class="contact-search" id="contacts-search" type="search" placeholder="Name, public key or role" autocomplete="off"><div id="contacts-discovery" class="discovery-box" hidden><strong>Nearby discovery</strong><p id="contacts-discovery-status" aria-live="polite"></p><div id="contacts-discovery-results"></div><small>Search reaches nearby repeaters and sensors only. Chat users and rooms usually appear when they advertise. Results are not identity verified.</small></div><div id="contacts-count" class="quiet"></div><div id="contacts-list" class="contacts-list"><p class="empty-state">Contacts appear after sync.</p></div></section>
+        <section class="card contact-detail"><h3 id="contact-title">Choose a contact</h3><p id="contact-meta">Select a contact to see its details and tools.</p><p id="contact-key" class="contact-key"></p><div class="action-buttons"><button class="primary-button" id="contact-message" type="button">Message</button><button class="secondary-button" id="contact-ping" type="button">Ping</button><button class="secondary-button" id="contact-trace" type="button">Trace route</button><button class="secondary-button" id="contact-status" type="button">Request status</button><button class="secondary-button" id="contact-telemetry" type="button">Telemetry</button><button class="secondary-button" id="contact-reset" type="button">Reset saved path</button><button class="secondary-button" id="contact-copy" type="button">Copy public key</button><button class="secondary-button danger-button" id="contact-remove" type="button">Remove contact</button></div><p><small>Chat ping sends the word “ping” to the contact and waits for its delivery acknowledgement. Repeater ping checks a direct radio hop. Tracing checks repeaters in a known single-byte path; it does not confirm the final chat contact received anything. Status and telemetry depend on the node and its permissions.</small></p><h4>Tool results</h4><div id="contact-telemetry-view" hidden aria-live="polite"></div><pre id="contact-results" class="repeat-log" aria-live="polite">Select a contact to begin.</pre></section></div>
+      </section>
+
+      <section class="screen" data-screen="secure"><div class="section-head page-head"><div><p class="eyebrow">PRIVATE APP-TO-APP</p><h2>Secure Coms</h2><p>Encrypted on this PC and carried over MeshCore direct messages.</p></div></div><div class="secure-layout"><aside class="card secure-setup"><h3>Secure contacts</h3><label for="secure-contact">MeshCore chat contact</label><select id="secure-contact"><option value="">Choose a contact</option></select><p>Both people need this version of MeshCore Command. One person generates a secret; share it privately outside MeshCore, then both save it and verify the same fingerprint before sending. Messages received before pairing cannot be recovered.</p><label for="secure-secret">Shared secret</label><input id="secure-secret" type="password" autocomplete="off" spellcheck="false" placeholder="Generate or paste a secret"><div class="action-buttons"><button type="button" class="secondary-button" id="secure-generate">Generate secret</button><button type="button" class="secondary-button" id="secure-copy">Copy secret</button><button type="button" class="primary-button" id="secure-save">Save secret</button></div><p id="secure-fingerprint">Fingerprint: not set</p><label class="secure-verify"><input type="checkbox" id="secure-verified" disabled> I compared this fingerprint with the other person via a trusted channel</label><p id="secure-status" aria-live="polite">Select a known chat contact.</p><button type="button" class="secondary-button" id="secure-remove">Forget secure contact</button><p class="quiet">Version 1 uses AES-256-GCM with a random per-message key derived from a shared secret. It does not provide forward secrecy or protect a compromised PC. This implementation has not had an independent security audit.</p></aside><section class="card secure-conversation"><h3 id="secure-title">Choose a secure contact</h3><p class="quiet">Messages are short due to MeshCore packet limits. Delivery is not a cryptographic read receipt.</p><div id="secure-messages" aria-live="polite"><p class="empty-state">No secure messages yet.</p></div><form id="secure-compose"><label for="secure-input">Secure message</label><textarea id="secure-input" rows="2" maxlength="140" placeholder="Type a secure message" disabled></textarea><div class="secure-compose-row"><small id="secure-count">0 / 74 UTF-8 bytes</small><button type="submit" class="primary-button" id="secure-send" disabled>Send securely</button></div></form></section></div></section>
+      <section class="screen" data-screen="messages">
+        <div class="messages-layout card">
+          <aside class="threads-panel">
+            <div class="section-head"><div><p class="eyebrow">CONVERSATIONS</p><h2>Messages</h2></div><span id="thread-count">0</span></div>
+            <div class="message-tabs"><button type="button" id="messages-direct" class="secondary-button">Direct messages</button><button type="button" id="messages-channels" class="secondary-button">Channels</button><button type="button" id="messages-rooms" class="secondary-button">Rooms</button></div><label class="sr-only" for="message-search">Search contacts or channels</label><input class="contact-search" id="message-search" type="search" placeholder="Search conversations" autocomplete="off">
+            <details id="channel-add-panel" hidden><summary>Add channel</summary><form id="channel-add-form"><label>Channel type<select id="channel-add-type"><option value="hashtag">Hashtag channel</option><option value="private">Private channel</option><option value="public">Public channel</option></select></label><label>Channel name<input id="channel-add-name" placeholder="#sco" maxlength="31" autocomplete="off"></label><div id="channel-private-fields" hidden><label>Shared key (hex or base64)<input id="channel-add-key" autocomplete="off" placeholder="16-byte channel key"></label><button class="secondary-button" type="button" id="channel-generate">Generate private key</button></div><p id="channel-add-help">Hashtag keys are derived from the exact channel name. Anyone who knows the name can read it. Try #sco or #ioi for regional channels; the flood region below is a separate routing setting.</p><button class="primary-button" type="submit">Add channel</button><p id="channel-add-status" aria-live="polite"></p></form></details><details id="room-add-panel" hidden><summary>Add a room server</summary><form id="room-add-form"><label>Known room server<select id="room-select"></select></label><label>Room password<input id="room-password" type="password" autocomplete="off" placeholder="Password from the room owner"></label><label class="room-save"><input id="room-save-password" type="checkbox" checked> Save password securely on this PC</label><p>Added rooms are checked every 5 minutes while connected. Retained posts arrive gradually. Load retained history asks the server to resend posts it still holds, using a known direct route; it cannot recover discarded posts. Previously received messages are saved on this PC. Saved passwords use Windows Credential Manager. Without a saved password, reconnecting may require you to add the room again.</p><button class="primary-button" type="submit">Log in and add</button><p id="room-status" aria-live="polite"></p></form></details><div id="room-actions" hidden><button type="button" class="secondary-button" id="room-refresh">Check room now</button><button type="button" class="secondary-button" id="room-history">Load retained history</button><button type="button" class="secondary-button" id="room-remove">Remove room</button><p id="room-poll-status" aria-live="polite"></p></div><div class="threads" id="thread-list"><p class="empty-state">Contacts and channels appear after sync.</p></div>
+          </aside>
+          <div class="conversation">
+            <div class="conversation-head">
+              <div class="avatar" id="conversation-avatar">#</div>
+              <div class="conversation-identity"><strong id="conversation-title">Choose a conversation</strong><small id="conversation-subtitle">Channel or direct contact</small></div><button type="button" class="secondary-button" id="channel-mute" hidden aria-pressed="false">Mute channel</button>
+            </div>
+            <div class="message-list" id="message-list"><div class="welcome-bubble">Select a channel or contact to start talking across the mesh.</div></div><div class="message-menu" id="message-menu" role="menu" aria-label="Message actions" hidden><button type="button" id="message-menu-copy" role="menuitem">Copy text</button><button type="button" id="message-menu-reply" role="menuitem">Reply to message</button><button type="button" id="message-menu-like" role="menuitem">👍 Send thumbs up</button></div>
+            <form class="composer" id="composer">
+              <label class="sr-only" for="target-select">Recipient</label>
+              <select id="target-select" aria-label="Recipient"><option value="">Choose recipient</option></select>
+              <label for="region-select">Flood region (routing)</label>
+              <select id="region-select" aria-label="Region scope"><option value="sco">Scotland (sco)</option><option value="ioi">Island of Ireland (ioi)</option><option value="gla">Glasgow (gla)</option><option value="edi">Edinburgh (edi)</option><option value="default">Radio default</option><option value="custom">Custom region</option></select><div class="region-actions"><button type="button" class="secondary-button" id="read-default-region">Read radio default</button><small id="radio-default-region">Radio default: not read</small></div><input id="custom-region" aria-label="Custom flood region" placeholder="Region name, e.g. sco" maxlength="30" hidden>
+              <div class="compose-row">
+                <label class="sr-only" for="message-input">Message</label>
+                <textarea id="message-input" rows="1" maxlength="140" placeholder="Message the mesh…"></textarea>
+                <button type="submit" class="send-button" aria-label="Send message"><svg><use href="#i-send"/></svg></button>
+              </div>
+              <small><span>Enter to send · Shift+Enter for a new line</span> · <span id="compose-count">0 / 140 bytes</span></small>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" data-screen="watch">
+        <div class="section-head page-head"><div><p class="eyebrow">MESSAGE MONITOR</p><h2>Word alerts</h2><p>Get an alert when an incoming direct message or joined channel message contains a watched word or phrase.</p></div></div>
+        <div class="watch-grid"><form class="card watch-card" id="watch-form"><h3>Words and phrases</h3><p>Enter one per line. Matches ignore case and can occur anywhere in a message.</p><label for="watch-terms">Words or phrases</label><textarea id="watch-terms" rows="8" maxlength="4096" placeholder="emergency&#10;help needed"></textarea><label class="watch-toggle"><input id="watch-enabled" type="checkbox" checked> Enable word alerts</label><label class="watch-toggle"><input id="watch-preview" type="checkbox"> Include message text in the desktop notification</label><div class="action-buttons"><button class="primary-button" type="submit">Save watch list</button><button class="secondary-button" type="button" id="watch-test">Send test notification</button></div><p id="watch-status" aria-live="polite"></p><p><small>The app and radio connection must stay open. The radio only receives channels it has joined and messages it can decrypt. Muted channels still record matches here but do not produce alerts. Other matches appear in the app and request a Windows notification and sound. Windows settings may suppress desktop pop-ups or sound.</small></p></form><section class="card watch-card"><h3>Recent matches</h3><p>Matches are saved locally on this PC. Alerts can contain private message content.</p><button class="secondary-button" id="watch-clear" type="button">Clear matches</button><div id="watch-events"><p>No matches yet.</p></div></section></div>
+      </section>
+
+      <section class="screen" data-screen="contactmap">
+        <div class="contact-map-layout"><article class="card contact-map-card"><div class="contact-map-toolbar"><label for="map-contact-search">Find a contact</label><input id="map-contact-search" type="search" placeholder="Name or public key" autocomplete="off"><button type="button" class="secondary-button" id="map-fit">Fit contacts</button><span id="contact-map-count"></span></div><div id="contacts-map" role="application" aria-label="Map of known contacts"></div><p class="quiet map-note">Green: contacts · orange: repeaters · blue: your radio. Contacts must advertise a location. Map tiles © OpenStreetMap contributors.</p></article><aside class="card packet-map-panel"><h3>Received packets</h3><p id="packet-live-status" class="packet-live-status">Connecting to radio…</p><p>Packets heard by your radio. New packets briefly highlight their reported paths. Flood paths use short hashes, which can collide; dashed lines are reported segments, not verified delivery.</p><label class="map-follow"><input id="map-follow" type="checkbox" checked> Follow latest packet</label><button type="button" class="secondary-button" id="map-clear-packets">Clear list</button><p id="packet-map-detail">Select a packet to show its reported route.</p><div id="packet-map-list" class="packet-map-list"></div></aside></div>
+      </section>
+
+      <section class="screen" data-screen="monitoring"><div class="section-head page-head"><div><p class="eyebrow">NODE HEALTH</p><h2>Monitoring</h2><p>Schedule checks for saved contacts and repeaters while the app is connected.</p></div></div><div class="monitor-layout"><section class="card monitor-add-card"><h3>Add a node</h3><label for="monitor-search">Search contacts and repeaters</label><input id="monitor-search" class="contact-search" type="search" placeholder="Name or public key"><label for="monitor-select">Known node</label><select id="monitor-select"></select><button id="monitor-add" class="primary-button" type="button">Add to monitoring</button><p class="quiet">Scheduled chat pings send a “ping” message to the contact. Repeater pings use a direct trace. Trace checks the saved single-byte route; telemetry depends on node permissions. Checks run only while the app is open and connected.</p><p id="monitor-status" aria-live="polite"></p></section><section class="monitor-nodes" id="monitor-nodes"><p class="empty-state">Add a contact or repeater to get started.</p></section></div></section>
+      <section class="screen" data-screen="repeaters">
+        <div class="section-head page-head"><div><p class="eyebrow">MESHCORE</p><h2>Repeaters</h2><p>Manage repeaters and view their known neighbours.</p></div></div>
+        <div class="repeater-layout">
+          <article class="card repeater-card"><h3>Repeater control</h3><label>Search repeaters<input id="repeat-search" type="search" placeholder="Name or public key" autocomplete="off"></label><label>Repeater<select id="repeater-select"><option value="">No repeaters discovered</option></select></label><div class="action-buttons"><button class="secondary-button" type="button" id="repeat-favorite" disabled aria-pressed="false">☆ Add to favourites</button><button class="secondary-button" id="repeat-refresh">Refresh contacts</button><button class="secondary-button" id="repeat-use-location">Use repeater as point B</button></div><label>Admin password<input id="repeat-password" type="password" autocomplete="off"></label><label class="save-password-label"><input id="repeat-save-password" type="checkbox"> Save password securely in Windows</label><button class="secondary-button" type="button" id="repeat-forget-password">Forget saved password</button><div class="action-buttons"><button class="primary-button" id="repeat-login">Log in</button><button class="secondary-button" id="repeat-status">Status</button><button class="secondary-button" id="repeat-telemetry" type="button">Telemetry</button><button class="secondary-button" id="repeat-neighbours">Refresh neighbours</button><button class="secondary-button" id="repeat-reset-path">Reset path</button></div><p>Admin commands require the repeater's password. Status and neighbours depend on repeater permissions and radio reachability. Passwords are saved in Windows Credential Manager only if selected.</p><section id="repeater-settings" hidden><h4>Repeater settings</h4><p id="repeat-settings-status">Read settings to load the current values. Replies have no command IDs; verify them before making changes.</p><div class="action-buttons"><button class="secondary-button" type="button" id="repeat-read-settings">Read settings</button><button class="secondary-button" type="button" id="repeat-discover">Discover neighbours</button></div><h4>Repeater regions</h4><p>Read the repeater’s region tree before changing it. Changes affect forwarding; save them explicitly after review.</p><div class="action-buttons"><button type="button" class="secondary-button" id="repeat-region-read">Read region tree</button><button type="button" class="secondary-button" id="repeat-region-save">Save region changes</button></div><pre id="repeat-region-tree" class="repeat-log">Not read.</pre><label>Region name<input id="repeat-region-name" placeholder="e.g. sco or *" maxlength="30"></label><label>Parent for a new region<input id="repeat-region-parent" placeholder="e.g. *" maxlength="30"></label><div class="action-buttons"><button type="button" class="secondary-button" id="repeat-region-put">Add or move region</button><button type="button" class="secondary-button" id="repeat-region-allow">Allow flooding</button><button type="button" class="secondary-button" id="repeat-region-deny">Deny flooding</button></div><p id="repeat-region-status" aria-live="polite">Read the tree before making changes.</p><h4>Repeater advert path size</h4><p>This changes this repeater’s own adverts, not which path sizes it forwards. Requires compatible firmware.</p><label>Advert path size <select id="repeat-path-hash"><option value="">Read current setting first</option><option value="0">1 byte · up to 64 hops</option><option value="1">2 bytes · up to 32 hops</option><option value="2">3 bytes · up to 21 hops</option></select></label><div class="action-buttons"><button class="secondary-button" type="button" id="repeat-read-path-hash">Read current</button><button class="secondary-button" type="button" id="repeat-set-path-hash">Save advert path size</button></div><p id="repeat-path-hash-status" aria-live="polite">Current setting not read.</p><h4>Remote actions</h4><div class="action-buttons"><button class="secondary-button" type="button" id="repeat-clock">Read clock</button><button class="secondary-button" type="button" id="repeat-clock-sync">Sync clock to PC</button><button class="secondary-button" type="button" id="repeat-advert-local">Local advert</button><button class="secondary-button" type="button" id="repeat-advert-flood">Flood advert</button></div><p>Actions are queued; check the repeater responses below for confirmation. Clock sync can only move time forward.</p><label>Name<input id="repeat-setting-name" maxlength="32" placeholder="Repeater name"></label><button class="secondary-button" type="button" id="repeat-set-name">Set name</button><label>Forwarding<select id="repeat-setting-forward"><option value="on">On</option><option value="off">Off</option></select></label><button class="secondary-button" type="button" id="repeat-set-forward">Set forwarding</button><label>Latitude<input id="repeat-setting-lat" type="number" min="-90" max="90" step="any"></label><label>Longitude<input id="repeat-setting-lon" type="number" min="-180" max="180" step="any"></label><button class="secondary-button" type="button" id="repeat-set-location">Set location</button><div class="repeater-readouts"><div>Role: <strong id="repeat-read-role">Not read</strong></div><div>Advert interval: <strong id="repeat-read-advert">Not read</strong></div><div>Flood limit: <strong id="repeat-read-flood">Not read</strong></div></div></section><label>Quick command<select id="repeat-quick"><option value="">Choose a command</option><option value="ver">Version</option><option value="get name">Get name</option><option value="get radio">Get radio</option><option value="get tx">Get TX setting</option><option value="region">List regions</option><option value="neighbors">List neighbours</option><option value="clock">Clock</option><option value="advert">Send advert</option></select></label><div class="action-buttons"><button class="secondary-button" id="repeat-quick-send">Send quick command</button></div><label>Remote CLI command<input id="repeat-command" maxlength="120" placeholder="e.g. get name" autocomplete="off"></label><button class="primary-button" id="repeat-send">Send command</button><h4>Repeater responses</h4><pre id="repeat-log" class="repeat-log" aria-live="polite">Choose a repeater.</pre></article>
+          <article class="card repeater-card"><div id="repeat-status-view" hidden aria-live="polite"></div><h3>Neighbour links</h3><div id="discovery-box" class="discovery-box" hidden><strong>Neighbour discovery</strong><div id="discovery-countdown" class="discovery-countdown"></div><div id="discovery-status" aria-live="polite"></div></div><p id="neighbour-map-status">Refresh neighbours to display known links on the map.</p><div id="neighbour-map" role="application" aria-label="Repeater neighbour map"></div><div id="neighbour-list" class="neighbour-list" aria-live="polite"></div></article></div></section><section class="screen terrain-workspace" data-screen="terrain" aria-label="Terrain planning workspace">
+ <div id="terrain-map" role="application" aria-label="Terrain planning map"></div>
+ <div class="terrain-panel" id="terrain-panel">
+  <div class="terrain-panel-head"><div><p class="eyebrow">LINK PLANNING</p><h2>Terrain tools</h2></div><button type="button" class="secondary-button" id="terrain-back">Back to app</button><button class="secondary-button" id="terrain-cancel" type="button" hidden>Cancel</button><button type="button" class="secondary-button" id="terrain-hide-panel" aria-label="Hide planning controls">Hide</button></div>
+  <p id="terrain-pick-message" role="status" hidden>Click the map to choose the centre. Press Escape or the button again to cancel.</p><p id="terrain-live-progress" aria-live="polite" hidden></p><div class="terrain-panel-scroll">
+   <label>Map appearance<select id="terrain-map-style"><option value="light">Standard map</option><option value="dark">Dark map</option></select></label>
+   <p class="terrain-help">Click the map to set a point or place a planned repeater. Locations and antenna heights affect the estimates.</p>
+   <label>Map click sets<select id="terrain-point"><option value="a">Point A / transmitter</option><option value="b">Point B / receiver</option><option value="repeater">New planned repeater</option></select></label><button class="secondary-button" id="terrain-use-self" type="button">Use radio location for A</button>
+   <details open class="terrain-section"><summary>Coverage and point-to-point</summary>
+    <div class="terrain-grid"><label>A latitude<input id="terrain-a-lat" type="number" min="-90" max="90" step="0.000001" placeholder="55.950000"></label><label>A longitude<input id="terrain-a-lon" type="number" min="-180" max="180" step="0.000001" placeholder="-3.190000"></label><label>A antenna height (m above ground)<input id="terrain-a-height" type="number" value="10" min="0" max="500" step="1"></label><label>B latitude<input id="terrain-b-lat" type="number" min="-90" max="90" step="0.000001"></label><label>B longitude<input id="terrain-b-lon" type="number" min="-180" max="180" step="0.000001"></label><label>B antenna height (m above ground)<input id="terrain-b-height" type="number" value="2" min="0" max="500" step="1"></label><label>Frequency (MHz)<input id="terrain-frequency" type="number" value="869.618" min="150" max="2500" step="0.001"></label><label>Coverage radius (km)<input id="terrain-radius" type="number" value="15" min="1" max="100" step="1"></label></div>
+    <label>Coverage from<select id="terrain-coverage-source"><option value="a">Point A</option><option value="repeaters">Selected repeaters</option></select></label><div class="action-buttons"><button class="primary-button" id="terrain-los" type="button">Calculate A–B line of sight</button><button class="secondary-button" id="terrain-coverage" type="button">Estimate terrain visibility</button></div>
+    <div id="terrain-coverage-layers" class="terrain-coverage-layers" hidden></div>
+   </details>
+   <details open class="terrain-section"><summary>Repeater plan</summary>
+    <label>Find known repeaters<input id="terrain-repeater-search" type="search" placeholder="Name or public key" autocomplete="off"></label><label>Known repeater<select id="terrain-repeater-select"></select></label><div class="action-buttons"><button class="secondary-button" id="terrain-repeater-add" type="button">Add known repeater</button></div><label>Search radius (miles)<input id="terrain-search-miles" type="number" min="0.1" max="12400" step="any" value="60" inputmode="decimal"></label><p id="terrain-search-error" class="terrain-help" role="alert" hidden></p><div class="action-buttons"><button class="primary-button" id="terrain-nodes-60-coverage" type="button" aria-pressed="false">Choose area &amp; show coverage</button></div><p class="terrain-help">Known repeaters need advertised locations. Their antenna height starts at 10 m; adjust it if known. Bulk coverage may take time and appears as each layer completes. Set a search radius in miles, choose the area button, then click the map to select known contacts, repeaters, rooms and sensors within that distance. The coverage radius setting applies separately to each node. Other planned nodes stay on the map but are excluded until selected.</p><p class="terrain-help">Or select “New planned repeater” above and click the map. Drag markers to adjust positions. Select repeaters for coverage and links and set their antenna heights. Link calculations support up to 20 selected repeaters.</p>
+    <div class="action-buttons"><button class="secondary-button" id="terrain-select-all" type="button">Select all</button><button class="secondary-button" id="terrain-deselect-all" type="button">Deselect all</button></div><div id="terrain-plan-list"></div><div class="action-buttons"><button class="primary-button" id="terrain-plan-links" type="button">Calculate repeater links</button><button class="secondary-button" id="terrain-plan-fit" type="button">Show all repeaters</button></div><div id="terrain-plan-status" aria-live="polite"></div><div id="terrain-links-list"></div>
+   </details>
+   <p id="terrain-result" aria-live="polite">Choose points to calculate.</p><div id="terrain-legend" class="terrain-legend" hidden><span><i class="terrain-clear"></i>Clear LOS and 60% Fresnel</span><span><i class="terrain-fresnel"></i>LOS, Fresnel obstructed</span><span><i class="terrain-blocked"></i>Terrain blocked</span><span><i class="terrain-unknown"></i>Too close to assess</span></div><canvas id="terrain-profile" height="180" aria-label="Terrain profile"></canvas><p class="terrain-help">Coloured areas and links estimate terrain visibility, not signal strength. Grid and elevation resolution can miss narrow features; trees, buildings and propagation are not fully modelled. © OpenStreetMap contributors. Elevation: <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">Mapzen terrain tiles on AWS</a>.</p>
+  </div>
+ </div>
+ <button type="button" id="terrain-show-panel" class="secondary-button terrain-show-panel" hidden>Show planning controls</button>
+</section>
+
+      <section class="screen" data-screen="radio">
+        <div class="radio-grid">
+          <article class="card signal-card">
+            <div class="card-head"><div><p class="eyebrow">SIGNAL HEALTH</p><h3>Live RF</h3></div><span class="live-pill">LIVE</span></div>
+            <div class="signal-readout"><strong id="radio-rssi">—</strong><span>dBm</span><small id="radio-quality">Waiting for sample</small></div>
+            <canvas id="signal-chart" height="124" aria-label="Recent RSSI signal chart"></canvas>
+            <div class="chart-legend"><span><i class="green"></i>RSSI</span><span id="radio-snr">SNR —</span><span id="radio-noise">Noise —</span></div>
+          </article>
+          <div class="metric-grid">
+            <article class="card metric"><small>FREQUENCY</small><strong id="radio-frequency">—</strong><span>MHz</span></article>
+            <article class="card metric"><small>BANDWIDTH</small><strong id="radio-bandwidth">—</strong><span>kHz</span></article>
+            <article class="card metric"><small>SPREADING</small><strong id="radio-spreading">—</strong><span id="radio-coding">CR —</span></article>
+            <article class="card metric"><small>TX POWER</small><strong id="radio-power">—</strong><span>dBm</span></article>
+          </div>
+          <article class="card advert-card"><div class="card-head"><div><p class="eyebrow">PRESENCE</p><h3>Send advert</h3></div></div><p>Share your radio’s name and, if enabled, its location. Local adverts reach nodes in direct radio range; flood adverts can be forwarded by repeaters using your radio’s default flood region.</p><div class="action-buttons"><button class="secondary-button" type="button" id="radio-advert-local" disabled>Send local advert</button><button class="primary-button" type="button" id="radio-advert-flood" disabled>Send flood advert</button></div><p id="radio-advert-status" class="quiet" aria-live="polite">Connect to your radio to send an advert.</p></article>
+          <article class="card packet-card">
+            <div class="card-head"><div><p class="eyebrow">PACKETS</p><h3>On-air counters</h3></div><span id="packet-errors" class="quiet">0 errors</span></div>
+            <div class="packet-stats"><div><strong id="packet-received">—</strong><small>Received</small></div><div><strong id="packet-sent">—</strong><small>Sent</small></div><div><strong id="packet-direct">—</strong><small>Direct RX</small></div><div><strong id="packet-flood">—</strong><small>Flood RX</small></div></div>
+          </article>
+          <article class="card radio-activity-card">
+            <div class="card-head"><div><p class="eyebrow">HOURLY ACTIVITY</p><h3>Seven-day traffic</h3></div><span id="radio-activity-total" class="quiet">No samples yet</span></div>
+            <canvas id="radio-activity-chart" height="176" aria-label="Seven-day hourly packet bars"></canvas>
+            <div class="chart-legend"><span><i class="green"></i>RX</span><span><i class="blue"></i>TX</span><span><i class="red"></i>Failures</span></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="screen" data-screen="ultimate">
+        <section class="card mesh-settings" id="mesh-settings">
+          <h2>MeshCore settings</h2><p>Changes are saved to the radio. Advertise after changing your name or location.</p><section class="card"><h3>ScotMesh setup check</h3><p>Check the radio preset and default scope. Channel scope choices are saved separately on this PC.</p><div class="action-buttons"><button type="button" class="secondary-button" id="scot-check">Check setup</button><button type="button" class="secondary-button" id="scot-set-default">Set radio default to sco</button><button type="button" class="secondary-button" id="scot-discover">Discover nearby repeaters</button><button type="button" class="secondary-button" id="scot-test">Open #test guidance</button></div><p id="scot-check-result" aria-live="polite">Connect a radio, then check setup.</p><p id="scot-test-help" hidden>Add the hashtag channel #test in Messages, choose scope sco, and send a short test message. A reply from another user confirms two-way communication.</p></section>
+          <p id="radio-clock-status" aria-live="polite">Radio clock has not been checked.</p>
+          <form id="node-name-form"><label>Display name <input id="setting-name" maxlength="31" required></label><button class="primary-button">Save name</button></form>
+          <form id="path-hash-form"><h3>Message path hash size</h3><p>Choose how many bytes identify each hop in new flooded packets from this radio. Older repeaters may not forward 2- or 3-byte paths; maximum flood paths are 64, 32 and 21 hops respectively. Existing direct paths can use their saved size.</p><label>Path size <select id="setting-path-hash"><option value="">Read current setting first</option><option value="0">1 byte · up to 64 hops</option><option value="1">2 bytes · up to 32 hops</option><option value="2">3 bytes · up to 21 hops</option></select></label><button type="button" id="read-path-hash" class="secondary-button">Read current</button><button type="submit" class="primary-button">Save path size</button><p id="path-hash-status" aria-live="polite">Current setting not read.</p></form>
+          <form id="radio-settings-form"><h3>Radio</h3><p>Radios need matching settings to hear each other. UK Narrow: 869.618 MHz, 62.5 kHz, SF8, CR 4/8.</p><div class="settings-fields">
+            <label>Frequency (MHz)<input id="setting-freq" type="number" step="0.001" min="150" max="2500" required></label>
+            <label>Bandwidth (kHz)<select id="setting-bw"><option value="7.8">7.8</option><option value="10.4">10.4</option><option value="15.6">15.6</option><option value="20.8">20.8</option><option value="31.25">31.25</option><option value="41.7">41.7</option><option value="62.5">62.5</option><option value="125">125</option><option value="250">250</option><option value="500">500</option></select></label>
+            <label>Spreading factor<select id="setting-sf"><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option></select></label>
+            <label>Coding rate<select id="setting-cr"><option value="5">4/5</option><option value="6">4/6</option><option value="7">4/7</option><option value="8">4/8</option></select></label></div><button class="secondary-button" type="button" id="uk-preset-button">Fill UK Narrow</button> <button class="primary-button">Save radio settings</button></form>
+          <form id="power-settings-form"><label>Radio TX setting (dBm)<input id="setting-power" type="number" min="0" max="22" step="1" required></label><p>The V4 has an external amplifier: this setting is not necessarily the final radiated power.</p><button class="primary-button">Save TX setting</button></form>
+          <form id="contacts-settings-form"><label>New contacts<select id="setting-contacts"><option value="0">Add automatically</option><option value="1">Add manually</option></select></label><button class="primary-button">Save contact setting</button></form>
+          <form id="location-settings-form"><h3>Advertised location</h3><p>These coordinates may be shared in adverts depending on the device's location sharing policy.</p><div class="settings-fields"><label>Latitude<input id="setting-lat" type="number" step="0.000001" min="-90" max="90" required></label><label>Longitude<input id="setting-lon" type="number" step="0.000001" min="-180" max="180" required></label></div><button class="primary-button">Save coordinates</button></form>
+          <form id="channel-settings-form"><h3>Channels</h3><p>Manage a numbered channel slot. Saving replaces that slot. Enter the channel name and its 32-character hexadecimal key from the channel owner.</p><p id="setting-channel-list">Synchronising channels…</p><div class="settings-fields"><label>Slot<input id="setting-channel-slot" type="number" min="0" max="39" required></label><label>Channel name<input id="setting-channel-name" maxlength="31" required></label><label>Key (32 hexadecimal characters)<input id="setting-channel-key" pattern="[0-9a-fA-F]{32}" maxlength="32" required autocomplete="off"></label></div><button class="primary-button">Save channel</button></form>
+        </section>
+        <article class="ultimate-hero card">
+          <div><p class="eyebrow">THIS RADIO</p><h2>Device and MeshCore settings</h2><p>Change your MeshCore settings and manage this headless radio.</p></div>
+          <div class="ultimate-gate"><span id="ultimate-gate-dot"></span><small>MEMORY HEADROOM</small><strong id="ultimate-gate">Checking</strong></div>
+        </article>
+        <div class="ultimate-metrics">
+          <article class="card metric"><small>DEVICE HISTORY</small><strong id="ultimate-history-count">—</strong><span id="ultimate-history-capacity">records</span></article>
+          <article class="card metric"><small>FREE HEAP</small><strong id="ultimate-free-heap">—</strong><span id="ultimate-largest">largest —</span></article>
+          <article class="card metric"><small>DISPLAY FLUSH</small><strong id="ultimate-flush">—</strong><span id="ultimate-tiles">tiles —</span></article>
+          <article class="card metric"><small>EVENT QUEUE</small><strong id="ultimate-drops">—</strong><span id="ultimate-queue">outbound —</span></article>
+          <article class="card metric"><small>BATTERY TREND</small><strong id="ultimate-battery">—</strong><span id="ultimate-runtime">Waiting for samples</span></article>
+          <article class="card metric"><small>LATEST DELIVERY</small><strong id="ultimate-delivery">IDLE</strong><span id="ultimate-delivery-target">No on-device send</span></article>
+        </div>
+        <div class="ultimate-grid">
+          <article class="card ultimate-chart-card"><div class="card-head"><div><p class="eyebrow">TWO HOURS</p><h3>Recent activity</h3></div><span class="live-pill">LIVE</span></div><canvas id="ultimate-minute-chart" height="170"></canvas><div class="chart-legend"><span><i class="green"></i>RX</span><span><i class="blue"></i>TX</span><span><i class="orange"></i>Battery</span></div></article>
+          <article class="card ultimate-chart-card"><div class="card-head"><div><p class="eyebrow">SEVEN DAYS</p><h3>Hourly activity</h3></div></div><canvas id="ultimate-week-chart" height="170"></canvas><div class="chart-legend"><span><i class="green"></i>RX</span><span><i class="blue"></i>TX</span><span><i class="red"></i>Failures</span></div></article>
+          <article class="card ultimate-nodes"><div class="card-head"><div><p class="eyebrow">RECENT RADIOS</p><h3>Heard by this device</h3></div><span id="ultimate-node-count">0 radios</span></div><div id="ultimate-node-list" class="ultimate-node-list"><p class="empty-state">Listening on the configured preset.</p></div></article>
+          <article class="card ultimate-history"><div class="card-head"><div><p class="eyebrow">DEVICE HISTORY</p><h3>Recent messages</h3></div><button class="text-action" id="ultimate-export">Export NDJSON ↗</button></div><div id="ultimate-history-list" class="ultimate-history-list"><p class="empty-state">No stored messages.</p></div></article>
+        </div>
+        <div class="ultimate-settings-grid">
+          <form class="card ultimate-settings" id="ultimate-settings-form">
+            <div class="card-head"><div><p class="eyebrow">DISPLAY & HISTORY</p><h3>NeonPocket settings</h3></div></div>
+            <label>History capacity<select id="ultimate-history-cap"><option value="0">Off</option><option value="128">128</option><option value="512">512</option><option value="2048">2048</option></select></label>
+            <label>Keyboard cadence<select id="ultimate-cadence"><option value="450">450 ms</option><option value="650">650 ms</option><option value="900">900 ms</option><option value="1200">1200 ms</option></select></label>
+            <label>Power profile<select id="ultimate-power-profile"><option value="0">Balanced · 60 s screen</option><option value="1">Field · 5 min screen</option><option value="2">Battery · 30 s screen</option></select></label>
+            <label>Battery capacity (mAh)<input id="ultimate-battery-capacity" type="number" min="0" max="20000" step="1" inputmode="numeric" placeholder="0 = unknown"></label>
+            <label>Battery calibration offset (mV)<input id="ultimate-battery-calibration" type="number" min="-300" max="300" step="1" inputmode="numeric"></label>
+            <label class="toggle-row"><input id="ultimate-private" type="checkbox"><span>Hide message bodies while the TFT is locked</span></label>
+            <div id="ultimate-phrases" class="ultimate-phrases"></div>
+            <button class="primary-button" type="submit">Save settings</button>
+          </form>
+          <div class="ultimate-actions">
+            <article class="card action-card"><div><p class="eyebrow">EXPLICIT LOCATION</p><h3>Transfer this browser's location</h3><p>Requested only when you tap below. Coordinates, accuracy, and advert sharing are confirmed before saving.</p><label class="toggle-row"><input id="ultimate-location-share" type="checkbox" checked><span>Include saved coordinates in this node's adverts</span></label><strong id="ultimate-location-preview">No location requested</strong></div><button class="primary-button" id="ultimate-location">Request location</button></article>
+            <form class="card action-card" id="ultimate-ota-form"><div><p class="eyebrow">SIGNED UPDATE</p><h3>Install a NeonPocket .npu package</h3><p>The device checks the board, mode, file hash and signature before writing the inactive app slot.</p><input id="ultimate-ota-file" type="file" accept=".npu" required></div><button class="primary-button" type="submit">Verify & install</button></form>
+            <article class="card action-card"><div><p class="eyebrow">DANGER ZONE</p><h3>Erase on-device history</h3><p>Disabling history never erases it. This confirmed action permanently clears only the separate /np/ journal.</p></div><button class="secondary-button danger-button" id="ultimate-clear">Clear device history</button></article>
+          </div>
+        </div>
+        <div class="more-grid device-details">
+          <article class="card device-card">
+            <p class="eyebrow">DEVICE</p><div class="device-icon"><svg class="brand-mark" aria-hidden="true"><use href="#brand-pocket"/></svg></div>
+            <h2 id="more-name">RADIO</h2><p id="more-model">MeshCore Companion</p>
+            <dl><div><dt>Firmware</dt><dd id="more-firmware">—</dd></div><div><dt>Build</dt><dd id="more-build">—</dd></div><div><dt>Public key</dt><dd id="more-key">—</dd></div></dl>
+          </article>
+          <div class="settings-stack">
+            <article class="card action-card"><div><p class="eyebrow">PRESENCE</p><h3>Advertise this node</h3><p>Queue a flood advert so nearby MeshCore nodes can discover you.</p></div><button class="primary-button" id="advert-button">Advert now</button></article>
+            <article class="card action-card"><div><p class="eyebrow">CONNECTION</p><h3 id="more-network-title">Setup AP</h3><p id="ap-address">Connected through this device at 192.168.4.1</p></div><div class="action-buttons"><button class="secondary-button" id="refresh-button">Sync now</button><button class="secondary-button danger-button" id="return-ap-button" hidden>Return to setup AP</button></div></article>
+            <article class="card action-card"><div><p class="eyebrow">PRIVACY</p><h3>Local message history</h3><p>Up to 120 messages are kept in this browser for this node. Clear them whenever you like.</p></div><button class="secondary-button" id="clear-history-button">Clear history</button></article>
+            <article class="card about-card"><div><p class="eyebrow">ABOUT</p><h3>NeonPocket Ultimate Companion</h3><p>Offline-first MeshCore companion · v<span id="app-version">—</span><br>Powered by MeshCore.js <span id="library-version">—</span> · MIT © Liam Cottle</p></div></article>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog class="network-dialog" id="network-dialog" aria-labelledby="network-dialog-title">
+    <div class="dialog-head"><div><p class="eyebrow">RADIO NETWORK</p><h2 id="network-dialog-title">Set up local Wi-Fi</h2></div><button type="button" class="dialog-close" id="network-dialog-close" aria-label="Close network setup">×</button></div>
+    <div class="network-current"><span class="status-dot connected"></span><div><small>CURRENT CONNECTION</small><strong id="network-current">Checking radio…</strong></div></div>
+    <div class="network-login"><small>LAN WEB LOGIN</small><strong><span id="network-login-user">meshcore</span> / <span id="network-login-key">loading…</span></strong><p>Save this device key before restart. It is not your home Wi-Fi password.</p></div>
+    <form id="network-form">
+      <label for="network-ssid">2.4 GHz Wi-Fi name</label>
+      <input id="network-ssid" name="ssid" type="text" required maxlength="32" autocomplete="off" placeholder="Home Wi-Fi">
+      <label for="network-password">Wi-Fi password</label>
+      <div class="password-row"><input id="network-password" name="password" type="password" maxlength="64" autocomplete="new-password" placeholder="Leave empty for an open network"><button type="button" id="network-reveal" aria-pressed="false">Show</button></div>
+      <p class="field-help">SSID: 1–32 bytes. Password: empty, or 8–64 characters. This radio supports 2.4 GHz networks only.</p>
+      <div class="dialog-actions"><button type="button" class="secondary-button" id="network-cancel">Cancel</button><button type="submit" class="primary-button" id="network-save">Save & restart</button></div>
+    </form>
+    <div class="network-result" id="network-result" hidden>
+      <p class="eyebrow">NEXT STEPS</p><h3 id="network-result-title">Reconnect to your home Wi-Fi</h3>
+      <ol id="network-result-steps"><li>Wait for the radio to restart.</li><li>Reconnect this phone or computer to your home Wi-Fi.</li><li>Read the new DHCP IP on the screen and open it in your browser.</li></ol>
+      <p id="network-result-note">When prompted, use <strong>meshcore</strong> and the 8-letter device key above. It is not your home Wi-Fi password.</p>
+      <button type="button" class="primary-button" id="network-done">Got it</button>
+    </div>
+  </dialog>
+
+  <div class="toast-stack" id="toasts" aria-live="polite"></div>
+  <div class="boot" id="boot"><svg class="brand-mark large" aria-hidden="true"><use href="#brand-pocket"/></svg><strong>NeonPocketMC</strong><small>MeshCore Ultimate companion</small><div class="boot-line"><i></i></div></div>
+  <script>/*__RCC6_JS__*/</script>
+</body>
+</html>
