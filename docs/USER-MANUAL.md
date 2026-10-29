@@ -7,7 +7,7 @@ MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore 
 - You need Windows, the Edge WebView2 runtime, a compatible Wi-Fi radio and an appropriate LoRa antenna. Connect the antenna before powering or transmitting with the radio.
 - The PC and radio need network access to each other. The companion connection uses TCP port 5000; discovery uses UDP port 5010.
 - Use a trusted local network: the companion protocol itself is unauthenticated and unencrypted. The PC bridge listens on loopback.
-- This repository contains source code. It does **not** currently provide a ready-to-run installer or compiled firmware. An existing installation or separately built, board-specific firmware is required; see the [build notes](../README.md#building).
+- Download the Windows installer from the [releases page](https://github.com/Nortag82/MeshCore-Command/releases). Run it to install the app and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
 
 ## 1. Set up or connect a radio
 
