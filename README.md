@@ -11,7 +11,21 @@ Download the installer and checksum from the [Windows preview release](https://g
 
 ## A look inside
 
-> Screenshots use simulated contacts, messages and telemetry.
+> Screenshots use simulated contacts, messages, telemetry and map markers. Map data © OpenStreetMap contributors.
+
+### Situation map
+
+Build a shared picture using map markers with supported NATO APP-06 symbols. Right-click to create a marker, then edit or move it as the situation changes. Markers can be saved locally, even before you add a secure contact.
+
+![Situation map showing example command, medical and reconnaissance markers](docs/images/situation-map.png)
+
+Share marker updates with verified Secure Coms contacts, or send your full picture to a selected contact. The app shows which marker updates the receiving app has confirmed saving. Both users need compatible MeshCore Command installations and a connected radio. Sharing uses the experimental Secure Coms protocol; it has not been independently audited and does not provide forward secrecy. It is not ATAK compatible.
+
+### Offline maps
+
+Open **Settings** on the Situation map, select two corners of an area, choose a detail level and download it for later use without internet. You can also import a Protomaps PMTiles map or a raster MBTiles map. Map downloads require internet and use local disk space; terrain coverage tools need separate online elevation data.
+
+![Situation map settings showing a selected area ready for offline download](docs/images/situation-map-settings.png)
 
 ### Overview
 See radio status, recent activity, monitored nodes and quick actions in one place.
