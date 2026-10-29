@@ -14,3 +14,6 @@
 .env.*
 MeshCore Desktop/firmware/
 MeshCore Desktop/radio.html
+
+# Distributable installer
+!/downloads/Install MeshCore Command.exe
