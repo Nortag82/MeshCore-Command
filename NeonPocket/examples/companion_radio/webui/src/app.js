@@ -1,3 +1,4 @@
+import {createCommandDiscovery} from './command-discovery.js';
 import {createSituationMap} from "./situation-map.js";
 import {createSecureComs} from './secure-coms.js';
 import {createMonitoring} from './monitoring.js';
@@ -307,6 +308,7 @@ const keywordWatch = createKeywordWatch({toast, targetInfo});
 let situationMap;
 const secureComs = createSecureComs({state,getConnection:()=>connection,exclusive,hex,toast,onObject:(peer,value)=>situationMap.ingest(peer,value)});
 situationMap = createSituationMap({state,secureComs,hex});
+const commandDiscovery = createCommandDiscovery({state,getConnection:()=>connection,exclusive,hex,refreshContacts,secureComs});
 const roomTools = createRoomTools();
 const monitoring = createMonitoring({state,getConnection:()=>connection,exclusive,hex,Constants,addMessage,persistHistory,renderMessages,toast,onChange:()=>renderHome()});
 const contactsTools = createContactsTools({state, getConnection: () => connection, exclusive, toast, hex, refreshContacts, selectTarget, showView, addMessage, Constants, favorites});
@@ -581,6 +583,7 @@ function ingestWaiting(item) {
   }
   if (item.channelMessage) {
     const message = item.channelMessage;
+    if (commandDiscovery.ingest(message)) return 0;
     const key = `ch:${message.channelIdx}`;
     const added = addMessage({ id: messageId("channel", key, message.senderTimestamp, message.text), key, text: message.text, timestamp: message.senderTimestamp, direction: "in", status: "received", unread: document.hidden || state.view !== "messages" || state.selected !== key, snr: message.snr, pathLen: message.pathLen });
     return added && !channelIsMuted(key) ? 1 : 0;
