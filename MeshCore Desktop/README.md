@@ -61,3 +61,27 @@ Terrain tools estimate line of sight and 60% Fresnel clearance across a 241 × 2
 In Settings, use **ScotMesh setup check** to inspect the connected radio's EU/UK Narrow settings and read its actual default flood scope. **Set radio default to sco** writes the default and reads it back; it affects default-scoped floods including adverts. Channel scope choices in Messages are remembered locally per radio and channel, and do not change the radio default. The scope controls flood routing separately from the channel name. The test guidance describes how to use #test; discovery sends a nearby discovery request when clicked.
 
 In Repeaters, log in before reading the region tree. Region commands are sent only when clicked and confirmed. Read the tree before making changes, then explicitly save the region configuration after review; support depends on the repeater firmware and tagged CLI responses. No specific region tree is automatically installed. Longer path tracing remains unsupported by the bundled tracing library; incoming message scope remains unavailable when the radio does not report it.
+
+
+## Situation map and offline maps
+Create markers on the Situation map without a secure contact. To share, add the other radio as a chat contact in Secure Coms on both PCs, exchange the secret privately and verify the fingerprint. Marker updates use the experimental encrypted direct-message envelope. The app has no automatic reconciliation or ATAK compatibility. Marker data is stored locally on the PC; do not rely on it for time-critical decisions.
+
+On the Situation map, open **Settings**, select **Select download area**, click two opposite corners, choose a detail level, and select **Download area**. The first download also obtains the verified Protomaps command-line helper. Internet is needed for the download, but the resulting Protomaps map is stored on the PC and can be displayed offline. Larger areas and higher detail require more storage and time. Downloads are limited to areas no more than 10 degrees wide or high. The chosen map and background are remembered; choose **Online street map** to return to the online layer. Only the selected map area and downloaded zoom levels are available offline. Protomaps data © OpenStreetMap contributors.
+
+Use **Choose offline map** to select an existing Protomaps vector `.pmtiles` or raster `.mbtiles` (PNG, JPEG or WebP). Vector MBTiles are not supported. The file must remain at its original location. The background map does not include terrain elevation data; coverage and line-of-sight calculations still need their elevation service.
+
+
+### Situation map symbols and confirmations
+Right-click the map, choose **Create marker here**, select one of the supported NATO APP-06 symbols, enter a short name and optional note, choose verified Secure Coms recipients in **Settings**, and select **Save marker**. Right-click a marker you created and select **Edit marker** to change it. Select the marker to see the confirmation state for each recipient. The selected view contact is always included; updates to an existing marker are sent to all its previous recipients too. The creator may edit or delete a marker; recipients can view it.
+
+A confirmation is a separate encrypted response from a recipient's updated MeshCore Command app after it saves the update. It is not a read receipt. If no confirmation arrives, use **Resend**; it is possible for an update or its confirmation to be lost. Older versions cannot handle the new symbol and confirmation messages, so update every participant. Labels and notes must fit a single small encrypted packet; shorten them if prompted. The app currently supports a limited selection of APP-06 symbols, not the entire standard or ATAK interoperability. Symbol rendering uses Milsymbol (MIT licence).
+
+
+### Local markers and sharing a complete picture
+Markers can be created and edited locally even when there are no verified Secure Coms contacts. To send the picture, select a verified contact and choose **Send my picture**. The app sends one encrypted marker update at a time, waits up to 30 seconds for the recipient app to confirm that it saved it, then retries once if no confirmation arrives. It reports confirmations per marker and keeps missing responses as unconfirmed. Use **Stop sending** to stop after the current operation.
+
+The picture includes local markers and received markers from other contacts, which are sent as forwarded copies and labelled accordingly. An acknowledged marker confirms an app saved that update; it does not confirm a person saw it or that all other markers arrived. Both installations need a compatible up-to-date version, and the radio must remain connected. Offline basemaps must be downloaded or imported before going offline.
+
+
+### Moving a situation marker
+Right-click one of your markers and choose **Move marker**, then click the new position on the map. Alternatively drag your marker, or select it and use **Move selected marker**. The new coordinates appear in the marker form. Choose **Save marker** to commit the move and send it to the existing verified recipients. Press Escape while choosing a location to cancel. Received markers are editable only by their creator.

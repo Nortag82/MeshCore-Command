@@ -9,7 +9,9 @@
   },
   "dependencies": {
     "@liamcottle/meshcore.js": "1.14.0",
-    "leaflet": "1.9.4"
+    "leaflet": "1.9.4",
+    "milsymbol": "3.0.5",
+    "protomaps-leaflet": "5.1.0"
   },
   "devDependencies": {
     "esbuild": "0.27.2"

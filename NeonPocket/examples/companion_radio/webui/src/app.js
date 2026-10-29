@@ -1,3 +1,4 @@
+import {createSituationMap} from "./situation-map.js";
 import {createSecureComs} from './secure-coms.js';
 import {createMonitoring} from './monitoring.js';
 import { createContactMap } from "./contact-map.js";
@@ -303,7 +304,9 @@ const favorites = createFavorites(window.localStorage);
 const repeaterTools = createRepeaterTools({state, getConnection: () => connection, exclusive, toast, hex, refreshContacts, Constants, favorites, showView});
 const contactMap = createContactMap({state, hex});
 const keywordWatch = createKeywordWatch({toast, targetInfo});
-const secureComs = createSecureComs({state,getConnection:()=>connection,exclusive,hex,toast});
+let situationMap;
+const secureComs = createSecureComs({state,getConnection:()=>connection,exclusive,hex,toast,onObject:(peer,value)=>situationMap.ingest(peer,value)});
+situationMap = createSituationMap({state,secureComs,hex});
 const roomTools = createRoomTools();
 const monitoring = createMonitoring({state,getConnection:()=>connection,exclusive,hex,Constants,addMessage,persistHistory,renderMessages,toast,onChange:()=>renderHome()});
 const contactsTools = createContactsTools({state, getConnection: () => connection, exclusive, toast, hex, refreshContacts, selectTarget, showView, addMessage, Constants, favorites});
@@ -1264,7 +1267,7 @@ function showView(view) {
   document.querySelectorAll(".screen").forEach((screen) => screen.classList.toggle("active", screen.dataset.screen === view));
   document.querySelectorAll(".nav button").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
   const labels = {
-    home: ["Overview", "NEONPOCKETMC"], contacts: ["Contacts", "MESHCORE"], monitoring: ["Monitoring", "NODE HEALTH"], secure: ["Secure Coms", "PRIVATE APP-TO-APP"], messages: ["Messages", "CHANNELS & DIRECT"],
+    situation: ["Situation map", "SHARED MAP"], home: ["Overview", "NEONPOCKETMC"], contacts: ["Contacts", "MESHCORE"], monitoring: ["Monitoring", "NODE HEALTH"], secure: ["Secure Coms", "PRIVATE APP-TO-APP"], messages: ["Messages", "CHANNELS & DIRECT"],
     contactmap: ["Contact map", "CONTACTS & PACKETS"], watch: ["Word alerts", "MESSAGE MONITOR"], repeaters: ["Repeaters", "MESHCORE"], terrain: ["Terrain tools", "LINK PLANNING"], radio: ["Radio", "LIVE RF"], ultimate: ["Settings", "MESHCORE RADIO"],
   };
   text("screen-title", labels[view]?.[0] || "Ultimate");
@@ -1272,6 +1275,7 @@ function showView(view) {
   if (view === "contacts") contactsTools.render();
   if (view === "monitoring") monitoring.render();
   if (view === "secure") secureComs.refresh();
+  if (view === "situation") situationMap.visible();
   if (view === "contactmap") contactMap.visible();
   if (view === "messages" && state.selected) selectTarget(state.selected);
   if (view === "repeaters") repeaterTools.repeaterVisible();

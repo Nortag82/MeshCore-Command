@@ -209,8 +209,14 @@ class API:
             if self._bridge: self._bridge.close()
             self._bridge = CompanionBridge(None, ROOT/'radio.html', serial_port=port)
             radio = webview.create_window('MeshCore Command — '+port, self._bridge.url, width=1250,height=850,min_size=(800,600),fullscreen=True)
-            radio.expose(radio.toggle_fullscreen, radio.minimize, self.exit_app)
             active_bridge=self._bridge
+            def choose_offline_map():
+                try:
+                    files=radio.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=False, file_types=('Offline maps (*.mbtiles;*.pmtiles)',))
+                    if not files: return {'cancelled': True}
+                    return active_bridge.set_offline_map(files[0])
+                except Exception as error: return {'error': str(error)}
+            radio.expose(radio.toggle_fullscreen, radio.minimize, self.exit_app, choose_offline_map)
             radio.events.closed += lambda: active_bridge.close()
             return {'ok':True}
         except Exception as e: return {'error':str(e)}
@@ -222,8 +228,14 @@ class API:
                 self._bridge.close()
             self._bridge = CompanionBridge(ip, ROOT/'radio.html')
             radio = webview.create_window('MeshCore Command — '+ip, self._bridge.url, width=1250,height=850,min_size=(800,600),fullscreen=True)
-            radio.expose(radio.toggle_fullscreen, radio.minimize, self.exit_app)
             active_bridge=self._bridge
+            def choose_offline_map():
+                try:
+                    files=radio.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=False, file_types=('Offline maps (*.mbtiles;*.pmtiles)',))
+                    if not files: return {'cancelled': True}
+                    return active_bridge.set_offline_map(files[0])
+                except Exception as error: return {'error': str(error)}
+            radio.expose(radio.toggle_fullscreen, radio.minimize, self.exit_app, choose_offline_map)
             radio.events.closed += lambda: active_bridge.close()
             return {'ok':True}
         except Exception as e: return {'error':str(e)}

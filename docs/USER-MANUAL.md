@@ -7,7 +7,7 @@ MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore 
 - You need Windows, the Edge WebView2 runtime, a compatible Wi-Fi radio and an appropriate LoRa antenna. Connect the antenna before powering or transmitting with the radio.
 - The PC and radio need network access to each other. The companion connection uses TCP port 5000; discovery uses UDP port 5010.
 - Use a trusted local network: the companion protocol itself is unauthenticated and unencrypted. The PC bridge listens on loopback.
-- Download [Install MeshCore Command.exe](https://github.com/Nortag82/MeshCore-Command/raw/refs/heads/main/downloads/Install%20MeshCore%20Command.exe), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
+- Download [Install MeshCore Command.exe](https://github.com/Nortag82/MeshCore-Command/releases/tag/v1.0.0-preview.2), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
 
 ## 1. Set up or connect a radio
 
@@ -77,7 +77,15 @@ Open **Terrain tools** and use the map or coordinate fields to set points. You c
 
 Coverage is a terrain visibility estimate, **not** measured signal strength or a guarantee of reception. Resolution, buildings, trees, antenna patterns, interference and weather affect real links. Verify important links in the field.
 
-## 9. Troubleshooting
+## 9. Situation map and offline maps
+
+Open **Situation map** to create and share map markers. Right-click the map to create a marker, or right-click an existing marker to edit or move it. The marker editor opens when needed. Markers can be saved locally without a Secure Coms contact. To share updates, set up and verify a Secure Coms contact on both PCs, then choose recipients under **Settings**. Select a marker to see per-contact confirmations; these indicate that the receiving app saved that update, not that a person saw it.
+
+To send the picture to a verified contact, choose the contact and select **Send my picture**. The app sends markers separately and reports confirmations and failures. Both apps must remain connected; retransmit unconfirmed markers as needed. The protocol is experimental and does not support ATAK interoperability.
+
+For an offline background, open **Settings**, select **Select download area**, click two opposite corners on the map, choose a detail level and select **Download area**. The initial download needs internet and obtains a verified Protomaps helper. Larger areas or higher detail take more space and time. You can also import a Protomaps vector PMTiles file or raster MBTiles file. The downloaded background works offline within its saved area and zoom levels. Terrain coverage calculations require separate online elevation data.
+
+## 10. Troubleshooting
 
 - **Cannot connect:** check radio power, Wi-Fi and DHCP address, local subnet, firewall and whether another controller is connected. Try the address manually.
 - **Cannot hear the local mesh:** check the radio preset, default and channel flood scope, antenna and nearby repeaters. On ScotMesh, `#test` with scope `sco` can be used for a manual test; a reply from another user confirms two-way communication.
