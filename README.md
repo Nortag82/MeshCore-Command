@@ -7,7 +7,7 @@ This repository contains the desktop source in `MeshCore Desktop/` and the modif
 
 ## Download for Windows
 
-Download [Install MeshCore Command.exe](https://github.com/Nortag82/MeshCore-Command/raw/refs/heads/main/downloads/Install%20MeshCore%20Command.exe) and see the [user manual](docs/USER-MANUAL.md). Verify the download with [SHA256SUMS.txt](downloads/SHA256SUMS.txt). Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.
+Download the installer and checksum from the [Windows preview release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v1.0.0-preview.1), then follow the [user manual](docs/USER-MANUAL.md). Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.
 
 ## A look inside
 
