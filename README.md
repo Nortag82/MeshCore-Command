@@ -7,7 +7,7 @@ This repository contains the desktop source in `MeshCore Desktop/` and the modif
 
 ## Download for Windows
 
-Download the installer and checksum from the [Windows preview release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v1.0.0-preview.2), then follow the [user manual](docs/USER-MANUAL.md). Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.
+Download the installer and checksum from the [Windows preview release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v1.0.0-preview.3), then follow the [user manual](docs/USER-MANUAL.md). Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.
 
 ## A look inside
 
@@ -15,7 +15,7 @@ Download the installer and checksum from the [Windows preview release](https://g
 
 ### Situation map
 
-Build a shared picture using map markers with supported NATO APP-06 symbols. Right-click to create a marker, then edit or move it as the situation changes. Markers can be saved locally, even before you add a secure contact.
+Build a shared picture using map markers with supported NATO APP-06 symbols. Right-click to create or edit a marker. To move it, select it, choose **Move selected marker**, click the new position and save. Markers cannot be dragged. Markers can be saved locally, even before you add a secure contact.
 
 ![Situation map showing example command, medical and reconnaissance markers](docs/images/situation-map.png)
 

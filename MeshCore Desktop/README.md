@@ -84,4 +84,4 @@ The picture includes local markers and received markers from other contacts, whi
 
 
 ### Moving a situation marker
-Right-click one of your markers and choose **Move marker**, then click the new position on the map. Alternatively drag your marker, or select it and use **Move selected marker**. The new coordinates appear in the marker form. Choose **Save marker** to commit the move and send it to the existing verified recipients. Press Escape while choosing a location to cancel. Received markers are editable only by their creator.
+Select one of your markers, choose **Move selected marker**, then click the new position on the map. Markers cannot be dragged. The new coordinates appear in the marker form. Choose **Save marker** to commit the move and send it to the existing verified recipients. Press Escape while choosing a location to cancel. Received markers are editable only by their creator.

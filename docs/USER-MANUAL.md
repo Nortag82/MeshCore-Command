@@ -7,7 +7,7 @@ MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore 
 - You need Windows, the Edge WebView2 runtime, a compatible Wi-Fi radio and an appropriate LoRa antenna. Connect the antenna before powering or transmitting with the radio.
 - The PC and radio need network access to each other. The companion connection uses TCP port 5000; discovery uses UDP port 5010.
 - Use a trusted local network: the companion protocol itself is unauthenticated and unencrypted. The PC bridge listens on loopback.
-- Download [Install MeshCore Command.exe](https://github.com/Nortag82/MeshCore-Command/releases/tag/v1.0.0-preview.2), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
+- Download [Install MeshCore Command.exe](https://github.com/Nortag82/MeshCore-Command/releases/tag/v1.0.0-preview.3), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
 
 ## 1. Set up or connect a radio
 
@@ -79,7 +79,7 @@ Coverage is a terrain visibility estimate, **not** measured signal strength or a
 
 ## 9. Situation map and offline maps
 
-Open **Situation map** to create and share map markers. Right-click the map to create a marker, or right-click an existing marker to edit or move it. The marker editor opens when needed. Markers can be saved locally without a Secure Coms contact. To share updates, set up and verify a Secure Coms contact on both PCs, then choose recipients under **Settings**. Select a marker to see per-contact confirmations; these indicate that the receiving app saved that update, not that a person saw it.
+Open **Situation map** to create and share map markers. Right-click the map to create a marker, or right-click an existing marker to edit it. To move one of your markers, select it, choose **Move selected marker**, click the new position, then select **Save marker**. Press Escape while choosing a position to cancel. Markers cannot be dragged. The marker editor opens when needed. Markers can be saved locally without a Secure Coms contact. To share updates, set up and verify a Secure Coms contact on both PCs, then choose recipients under **Settings**. Select a marker to see per-contact confirmations; these indicate that the receiving app saved that update, not that a person saw it.
 
 To send the picture to a verified contact, choose the contact and select **Send my picture**. The app sends markers separately and reports confirmations and failures. Both apps must remain connected; retransmit unconfirmed markers as needed. The protocol is experimental and does not support ATAK interoperability.
 
