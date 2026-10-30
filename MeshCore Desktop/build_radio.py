@@ -4,7 +4,7 @@ import base64
 from datetime import datetime, timezone
 from html import escape
 root=Path(__file__).resolve().parent
-version='1.0.0'
+version='1.0.1-dev'
 build=datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
 source=root.parent / 'NeonPocket/examples/companion_radio/webui/.build/index.html'
 icon=base64.b64encode((root/'meshcore-command-small.png').read_bytes()).decode('ascii')

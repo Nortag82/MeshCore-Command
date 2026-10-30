@@ -534,17 +534,28 @@ function setLink(status) {
   contactMap.schedule();
 }
 
+function conversationLabel(key, fallback) {
+  if (!historyKey()) return fallback;
+  try { const labels=JSON.parse(localStorage.getItem(`${historyKey()}:conversation-labels`) || '{}'); return typeof labels[key] === 'string' && labels[key].trim() ? labels[key] : fallback; } catch { return fallback; }
+}
+function saveConversationLabel(key, label) {
+  if (!historyKey()) throw Error('Radio identity unavailable.');
+  const store=`${historyKey()}:conversation-labels`,labels=JSON.parse(localStorage.getItem(store)||'{}');
+  if (label) labels[key]=label; else delete labels[key];
+  localStorage.setItem(store,JSON.stringify(labels));
+}
+function channelDisplayName(name) { return name === 'Public' ? '#Public' : name || 'Unnamed channel'; }
 function targetInfo(key) {
   if (key.startsWith("ch:")) {
     const channel = state.channels.find((item) => channelKey(item) === key);
-    return channel ? { key, name: channel.name?.startsWith("#") ? channel.name : `#${channel.name || `Channel ${channel.channelIdx}`}`, subtitle: "Mesh channel", avatar: "#", channel } : null;
+    return channel ? { key, name: channelDisplayName(channel.name), subtitle: "Mesh channel", avatar: "#", channel } : null;
   }
   if (key.startsWith("room:")) {
     const room = state.contacts.find((item) => item.type === 3 && `room:${hex(item.publicKey)}` === key);
-    return room ? { key, name: room.advName || "Unnamed room", subtitle: "Room server", avatar: "R", contact: room, room } : null;
+    return room ? { key, name: conversationLabel(key, room.advName || "Unnamed room"), subtitle: "Room server", avatar: "R", contact: room, room } : null;
   }
   const contact = state.contacts.find((item) => contactKey(item) === key);
-  return contact ? { key, name: contact.advName || "Unnamed contact", subtitle: `Direct · ${hex(contact.publicKey, 4)}`, avatar: initials(contact.advName), contact } : null;
+  return contact ? { key, name: conversationLabel(key, contact.advName || "Unnamed contact"), subtitle: `Direct · ${hex(contact.publicKey, 4)}`, avatar: initials(contact.advName), contact } : null;
 }
 
 function targetForContactPrefix(prefix) {
@@ -902,8 +913,8 @@ function renderMessages() {
     $(`messages-${tab}`).setAttribute("aria-label", `${tab === "direct" ? "Direct messages" : tab === "channels" ? "Channels" : "Rooms"}${count ? `, ${count} unread` : ", no unread"}`);
   }
   const targets = messageTab === "rooms" ? roomTools.targets() : messageTab === "channels"
-    ? state.channels.map((channel) => ({ key: channelKey(channel), name: channel.name.startsWith("#") ? channel.name : `#${channel.name}`, subtitle: "Channel", avatar: "#" }))
-    : state.contacts.filter(contact => contact.type === 1 && (state.selected === contactKey(contact) || state.messages.some(item => item.key === contactKey(contact)))).map(contact => ({ key: contactKey(contact), name: contact.advName || "Unnamed contact", subtitle: "Direct", avatar: initials(contact.advName) }));
+    ? state.channels.map((channel) => ({ key: channelKey(channel), name: channelDisplayName(channel.name), subtitle: "Channel", avatar: "#" }))
+    : state.contacts.filter(contact => contact.type === 1 && (state.selected === contactKey(contact) || state.messages.some(item => item.key === contactKey(contact)))).map(contact => ({ key: contactKey(contact), name: conversationLabel(contactKey(contact), contact.advName || "Unnamed contact"), subtitle: "Direct", avatar: initials(contact.advName) }));
   $("messages-direct").setAttribute("aria-pressed", String(messageTab === "direct"));
   $("messages-channels").setAttribute("aria-pressed", String(messageTab === "channels"));
   $("messages-rooms").setAttribute("aria-pressed", String(messageTab === "rooms"));
@@ -939,12 +950,12 @@ function renderMessages() {
   select.replaceChildren(new Option("Choose recipient", ""));
   if (state.channels.length) {
     const group = document.createElement("optgroup"); group.label = "Channels";
-    for (const channel of state.channels) group.append(new Option(channel.name.startsWith("#") ? channel.name : `#${channel.name}`, channelKey(channel)));
+    for (const channel of state.channels) group.append(new Option(channelDisplayName(channel.name), channelKey(channel)));
     select.append(group);
   }
   if (state.contacts.length) {
     const group = document.createElement("optgroup"); group.label = "Direct contacts";
-    for (const contact of state.contacts.filter(c => c.type === 1 && (state.selected === contactKey(c) || state.messages.some(item => item.key === contactKey(c))))) group.append(new Option(contact.advName || "Unnamed contact", contactKey(contact)));
+    for (const contact of state.contacts.filter(c => c.type === 1 && (state.selected === contactKey(c) || state.messages.some(item => item.key === contactKey(c))))) group.append(new Option(conversationLabel(contactKey(contact), contact.advName || "Unnamed contact"), contactKey(contact)));
     select.append(group);
   }
   const roomTargets = roomTools.targets();
@@ -954,6 +965,10 @@ function renderMessages() {
   text("conversation-title", info?.name || "Choose a conversation");
   const muted = info?.channel && channelIsMuted(state.selected);
   text("conversation-subtitle", info?.channel ? `Mesh channel · scope ${channelScope(state.selected) === "default" ? "radio default" : channelScope(state.selected)}${muted ? " · muted" : ""}` : info?.subtitle || "Channel or direct contact");
+  $("conversation-edit").hidden = !info;
+  $("conversation-delete").hidden = !info;
+  $("conversation-edit").disabled = !info || !state.connected;
+  $("conversation-delete").disabled = !info || !state.connected;
   const muteButton = $("channel-mute");
   muteButton.hidden = !info?.channel;
   muteButton.disabled = !historyKey();
@@ -1011,6 +1026,7 @@ function renderMessages() {
 
 function selectTarget(key) {
   closeMessageMenu();
+  $("conversation-edit-form").hidden=true; $("conversation-edit-key").value=""; $("conversation-room-password").value="";
   messageTab = key.startsWith("ch:") ? "channels" : key.startsWith("room:") ? "rooms" : "direct";
   state.selected = key;
   showChannelScope(key);
@@ -1323,7 +1339,8 @@ function openMessageMenu(event, message) {
   if (!message || message.key !== state.selected) return;
   const selection = window.getSelection();
   const selected = selection && !selection.isCollapsed && event.currentTarget.contains(selection.anchorNode) && event.currentTarget.contains(selection.focusNode) ? selection.toString() : '';
-  messageMenuTarget = { key: message.key, text: message.text, copyText: selected || message.text };
+  messageMenuTarget = { id: message.id, key: message.key, text: message.text, direction: message.direction, copyText: selected || message.text };
+  $("message-menu-correct").hidden = message.direction !== "out";
   const canSend = Boolean(state.connected && targetInfo(message.key));
   $("message-menu-reply").disabled = !canSend; $("message-menu-like").disabled = !canSend;
   const menu = $("message-menu");
@@ -1348,6 +1365,16 @@ $("message-menu-like").addEventListener("click", () => {
   const target = messageMenuTarget; closeMessageMenu();
   if (!target || target.key !== state.selected || !state.connected) return;
   sendMessage(null, `👍 Re: "${quoteExcerpt(target.text)}"`);
+});
+$("message-menu-correct").addEventListener("click", () => {
+  const target=messageMenuTarget;closeMessageMenu();if(!target||target.key!==state.selected||target.direction!=="out"||!state.connected)return;
+  $("message-input").value=`Correction: ${target.text}`;updateComposeCount();$("message-input").focus();
+  toast("Edit the text and send it as a new correction.");
+});
+$("message-menu-delete").addEventListener("click", () => {
+  const target=messageMenuTarget;closeMessageMenu();if(!target)return;
+  if(!confirm("Delete this message from this PC? Other devices and room servers keep their copies."))return;
+  state.messages=state.messages.filter(message=>message.id!==target.id);persistHistory();renderMessages();renderHome();
 });
 document.addEventListener("pointerdown", (event) => { if (!$("message-menu").contains(event.target)) closeMessageMenu(); });
 document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeMessageMenu(); });
@@ -1470,6 +1497,21 @@ function channelTypeChanged() {
   $("channel-add-help").textContent = type === "hashtag" ? "Hashtag keys are derived from the exact channel name. Anyone who knows it can read the channel." : type === "private" ? "Share the name and key securely with other members. Copy a generated key before leaving this page." : "The standard MeshCore public channel is readable by anyone.";
 }
 $("channel-add-type").addEventListener("change", channelTypeChanged);
+$("channel-invite").addEventListener("input", event => {
+  const value = event.target.value.trim();
+  if (!value) return;
+  try {
+    const invite = new URL(value);
+    if (invite.protocol !== "meshcore:" || invite.hostname !== "channel" || invite.pathname !== "/add") throw Error("Paste a valid MeshCore channel invite link.");
+    const names = invite.searchParams.getAll("name"), secrets = invite.searchParams.getAll("secret");
+    if (names.length !== 1 || secrets.length !== 1 || !names[0].trim() || names[0].trim().startsWith("#")) throw Error("The invite must contain one private channel name and key.");
+    if (encoder.encode(names[0].trim()).length > 31 || /[\x00-\x1f\x7f]/.test(names[0])) throw Error("The invite channel name is invalid or too long.");
+    parseChannelSecret(secrets[0]);
+    $("channel-add-type").value = "private"; channelTypeChanged();
+    $("channel-add-name").value = names[0].trim(); $("channel-add-key").value = secrets[0];
+    event.target.value = ""; $("channel-add-status").textContent = "Invite loaded. Check the name, then add the channel.";
+  } catch (error) { $("channel-add-status").textContent = error?.message || "Invalid channel invite."; }
+});
 $("channel-generate").addEventListener("click", () => { const secret = new Uint8Array(16); crypto.getRandomValues(secret); $("channel-add-key").value = hex(secret); $("channel-add-status").textContent = "Key generated. Copy it and share it securely with members."; });
 function parseChannelSecret(value) {
   const input = value.trim(); let bytes;
@@ -1504,6 +1546,68 @@ $("channel-add-form").addEventListener("submit", async event => {
   } catch (error) { status.textContent = error?.message || "Could not add channel."; }
   finally { button.disabled = false; }
 });
+
+$("conversation-edit").onclick=()=>{
+ const info=targetInfo(state.selected);if(!info)return;
+ const isRoom=!!info.room,isChannel=!!info.channel;
+ $("conversation-edit-form").hidden=false;
+ $("conversation-edit-title").textContent=isChannel?'Edit channel on this radio':isRoom?'Edit room on this PC':'Edit direct conversation on this PC';
+ $("conversation-name-label").textContent=isChannel?'Channel name':'Display name (this PC only)';
+ $("conversation-edit-name").value=isChannel?info.channel.name:conversationLabel(state.selected,info.room?.advName||info.contact?.advName||'');
+ $("conversation-edit-key").value='';$("conversation-room-password").value='';
+ $("conversation-channel-fields").hidden=!isChannel;$("conversation-room-fields").hidden=!isRoom;
+ $("conversation-edit-help").textContent=isChannel?'Other members are not changed. Existing chat history stays on this PC.':'Changing this display name does not rename the remote node.';
+ $("conversation-edit-status").textContent='';$("conversation-edit-name").focus();
+};
+$("conversation-edit-cancel").onclick=()=>{$("conversation-edit-form").hidden=true;$("conversation-edit-key").value='';$("conversation-room-password").value=''};
+$("conversation-edit-form").onsubmit=async event=>{
+ event.preventDefault();const key=state.selected,info=targetInfo(key),label=$("conversation-edit-name").value.trim(),radio=connection,identity=historyKey(),button=event.currentTarget.querySelector('button[type=submit]');
+ if(!info||!state.connected)return;
+ if(!label||encoder.encode(label).length>(info.channel?31:60)||/[\x00-\x1f\x7f]/.test(label)){text("conversation-edit-status",'Enter a valid name within the allowed length.');return}
+ button.disabled=true;
+ try{
+  if(info.channel){
+   const slot=info.channel.channelIdx,expected=info.channel,raw=$("conversation-edit-key").value.trim(),newSecret=raw?parseChannelSecret(raw):null;
+   if(expected.name.startsWith('#')&&label!==expected.name&&!newSecret)throw Error('Hashtag channel names derive their key. Enter the new shared key, or create the new hashtag channel instead.');
+   if(!confirm('Update this channel on your radio? Other devices are not changed. Existing local history stays in this slot.'))return;
+   const slots=await exclusive(async()=>{
+    if(connection!==radio||historyKey()!==identity||!state.connected)throw Error('Radio changed.');
+    const before=await radio.getChannel(slot);
+    if(before.name!==expected.name || (expected.secret?.length===16 && !expected.secret.every((b,i)=>b===before.secret?.[i])))throw Error('Channel changed on the radio. Refresh and try again.');
+    const all=await radio.getChannels();if(all.some(c=>c.channelIdx!==slot&&c.name===label))throw Error('Another channel already has this name.');
+    const secret=newSecret||before.secret;if(secret?.length!==16)throw Error('Could not read the current channel key.');
+    await radio.setChannel(slot,label,secret);const saved=await radio.getChannel(slot);
+    if(saved.name!==label||saved.secret?.length!==16||!secret.every((b,i)=>saved.secret[i]===b))throw Error('Channel write was not verified. Refresh the radio before trying again.');
+    return all.map(c=>c.channelIdx===slot?saved:c).filter(c=>c.name);
+   });
+   if(connection!==radio||historyKey()!==identity)throw Error('Radio changed after saving; refresh channels.');
+   state.channels=slots;$("conversation-edit-key").value='';fillMeshSettings();toast('Channel updated on the radio.');
+  }else{
+   if(info.room && $("conversation-room-password").value)await roomTools.updatePassword(info.contact,$("conversation-room-password").value,$("conversation-room-save").checked);
+   if(historyKey()!==identity)throw Error('Radio changed.');saveConversationLabel(key,label);$("conversation-room-password").value='';toast('Conversation settings saved on this PC.');
+  }
+  $("conversation-edit-form").hidden=true;renderMessages();renderHome();
+ }catch(error){text("conversation-edit-status",error?.message||'Could not save changes.')}finally{button.disabled=false}
+};
+$("conversation-delete").onclick=async()=>{
+ const key=state.selected,info=targetInfo(key),radio=connection,identity=historyKey();if(!info)return;
+ const description=info.channel?'Remove this channel from the radio and delete its saved messages on this PC? Other users are unaffected.':info.room?'Remove this room and its saved password and messages from this PC? The room server and other users are unaffected.':'Delete this conversation and its saved messages from this PC? The contact and messages on other devices are unaffected.';
+ if(!confirm(description))return;
+ const button=$("conversation-delete");button.disabled=true;
+ try{
+  if(info.channel){const slot=info.channel.channelIdx,expected=info.channel;
+   const slots=await exclusive(async()=>{
+    if(connection!==radio||historyKey()!==identity||!state.connected)throw Error('Radio changed.');const before=await radio.getChannel(slot);
+    if(before.name!==expected.name||(expected.secret?.length===16&&!expected.secret.every((b,i)=>b===before.secret?.[i])))throw Error('Channel changed on the radio. Refresh and try again.');
+    await radio.setChannel(slot,'',new Uint8Array(16));const saved=await radio.getChannel(slot);
+    if(saved.name||saved.secret?.length!==16||!saved.secret.every(b=>b===0))throw Error('Channel removal was not verified. Refresh the radio.');
+    return (await radio.getChannels()).filter(c=>c.name);
+   });if(connection!==radio||historyKey()!==identity)throw Error('Radio changed; refresh channels.');state.channels=slots;fillMeshSettings();
+  }else if(info.room){await roomTools.removeRoom(info.contact);}
+  if(historyKey()!==identity)throw Error('Radio changed.');state.messages=state.messages.filter(m=>m.key!==key);persistHistory();saveConversationLabel(key,'');
+  state.selected='';normalizeTargets();$("conversation-edit-form").hidden=true;renderMessages();renderHome();toast(info.channel?'Channel removed from the radio.':'Conversation removed from this PC.');
+ }catch(error){toast(error?.message||'Could not remove conversation.','error')}finally{button.disabled=false}
+};
 
 function updateComposeCount() {
   const count = encoder.encode($("message-input").value).length;
@@ -1795,7 +1899,7 @@ function createRoomTools() {
     return response.json();
   }
   function contacts() { return state.contacts.filter(contact => contact.type === 3); }
-  function targets() { load(); return contacts().filter(contact => rooms.includes(roomKey(contact))).map(contact => ({key:`room:${roomKey(contact)}`, name:contact.advName || "Unnamed room", subtitle:"Room server", avatar:"R"})); }
+  function targets() { load(); return contacts().filter(contact => rooms.includes(roomKey(contact))).map(contact => ({key:`room:${roomKey(contact)}`, name:conversationLabel(`room:${roomKey(contact)}`,contact.advName || "Unnamed room"), subtitle:"Room server", avatar:"R"})); }
   function render(active) {
     load(); $("room-add-panel").hidden = !active; $("room-actions").hidden = !active;
     const select = $("room-select"), previous = select.value;
@@ -1923,16 +2027,23 @@ function createRoomTools() {
   }
   $("room-history").onclick = () => { if (state.selected.startsWith("room:")) void loadRetainedHistory(state.selected.slice(5)); };
 
-  $("room-remove").onclick = async () => {
-    load(); const key = state.selected.slice(5); if (!rooms.includes(key)) return;
-    try { await credential("delete", key); rooms = rooms.filter(item => item !== key); save(); passwords.delete(key); due.delete(key); state.selected = ""; $("room-poll-status").textContent = "Room removed."; renderMessages(); }
-    catch { toast("Could not remove the room password", "error"); }
-  };
+  async function updatePassword(contact,password,savePassword){
+    load();const key=roomKey(contact);if(!rooms.includes(key))throw Error('Room is not saved on this PC.');
+    if(encoder.encode(password).length>15)throw Error('Room passwords can be at most 15 UTF-8 bytes.');
+    if(savePassword)await credential('save',key,password);else await credential('delete',key);
+    passwords.set(key,password);due.set(key,Date.now()+interval);
+  }
+  async function removeRoom(contact){
+    load();const key=roomKey(contact);if(!rooms.includes(key))throw Error('Room is not saved on this PC.');
+    await credential('delete',key);const previous=rooms;rooms=rooms.filter(item=>item!==key);
+    try{save()}catch(error){rooms=previous;throw error}passwords.delete(key);due.delete(key);
+  }
+  $("room-remove").onclick=async()=>{const contact=contacts().find(item=>`room:${roomKey(item)}`===state.selected);if(!contact||!confirm('Remove this room and its saved password from this PC? Local messages will remain.'))return;try{await removeRoom(contact);state.selected='';$("room-poll-status").textContent='Room removed.';renderMessages()}catch(error){toast(error?.message||'Could not remove the room.','error')}};
   setInterval(() => {
     load(); if (!state.connected || busy || !node) return;
     const next = rooms.find(key => contacts().some(contact => roomKey(contact) === key) && (due.get(key) || 0) <= Date.now());
     if (next) void poll(next);
   }, 15000);
   function noteMessage(key) { if (state.selected === key) $("room-poll-status").textContent = "Room message received. More retained posts may arrive while connected."; }
-  return {targets, render, noteMessage};
+  return {targets, render, noteMessage, updatePassword, removeRoom};
 }

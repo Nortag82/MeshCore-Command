@@ -5,6 +5,8 @@ A Windows desktop companion for controlling a Wi-Fi connected MeshCore radio, wi
 This repository contains the desktop source in `MeshCore Desktop/` and the modified companion firmware and interface sources in `NeonPocket/`. The firmware tree is based on [NeonPocketMC](https://github.com/n30nex/NeonPocketMC-Heltec-V4) and retains its license files and upstream notices. See [desktop documentation](MeshCore%20Desktop/README.md) for features and device support.
 
 
+The current source is **1.0.1-dev**. It includes conversation management and private-channel invite support; these changes are not yet included in the preview.5 installer.
+
 ## Download for Windows
 
 Download the installer and checksum from the [Windows preview release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v1.0.0-preview.5), then follow the [user manual](docs/USER-MANUAL.md). Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.

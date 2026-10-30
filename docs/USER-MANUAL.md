@@ -1,6 +1,6 @@
 # MeshCore Command user manual
 
-MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data.
+MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes the current development source (1.0.1-dev); the published preview installer may not include every feature below.
 
 ## Before you start
 
@@ -32,7 +32,11 @@ A **channel** is a group chat; a **flood scope** is a routing choice. MeshCore C
 3. Type a message and press **Enter** to send; use **Shift+Enter** for a new line. Right-click a message to copy text, reply with a quote or send a thumbs-up as an ordinary message.
 4. Use **Mute channel** to suppress notifications and unread badges for that channel. Messages remain available; word matches are still recorded silently.
 
-To join a channel, select **Channels → Add channel**. A hashtag channel derives its key from its exact name and is readable by anyone who knows that name. For a private channel, enter or generate the shared key and share it securely with the other members. Choose the flood region separately. For example, ScotMesh recommends `sco` as the default Scotland scope and uses `ioi` for the Island of Ireland path. Check current local guidance before configuring repeaters.
+To join a channel, select **Channels → Add channel**. A hashtag channel derives its key from its exact name and is readable by anyone who knows that name. For a private channel, enter or generate the shared key and share it securely with the other members. You can paste a `meshcore://channel/add` invite into the invite field to fill the name and key; verify them before adding. Keep the invite private because it contains the shared key. Choose the flood region separately. For example, ScotMesh recommends `sco` as the default Scotland scope and uses `ioi` for the Island of Ireland path. Check current local guidance before configuring repeaters.
+
+Select a conversation and use **Edit** or **Delete** in its header. Editing a channel changes its name or key on the connected radio; deleting it clears the radio slot and its history on this PC. Changing a key affects which messages the radio can receive. Hashtag keys are derived from the exact channel name, so use the correct key when renaming one. Room and direct conversation names are local display names only. Deleting a room removes its local registration, saved password and history; deleting a direct conversation removes its local history, not the contact. Other devices and room servers retain their own copies.
+
+Right-click a message and choose **Delete from this PC** to remove its local copy. For a sent message, **Edit and send a correction** prepares a new message; review it and send it yourself. Previously delivered messages cannot be edited or deleted on other devices.
 
 A delivery tick or acknowledgement applies only when the protocol reports one; a queued message is not proof that it was received or read. Channel broadcasts do not offer individual delivery confirmation for every recipient.
 

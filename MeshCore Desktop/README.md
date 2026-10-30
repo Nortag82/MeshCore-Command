@@ -36,8 +36,13 @@ After repeater login, the settings panel can read and change supported name, for
 
 Messages are separated into channel and direct tabs. Direct conversations appear after a message is sent or received, or when started from Contacts.
 
+Select a conversation and use **Edit** or **Delete** in its header. Channel edits and deletion change the connected radio's channel slot; deleting also removes its local history. Room and direct conversation names are local display names. Removing a room removes its local registration, saved password and local history; removing a direct conversation removes only its local history. Neither removes the remote room or contact. A room password can be updated in the edit form.
+
+Right-click a message to delete its local copy. For a sent message, **Edit and send a correction** prepares a new message for you to review and send. MeshCore cannot edit or delete copies already delivered to other people.
+
+
 ## Channels and regions
-On Messages, choose Channels and expand Add channel. Hashtag channels derive their key from the exact name; anyone who knows it can read the channel. Private channels accept a 16-byte shared key in hexadecimal or base64, or can generate one to share securely. The app checks for an empty radio slot and verifies the saved value. Flood region is a separate routing choice; Scotland, Ireland, the radio default and custom region names are available. The Terrain tools page contains the line-of-sight and coverage tools; repeater neighbour links stay on the Repeaters page.
+On Messages, choose Channels and expand Add channel. Hashtag channels derive their key from the exact name; anyone who knows it can read the channel. Private channels accept a 16-byte shared key in hexadecimal or base64, or can generate one to share securely. Paste a meshcore://channel/add invite in the invite field to fill its name and key; review them before adding. The app checks for an empty radio slot and verifies the saved value. Flood region is a separate routing choice; Scotland, Ireland, the radio default and custom region names are available. The Terrain tools page contains the line-of-sight and coverage tools; repeater neighbour links stay on the Repeaters page.
 
 Message bubbles show the received flood hop count when the radio reports it, and the selected flood region for successfully queued outgoing flood messages. Direct routes do not use a flood region. Incoming regions and outgoing hop counts are not reported by this companion protocol and are shown as unavailable; old messages may also lack these details.
 
