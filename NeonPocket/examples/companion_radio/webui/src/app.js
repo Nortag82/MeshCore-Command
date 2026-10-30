@@ -889,6 +889,18 @@ function messageRouteDetails(message) {
 }
 function renderMessages() {
   normalizeTargets();
+  const unreadByTab = {direct:0,channels:0,rooms:0};
+  for (const item of state.messages) {
+    if (!item.unread || channelIsMuted(item.key)) continue;
+    const tab = item.key.startsWith("ch:") ? "channels" : item.key.startsWith("room:") ? "rooms" : "direct";
+    unreadByTab[tab]++;
+  }
+  for (const tab of ["direct","channels","rooms"]) {
+    const badge = $(`unread-${tab}`), count = unreadByTab[tab];
+    badge.textContent = count > 99 ? "99+" : String(count);
+    badge.hidden = count === 0;
+    $(`messages-${tab}`).setAttribute("aria-label", `${tab === "direct" ? "Direct messages" : tab === "channels" ? "Channels" : "Rooms"}${count ? `, ${count} unread` : ", no unread"}`);
+  }
   const targets = messageTab === "rooms" ? roomTools.targets() : messageTab === "channels"
     ? state.channels.map((channel) => ({ key: channelKey(channel), name: channel.name.startsWith("#") ? channel.name : `#${channel.name}`, subtitle: "Channel", avatar: "#" }))
     : state.contacts.filter(contact => contact.type === 1 && (state.selected === contactKey(contact) || state.messages.some(item => item.key === contactKey(contact)))).map(contact => ({ key: contactKey(contact), name: contact.advName || "Unnamed contact", subtitle: "Direct", avatar: initials(contact.advName) }));
@@ -898,7 +910,12 @@ function renderMessages() {
   $("channel-add-panel").hidden = messageTab !== "channels";
   roomTools.render(messageTab === "rooms");
   const query = $("message-search").value.trim().toLocaleLowerCase();
-  const visibleTargets = query ? targets.filter(target => matchesConversation(target, query)) : targets;
+  const visibleTargets = (query ? targets.filter(target => matchesConversation(target, query)) : [...targets]);
+  const threadActivity = key => {
+    const messages = state.messages.filter(item => item.key === key);
+    return {unread: !channelIsMuted(key) && messages.some(item => item.unread), latest: messages.at(-1)?.timestamp || 0};
+  };
+  visibleTargets.sort((a,b) => {const x=threadActivity(a.key), y=threadActivity(b.key); return Number(y.unread)-Number(x.unread) || y.latest-x.latest;});
   text("thread-count", query ? `${visibleTargets.length} / ${targets.length}` : targets.length);
   const threadList = $("thread-list");
   threadList.replaceChildren();

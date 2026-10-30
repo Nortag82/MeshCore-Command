@@ -7,9 +7,11 @@ This repository contains the desktop source in `MeshCore Desktop/` and the modif
 
 ## Download for Windows
 
-Download the installer and checksum from the [Windows preview release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v1.0.0-preview.4), then follow the [user manual](docs/USER-MANUAL.md). Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.
+Download the installer and checksum from the [Windows preview release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v1.0.0-preview.5), then follow the [user manual](docs/USER-MANUAL.md). Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.
 
 ## A look inside
+
+[See screenshots of every menu](docs/SCREENSHOTS.md), including connection and firmware setup.
 
 > Screenshots use simulated contacts, messages, telemetry and map markers. Map data © OpenStreetMap contributors.
 
@@ -37,7 +39,7 @@ See radio status, recent activity, monitored nodes and quick actions in one plac
 ![Overview showing an example radio, message activity and monitored node](docs/images/overview.png)
 
 ### Messages
-Switch between direct messages, channels and rooms; choose a flood scope for a channel.
+Switch between direct messages, channels and rooms; unread counts show which tabs and conversations have new messages. Choose a flood scope for a channel.
 
 ![Example channel conversation and flood scope selector](docs/images/messages.png)
 

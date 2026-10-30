@@ -396,3 +396,5 @@ body{font-size:13px}
 .situation-heading{display:flex;align-items:center;justify-content:flex-end;gap:8px}.situation-settings{margin:10px 0;padding:10px;border:1px solid #263947;border-radius:8px;background:#101b24}.situation-settings h4{margin:0 0 8px}.situation-editor{margin:12px 0}.situation-editor summary{cursor:pointer;font-weight:600;color:#cce3eb}.situation-marker-actions{margin-top:12px}
 
 .command-discovery{padding:10px;border:1px solid #263947;border-radius:8px;margin-bottom:14px}.command-discovery-result{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0}.command-discovery-result span{overflow-wrap:anywhere}.command-discovery p{font-size:12px}
+
+.message-tabs button{display:flex;align-items:center;justify-content:center;gap:6px;min-width:0}.message-tab-badge{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--yellow);color:#151000;font-size:10px;font-weight:800;flex:none}.message-tab-badge[hidden]{display:none}

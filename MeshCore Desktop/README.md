@@ -10,6 +10,8 @@ Open MeshCore Command from the Windows Start menu. Scan a local IPv4 subnet or e
 ## Flash and configure
 Use the Flash firmware menu. Attach the intended radio by USB and attach a suitable LoRa antenna. Select the exact board and display variant: Heltec V3, Heltec V4, Heltec V4 R8, Heltec Wireless Tracker V2, or LilyGO T-Beam S3 Supreme SX1262. The T-Beam option is for the SX1262 model; its SH1106 OLED is detected automatically when fitted; other T-Beam models are not interchangeable. Select its COM port, enter the 2.4 GHz SSID and password, then press Flash & configure. ESP32-S3 USB detection is a candidate, not proof of the exact board model. Firmware, bootloader and partition metadata are written and verified; the app then provisions Wi-Fi over USB and reports the DHCP address. The app does not save your Wi-Fi password; the radio stores it in NVS.
 
+The flasher displays setup guidance for each board choice, including how to identify its USB port and enter boot mode if needed. The app still uses automatic reset; manually entering boot mode does not disable that reset. A blank display during boot mode does not by itself mean the board is powered off. If the USB device disappears or its COM port changes, reconnect and select the correct port before retrying. Keep USB connected during flashing and Wi-Fi provisioning.
+
 The firmware's 12-second USB provisioning window runs on each boot. If the network is unreachable, USB provisioning can be repeated. The flash process does not intentionally erase the data partition, but data from a different firmware or partition layout may be inaccessible. The firmware defaults to UK Narrow and the sco region on fresh storage; existing saved settings are preserved where supported.
 
 ## Security and installation
