@@ -12,10 +12,10 @@ MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore 
 ## 1. Set up or connect a radio
 
 1. Start MeshCore Command. If your radio is already configured, select or enter its IP address. You can save several radios with names for future use.
-2. To find a radio, enter the appropriate local network subnet and choose **Scan network**. If you use a VPN or multiple adapters, check that the selected subnet belongs to the Wi-Fi network. You can also enter the IP manually.
+2. To find a radio, enter the appropriate local network subnet and choose **Scan network**. Progress shows probes attempted followed by a wait for replies; a probe is not proof that an address is reachable. If you use a VPN or multiple adapters, check that the selected subnet belongs to the Wi-Fi network. You can also enter the IP manually.
 3. Select **Connect**. Only one companion controller should use the radio connection at a time.
 
-For a new board, open **Set up a new board** or **Flash firmware**, choose the exact board and screen variant, select its COM port, and enter the 2.4 GHz Wi-Fi name and password. The app uses DHCP and shows the address once provisioning succeeds. A suggested serial port is not proof of the board model. Flashing replaces firmware; preserve important data first. Existing settings or data from another firmware layout may not be accessible afterwards.
+For a new board, open **Set up a new board** or **Flash firmware**, choose the exact board and screen variant, select its COM port, and enter the 2.4 GHz Wi-Fi name and password. The app uses DHCP and shows the address once provisioning succeeds. The progress panel shows the current flashing stage, any per-image percentage reported by the tool, Wi-Fi setup and DHCP; expand the log for diagnostics. A suggested serial port is not proof of the board model. Flashing replaces firmware; preserve important data first. Existing settings or data from another firmware layout may not be accessible afterwards.
 
 The supported choices include Heltec V3, V4 and V4 R8 variants, Heltec Wireless Tracker V2 and LilyGO T-Beam S3 Supreme SX1262. Choose the exact model and display option; other T-Beam models are not interchangeable. After you choose a board, the flasher shows board-specific USB and boot instructions. The app attempts an automatic reset; manually entering boot mode does not disable it. Refresh and reselect the correct COM port if it changes. Keep USB connected during flashing and Wi-Fi setup. The firmware's brief USB provisioning window occurs at boot.
 
@@ -65,7 +65,7 @@ Search for a repeater on **Repeaters**, select it and log in with its admin pass
 
 ## 6. Monitoring and word alerts
 
-On **Monitoring**, add a known chat contact or repeater, choose an interval, and enable the desired ping, trace and telemetry checks. Checks run only while the app is open and connected. A voltage-based battery percentage is an estimate and may not be appropriate for every power source.
+On **Monitoring**, add a known chat contact or repeater, choose an interval, and enable the desired ping, trace and telemetry checks. For repeaters, **Read time** and **Sync to PC** require an active admin login or saved password. A repeater may reject a backwards time correction; the displayed time is the last reading, not a live clock. Checks run only while the app is open and connected. A voltage-based battery percentage is an estimate and may not be appropriate for every power source.
 
 On **Word alerts**, enter one word or phrase per line and save. The app checks newly received direct messages and joined channel messages; it cannot monitor traffic it cannot receive or decrypt. Use **Send test notification** to check Windows notifications and sound. Windows notification or focus settings can suppress alerts. Matches are stored locally, and enabling message previews can put message text in desktop notifications.
 

@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {webcrypto} from 'node:crypto';
+if (!globalThis.crypto) Object.defineProperty(globalThis,"crypto",{value:webcrypto});
+const {createIdentity,validateInvitation,comparisonCode,pairingKey,sealGroup,openGroup}=await import('./pairing-crypto.js');
+const a=await createIdentity('01'.repeat(32)), b=await createIdentity('02'.repeat(32)), c=await createIdentity('03'.repeat(32));
+assert(!JSON.stringify(a.invitation).includes('private'));
+assert.equal(await comparisonCode(a.invitation,b.invitation),await comparisonCode(b.invitation,a.invitation));
+await assert.rejects(validateInvitation({...a.invitation,node:'04'.repeat(32)}));
+await assert.rejects(pairingKey(a.invitation,b.privateIdentity,b.invitation));
+const ka=await pairingKey(a.invitation,a.privateIdentity,b.invitation),kb=await pairingKey(b.invitation,b.privateIdentity,a.invitation);
+const iv=crypto.getRandomValues(new Uint8Array(12));const bytes=new TextEncoder().encode('pair proof');const cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv},ka,bytes);assert.equal(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv},kb,cipher)),'pair proof');
+const k=btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const m=await sealGroup(k,a.privateIdentity.signing,'00'.repeat(16),a.invitation.node,1,'hello');assert.equal(await openGroup(k,a.invitation.sign,m),'hello');await assert.rejects(openGroup(k,c.invitation.sign,m));await assert.rejects(openGroup(k,a.invitation.sign,{...m,sequence:2}));
+console.log('PASS prototype invitation verification, pairing key agreement, signed encrypted group and tampering');

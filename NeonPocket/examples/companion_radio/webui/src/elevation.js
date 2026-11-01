@@ -27,8 +27,10 @@ async function tilePixels(zoom, tx, ty) {
     const url = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${key}.png`;
     let response;
     for (let attempt=0; attempt<3; attempt++) {
-      try { response=await fetch(url,{mode:'cors'}); }
-      catch { if (attempt===2) throw Error('Cannot reach the terrain tile service. Check your internet connection.'); }
+      const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),15000);
+      try { response=await fetch(url,{mode:'cors',signal:controller.signal}); }
+      catch { response=undefined; if (attempt===2) throw Error('Cannot reach the terrain tile service or the request timed out. Check your internet connection and retry.'); }
+      finally { clearTimeout(timer); }
       if (response?.ok) break;
       if (response && response.status !== 429 && response.status < 500) throw Error(`Terrain tile service returned HTTP ${response.status}.`);
       if (attempt===2) throw Error(`Terrain tile service unavailable${response ? ` (HTTP ${response.status})` : ''}. Please retry.`);

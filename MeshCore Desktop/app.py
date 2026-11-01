@@ -34,7 +34,7 @@ class API:
     def __init__(self):
         self._window = None
         self._bridge = None
-        self._state = {'busy': False, 'message': 'Ready.', 'log': '', 'ip': '', 'key': ''}
+        self._state = {'busy': False, 'message': 'Ready.', 'log': '', 'ip': '', 'key': '', 'flash_phase': 'idle', 'flash_progress': None, 'scan_phase': 'idle', 'scan_sent': 0, 'scan_total': 0, 'scan_remaining': None, 'scan_failed': 0}
         self._lock = threading.Lock()
         self._startup_ready = threading.Event()
         self._devices_lock = threading.Lock()
@@ -76,17 +76,56 @@ class API:
         if not 1 <= len(sb) <= 32 or b'\0' in sb: return {'error':'SSID must be 1–32 UTF-8 bytes.'}
         if len(pb) not in [0] and not 8 <= len(pb) <= 63: return {'error':'Wi-Fi password must be empty or 8–63 UTF-8 bytes.'}
         if b'\0' in pb: return {'error':'Password cannot contain a zero byte.'}
-        self._update(busy=True,message='Flashing firmware. Keep the USB cable connected.',log='',ip='',key='')
+        self._update(busy=True,message='Connecting to the board. Keep USB connected.',log='',ip='',key='',flash_phase='flashing',flash_progress=None)
         threading.Thread(target=self._flash_worker,args=(port,sb,pb,image_dir,flash_size),daemon=True).start()
         return {'ok':True}
+
+    def _run_flasher(self, cmd):
+        """Stream esptool output without blocking its pipe; bound time and retained log."""
+        env=os.environ.copy(); env['PYTHONUNBUFFERED']='1'; env['NO_COLOR']='1'
+        proc=subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,creationflags=CREATE_NO_WINDOW,env=env)
+        chunks=[]; length=0; pending=''; output_lock=threading.Lock()
+        def consume():
+            nonlocal length,pending
+            try:
+                while True:
+                    block=proc.stdout.read1(1024)
+                    if not block: break
+                    piece=block.decode('utf-8','replace').replace('\x00','')
+                    clean=re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]','',piece)
+                    with output_lock:
+                        chunks.append(clean);length+=len(clean)
+                        while length>12000 and len(chunks)>1: length-=len(chunks.pop(0))
+                        log=''.join(chunks)[-6000:]
+                    pending=(pending+clean)[-3000:]
+                    lines=re.split(r'[\r\n]',pending);pending=lines.pop()
+                    for line in lines:
+                        if 'Writing at' in line:
+                            match=re.search(r'(?<!\d)(\d{1,3})\s*%',line)
+                            percent=min(100,int(match.group(1))) if match else None
+                            self._update(message='Writing firmware'+(f' — current image {percent}%.' if percent is not None else '…')+' Keep USB connected.',flash_progress=percent)
+                        elif re.search(r'Hash of data verified|verified successfully',line,re.I):
+                            self._update(message='Verifying written firmware…',flash_progress=None)
+                    self._update(log=log)
+            except (OSError,ValueError):
+                pass
+        reader=threading.Thread(target=consume,daemon=True);reader.start()
+        try:
+            proc.wait(timeout=180)
+        except subprocess.TimeoutExpired:
+            proc.kill();proc.wait();reader.join(timeout=5)
+            raise RuntimeError('Flashing timed out. Check the USB connection and retry.')
+        reader.join(timeout=5)
+        with output_lock: output=''.join(chunks)[-12000:]
+        if proc.returncode: raise RuntimeError('Flash failed. '+output[-1500:])
+        return output
 
     def _flash_worker(self, port, ssid, password, image_dir, flash_size):
         try:
             prefix = [str(ROOT / 'flash-helper.exe')] if getattr(sys,'frozen',False) else [sys.executable, '-m', 'esptool']
             cmd=prefix+['--chip','esp32s3','--port',port,'--baud','921600','write-flash','--flash-mode','dio','--flash-size',flash_size,'0x0',str(image_dir/'bootloader.bin'),'0x8000',str(image_dir/'partitions.bin'),'0xe000',str(image_dir/'boot_app0.bin'),'0x10000',str(image_dir/'firmware.bin')]
-            proc=subprocess.run(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,creationflags=CREATE_NO_WINDOW,timeout=180)
-            if proc.returncode: raise RuntimeError('Flash failed. '+proc.stdout[-1500:])
-            self._update(message='Firmware verified. Sending Wi-Fi details over USB…',log=proc.stdout[-1200:])
+            output=self._run_flasher(cmd)
+            self._update(message='Firmware verified. Waiting for USB Wi-Fi setup…',log=output[-6000:],flash_phase='provisioning',flash_progress=None)
             time.sleep(1)
             with serial.Serial(port,115200,timeout=0.3,dsrdtr=False,rtscts=False) as ser:
                 ser.dtr=False; ser.rts=True; time.sleep(.15); ser.rts=False
@@ -96,8 +135,9 @@ class API:
                     if not line: continue
                     lines.append(line)
                     if 'MC_PROVISION_READY_V1' in line and not sent:
+                        self._update(message='Sending Wi-Fi details over USB…',flash_phase='provisioning',flash_progress=None)
                         ser.write(b'MC_WIFI:'+ssid.hex().encode()+b':'+password.hex().encode()+b'\n'); ser.flush(); sent=True
-                    if 'MC_PROVISION_OK' in line: provisioned=True; self._update(message='Wi-Fi details saved. Waiting for DHCP…')
+                    if 'MC_PROVISION_OK' in line: provisioned=True; self._update(message='Wi-Fi details saved. Waiting for DHCP…',flash_phase='dhcp',flash_progress=None)
                     if 'MC_PROVISION_ERROR' in line: raise RuntimeError('The device rejected the Wi-Fi settings: '+line)
                     m=re.search(r'PC WiFi: .* at (\d+\.\d+\.\d+\.\d+)',line)
                     if m: ip=m.group(1)
@@ -107,8 +147,8 @@ class API:
                     if 'PC WiFi: no connection' in line: raise RuntimeError('Wi-Fi credentials were saved, but the radio could not join the network. Check 2.4 GHz coverage and password; use USB to configure again.')
                 if not sent or not provisioned: raise RuntimeError('Firmware flashed but USB provisioning was not acknowledged. Retry Flash & configure.')
                 if not ip: raise RuntimeError('Wi-Fi was saved, but no DHCP address was reported. Check the 2.4 GHz network or use Scan network.')
-                self._update(busy=False,message='Ready: '+ip,ip=ip,key=key,log='Firmware verified; Wi-Fi saved; DHCP address received.')
-        except Exception as e: self._update(busy=False,message='Error: '+str(e))
+                self._update(busy=False,message='Ready: '+ip,ip=ip,key=key,log='Firmware verified; Wi-Fi saved; DHCP address received.',flash_phase='complete',flash_progress=100)
+        except Exception as e: self._update(busy=False,message='Error: '+str(e),flash_phase='error',flash_progress=None)
     def default_network(self):
         try:
             s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.connect(('1.1.1.1',80));ip=s.getsockname()[0];s.close()
@@ -120,7 +160,7 @@ class API:
             net=ipaddress.ip_network(network,strict=False)
             if net.version != 4 or net.num_addresses > 1024: raise ValueError()
         except ValueError: return {'error':'Enter an IPv4 subnet with at most 1024 addresses, for example 192.168.1.0/24.'}
-        self._update(busy=True,message='Scanning '+str(net)+'…', results=[])
+        self._update(busy=True,message='Sending discovery probes to '+str(net)+'…',results=[],scan_phase='sending',scan_sent=0,scan_total=sum(1 for _ in net.hosts()),scan_remaining=None,scan_failed=0)
         threading.Thread(target=self._scan_worker,args=(net,key),daemon=True).start()
         return {'ok':True}
     def _scan_worker(self, network, key):
@@ -131,21 +171,28 @@ class API:
                 # Windows otherwise turns ICMP port-unreachable replies from unrelated
                 # hosts into WSAECONNRESET on a later recvfrom on this UDP socket.
                 disable_udp_connection_resets(sock)
+                total=sum(1 for _ in network.hosts()); attempted=failed=0
                 for host in network.hosts():
                     try: sock.sendto(b'MESHCORE_DISCOVER_V1',(str(host),5010))
-                    except OSError: pass
+                    except OSError: failed+=1
+                    attempted+=1
+                    if attempted%16==0 or attempted==total:self._update(scan_sent=attempted,scan_failed=failed)
+                if attempted and failed==attempted:raise RuntimeError('Could not send any discovery probes. Check your network connection.')
+                self._update(message='Probes sent. Waiting for replies…',scan_phase='waiting',scan_remaining=5)
                 deadline=time.monotonic()+5
                 while time.monotonic()<deadline:
+                    self._update(scan_remaining=max(0,int(deadline-time.monotonic()+0.999)))
                     try:
                         data,addr=sock.recvfrom(128)
                         if data==b'MESHCORE_V4_COMPANION_V1' and not any(d['ip']==addr[0] for d in found):
-                            found.append({'ip':addr[0],'kind':'MeshCore Wi-Fi companion'})
+                            found.append({'ip':addr[0],'kind':'MeshCore Wi-Fi companion'});self._update(results=found.copy())
                     except socket.timeout: pass
                     except OSError as e:
                         if getattr(e, 'winerror', None) == 10054: continue
                         raise
-            self._update(busy=False,results=found,message='Scan complete: '+str(len(found))+' device(s) found.')
-        except Exception as e:self._update(busy=False,message='Scan failed: '+str(e),results=[])
+            note=f' {failed} probe(s) could not be sent.' if failed else ''
+            self._update(busy=False,results=found,message='Scan complete: '+str(len(found))+' device(s) found.'+note,scan_phase='complete',scan_remaining=0)
+        except Exception as e:self._update(busy=False,message='Scan failed: '+str(e),results=found,scan_phase='error',scan_remaining=None)
     def startup_ready(self):
         self._startup_ready.set()
         return {'ok':True}

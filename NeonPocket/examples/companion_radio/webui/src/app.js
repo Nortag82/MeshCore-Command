@@ -310,7 +310,7 @@ const secureComs = createSecureComs({state,getConnection:()=>connection,exclusiv
 situationMap = createSituationMap({state,secureComs,hex});
 const commandDiscovery = createCommandDiscovery({state,getConnection:()=>connection,exclusive,hex,refreshContacts,secureComs});
 const roomTools = createRoomTools();
-const monitoring = createMonitoring({state,getConnection:()=>connection,exclusive,hex,Constants,addMessage,persistHistory,renderMessages,toast,onChange:()=>renderHome()});
+const monitoring = createMonitoring({state,getConnection:()=>connection,exclusive,hex,Constants,addMessage,persistHistory,renderMessages,toast,readRepeaterClock:(contact,sync)=>repeaterTools.monitoringClock(contact,sync),onChange:()=>renderHome()});
 const contactsTools = createContactsTools({state, getConnection: () => connection, exclusive, toast, hex, refreshContacts, selectTarget, showView, addMessage, Constants, favorites});
 favorites.subscribe(() => { repeaterTools.render(); contactsTools.render(); });
 
