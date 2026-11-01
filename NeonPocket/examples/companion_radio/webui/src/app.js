@@ -947,6 +947,7 @@ function renderMessages() {
   }
 
   const select = $("target-select");
+  select.classList.toggle("channels-recipient-redundant", messageTab === "channels");
   select.replaceChildren(new Option("Choose recipient", ""));
   if (state.channels.length) {
     const group = document.createElement("optgroup"); group.label = "Channels";

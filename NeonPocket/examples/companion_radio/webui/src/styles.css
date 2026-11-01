@@ -402,3 +402,5 @@ body{font-size:13px}
 .conversation-head{flex-wrap:wrap}.conversation-edit-form{padding:10px 16px;border-bottom:1px solid var(--line);background:#121e27}.conversation-edit-form[hidden],.conversation-edit-form [hidden]{display:none}.conversation-edit-form label{display:block;margin-top:6px}.conversation-edit-form input:not([type=checkbox]){width:100%;max-width:420px;padding:7px;background:#111b23;color:#fff;border:1px solid #536170;border-radius:6px}.conversation-edit-form p{font-size:11px;margin:6px 0}.conversation-edit-form .action-buttons{flex-wrap:wrap}
 
 #terrain-live-progress:not([hidden]){margin:0;padding:9px 12px;background:#172d39;color:#eef9ff;border-bottom:1px solid #456270;font-size:12px;line-height:1.4;max-height:96px;overflow:auto}
+
+@media (min-width:701px){.composer select.channels-recipient-redundant{display:none}}
