@@ -1,3 +1,5 @@
+import {createSecureGroups} from './secure-groups.js';
+import {setupSecureBackup} from './secure-backup.js';
 import {createCommandDiscovery} from './command-discovery.js';
 import {createSituationMap} from "./situation-map.js";
 import {createSecureComs} from './secure-coms.js';
@@ -305,9 +307,11 @@ const favorites = createFavorites(window.localStorage);
 const repeaterTools = createRepeaterTools({state, getConnection: () => connection, exclusive, toast, hex, refreshContacts, Constants, favorites, showView});
 const contactMap = createContactMap({state, hex});
 const keywordWatch = createKeywordWatch({toast, targetInfo});
-let situationMap;
-const secureComs = createSecureComs({state,getConnection:()=>connection,exclusive,hex,toast,onObject:(peer,value)=>situationMap.ingest(peer,value)});
+let situationMap, secureGroups;
+const secureComs = createSecureComs({state,getConnection:()=>connection,exclusive,hex,toast,onObject:(peer,value)=>situationMap.ingest(peer,value),getGroupUnread:()=>secureGroups?.unread()||0,isGroupSelected:()=>secureGroups?.active()||false});
 situationMap = createSituationMap({state,secureComs,hex});
+secureGroups = createSecureGroups({state,secureComs,hex,onChange:()=>secureComs.refresh()});
+$("secure-verified").addEventListener("change",()=>secureGroups.refresh());
 const commandDiscovery = createCommandDiscovery({state,getConnection:()=>connection,exclusive,hex,refreshContacts,secureComs});
 const roomTools = createRoomTools();
 const monitoring = createMonitoring({state,getConnection:()=>connection,exclusive,hex,Constants,addMessage,persistHistory,renderMessages,toast,readRepeaterClock:(contact,sync)=>repeaterTools.monitoringClock(contact,sync),onChange:()=>renderHome()});
@@ -1296,7 +1300,7 @@ function renderAll() {
   } else {
     text("battery-chip", "—");
   }
-  renderHome(); renderMessages(); renderRadio(); renderNetwork(); renderUltimate(); renderMore(); repeaterTools.render(); contactsTools.render(); monitoring.render(); secureComs.refresh(); contactMap.schedule();
+  renderHome(); renderMessages(); renderRadio(); renderNetwork(); renderUltimate(); renderMore(); repeaterTools.render(); contactsTools.render(); monitoring.render(); secureGroups.refresh(); secureComs.refresh(); contactMap.schedule();
 }
 
 function showView(view) {
@@ -1304,14 +1308,14 @@ function showView(view) {
   document.querySelectorAll(".screen").forEach((screen) => screen.classList.toggle("active", screen.dataset.screen === view));
   document.querySelectorAll(".nav button").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
   const labels = {
-    situation: ["Situation map", "SHARED MAP"], home: ["Overview", "NEONPOCKETMC"], contacts: ["Contacts", "MESHCORE"], monitoring: ["Monitoring", "NODE HEALTH"], secure: ["Secure Coms", "PRIVATE APP-TO-APP"], messages: ["Messages", "CHANNELS & DIRECT"],
+    situation: ["Secure Situation Map", "SHARED MAP"], home: ["Overview", "NEONPOCKETMC"], contacts: ["Contacts", "MESHCORE"], monitoring: ["Monitoring", "NODE HEALTH"], secure: ["Secure Coms Messages", "PRIVATE APP-TO-APP"], "secure-manage": ["Manage Secure Coms", "PRIVATE APP-TO-APP"], messages: ["Messages", "CHANNELS & DIRECT"],
     contactmap: ["Contact map", "CONTACTS & PACKETS"], watch: ["Word alerts", "MESSAGE MONITOR"], repeaters: ["Repeaters", "MESHCORE"], terrain: ["Terrain tools", "LINK PLANNING"], radio: ["Radio", "LIVE RF"], ultimate: ["Settings", "MESHCORE RADIO"],
   };
   text("screen-title", labels[view]?.[0] || "Ultimate");
   text("screen-kicker", labels[view]?.[1] || "NEONPOCKETMC");
   if (view === "contacts") contactsTools.render();
   if (view === "monitoring") monitoring.render();
-  if (view === "secure") secureComs.refresh();
+  if (view === "secure" || view === "secure-manage") { secureGroups.refresh(); secureComs.refresh(); }
   if (view === "situation") situationMap.visible();
   if (view === "contactmap") contactMap.visible();
   if (view === "messages" && state.selected) selectTarget(state.selected);
@@ -1648,7 +1652,7 @@ function bindConnectionEvents(radio) {
   radio.on(Constants.PushCodes.SendConfirmed, (confirmation) => {
     const pending = [...state.messages].reverse().find((item) => item.direction === "out" && (item.key.startsWith("dm:") || item.key.startsWith("room:")) && item.status === "queued" && Number.isInteger(item.expectedAckCrc) && item.expectedAckCrc === confirmation.ackCode);
     if (pending) { pending.status = "delivered"; persistHistory(); renderMessages(); toast(pending.key.startsWith("room:") ? "Delivered to room server" : "Direct message delivered"); }
-    else if (Number.isInteger(confirmation.ackCode)) { recentAcks.push({code: confirmation.ackCode, time: Date.now()}); while (recentAcks.length > 40 || recentAcks[0]?.time < Date.now() - 60000) recentAcks.shift(); }
+    else if (Number.isInteger(confirmation.ackCode) && !secureComs.noteRadioAck(radio, confirmation.ackCode)) { recentAcks.push({code: confirmation.ackCode, time: Date.now()}); while (recentAcks.length > 40 || recentAcks[0]?.time < Date.now() - 60000) recentAcks.shift(); }
   });
   radio.on(Constants.PushCodes.LogRxData, (sample) => {
     contactMap.ingest(sample);
@@ -2048,3 +2052,6 @@ function createRoomTools() {
   function noteMessage(key) { if (state.selected === key) $("room-poll-status").textContent = "Room message received. More retained posts may arrive while connected."; }
   return {targets, render, noteMessage, updatePassword, removeRoom};
 }
+
+setupSecureBackup(()=>{secureComs.reload();secureGroups.reload();secureComs.refresh()});
+$('secure-unread-indicator').addEventListener('click',()=>{if(!secureGroups.openUnread()){secureGroups.showIndividual();secureComs.selectFirstUnread()}showView('secure')});

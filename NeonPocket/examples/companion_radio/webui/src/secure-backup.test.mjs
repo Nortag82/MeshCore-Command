@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {webcrypto} from 'node:crypto';
+Object.defineProperty(globalThis, "crypto", {value:webcrypto, configurable:true});
+let store=new Map(),credentials=new Map();
+globalThis.localStorage={getItem:k=>store.has(k)?store.get(k):null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)};
+globalThis.fetch=async (_url,options)=>{const {action,key,password}=JSON.parse(options.body);if(action==='save')credentials.set(key,password);if(action==='delete')credentials.delete(key);return {ok:true,json:async()=>({password:credentials.get(key)})}};
+globalThis.confirm=()=>true;
+const {encryptBackup,decryptBackup,restore}=await import('./secure-backup.js');
+const owner='11'.repeat(32),peer='22'.repeat(32),secret='MCC1-'+Buffer.alloc(32,3).toString('base64url');
+const hash=Buffer.from(await crypto.subtle.digest('SHA-256',Buffer.concat([Buffer.alloc(32,3),Buffer.from([owner,peer].sort().join('|'))]))).toString('hex').slice(0,24).match(/.{4}/g).join(' ');
+const snapshot={version:1,radios:[{own:owner,db:{contacts:{[peer]:{fingerprint:hash,verified:true}},history:{},seen:{[hash]:['abc']}},secrets:{[peer]:secret},groupsState:{groups:{test1234:{name:'Test group',members:[peer]}},history:{}}}]};
+const encrypted=await encryptBackup(snapshot,'long test password');assert(!encrypted.includes(secret));assert.deepEqual(await decryptBackup(encrypted,'long test password'),snapshot);await assert.rejects(()=>decryptBackup(encrypted,'wrong password'),/Wrong password/);
+assert.equal(await restore(snapshot),true);let saved=JSON.parse(store.get('meshcore-secure-v1:'+owner));assert.equal(saved.contacts[peer].verified,false);assert.equal(JSON.parse(store.get('meshcore-secure-groups-v1:'+owner)).groups.test1234.name,'Test group');assert.deepEqual(saved.seen[hash],['abc']);
+saved.seen[hash].push('newer');store.set('meshcore-secure-v1:'+owner,JSON.stringify(saved));await restore(snapshot);assert.deepEqual(JSON.parse(store.get('meshcore-secure-v1:'+owner)).seen[hash],['abc','newer']);
+credentials.set([...credentials.keys()][0],'MCC1-conflicting');let before=store.get('meshcore-secure-v1:'+owner);await assert.rejects(()=>restore(snapshot),/different secret/);assert.equal(store.get('meshcore-secure-v1:'+owner),before);
+console.log('Secure backup encryption, wrong-password, restore, replay merge and conflict checks passed.');

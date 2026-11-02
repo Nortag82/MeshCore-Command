@@ -17,7 +17,7 @@ export function estimateSingleCell(voltage) {
  for(let i=1;i<points.length;i++){const [v,p]=points[i], [prevV,prevP]=points[i-1];if(voltage<=v)return Math.round(prevP+(voltage-prevV)*(p-prevP)/(v-prevV));}
  return 100;
 }
-function batteryCard(v) {
+function batteryCard(v, compact=false) {
  const n=Number.isFinite(v.number)?v.number:Number.parseFloat(v.value),percent=estimateSingleCell(n);
  const card=document.createElement('div');card.className='telemetry-item battery-card';
  const name=document.createElement('small');name.textContent='Device voltage';
@@ -26,12 +26,12 @@ function batteryCard(v) {
  const fill=document.createElement('span');fill.className='battery-fill';fill.style.width=`${percent??0}%`;if(percent!==null&&percent<=20)fill.classList.add('low');icon.append(fill);
  const text=document.createElement('strong');text.textContent=percent===null?'No estimate':`~${percent}%`;
  row.append(icon,text);const voltage=document.createElement('span');voltage.className='battery-voltage';voltage.textContent=v.value;
- const note=document.createElement('small');note.textContent=percent===null?'Outside the expected range for a 1-cell Li-ion estimate.':'Estimated for 1-cell Li-ion; device voltage may not be a battery.';
+ const note=document.createElement('small');note.textContent=percent===null?'Outside the expected range for a 1-cell Li-ion estimate.':(compact?'Estimate for 1-cell Li-ion; voltage may not be a battery.':'Estimated for 1-cell Li-ion; device voltage may not be a battery.');
  card.append(name,row,voltage,note);return card;
 }
-export function renderTelemetry(container, decoded) {
+export function renderTelemetry(container, decoded, {compact=false}={}) {
  container.replaceChildren();if(!decoded.values.length){const p=document.createElement('p');p.textContent='No supported measurements reported.';container.append(p)}
- const grid=document.createElement('div');grid.className='telemetry-grid';for(const v of decoded.values){if(v.channel===1&&(v.type===116||v.name==='Voltage')){grid.append(batteryCard(v));continue}const card=document.createElement('div');card.className='telemetry-item';const name=document.createElement('small');name.textContent=`${v.name} · ${v.channel===1?'Device':`Channel ${v.channel}`}`;const value=document.createElement('strong');value.textContent=v.value;card.append(name,value);grid.append(card)}container.append(grid);if(decoded.warning){const p=document.createElement('p');p.className='quiet';p.textContent=decoded.warning;container.append(p)}const details=document.createElement('details'),summary=document.createElement('summary'),raw=document.createElement('code');summary.textContent='Raw telemetry';raw.textContent=decoded.raw||'(empty)';details.append(summary,raw);container.append(details);
+ const grid=document.createElement('div');grid.className='telemetry-grid';for(const v of decoded.values){if(v.channel===1&&(v.type===116||v.name==='Voltage')){grid.append(batteryCard(v,compact));continue}const card=document.createElement('div');card.className='telemetry-item';const name=document.createElement('small');name.textContent=`${v.name} · ${v.channel===1?'Device':`Channel ${v.channel}`}`;const value=document.createElement('strong');value.textContent=v.value;card.append(name,value);grid.append(card)}container.append(grid);if(decoded.warning){const p=document.createElement('p');p.className='quiet';p.textContent=decoded.warning;container.append(p)}const details=document.createElement('details'),summary=document.createElement('summary'),raw=document.createElement('code');summary.textContent='Raw telemetry';raw.textContent=decoded.raw||'(empty)';details.append(summary,raw);container.append(details);
 }
 
 // MeshCore status reports the remote node's latest radio measurements; SNR

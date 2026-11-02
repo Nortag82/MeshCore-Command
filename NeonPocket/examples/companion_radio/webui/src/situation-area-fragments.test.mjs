@@ -1,0 +1,6 @@
+import assert from 'node:assert/strict';
+import {encodeAreaPackets,decodeAreaFragment,combineAreaFragments} from './situation-area.js';
+const area={id:'012345abcdef',revision:1800000000000,name:'NO GO AREA',type:'out',points:[[55.95,-4.9],[55.96,-4.75],[55.97,-4.6],[55.89,-4.5],[55.85,-4.6],[55.84,-4.75],[55.89,-4.9],[55.92,-4.95]]};
+const packets=encodeAreaPackets(area);assert(packets.length>1);assert(packets.every(p=>new TextEncoder().encode(p).length<=74));let pending=null,complete=null;for(const packet of [...packets].reverse()){const part=decodeAreaFragment(packet);const result=combineAreaFragments(pending,part);pending=result.pending;complete=result.area;if(packet!==packets[0])assert.equal(complete,null)}assert.deepEqual(complete.points,area.points);assert.equal(complete.type,'out');assert.equal(complete.name,area.name);
+const first=decodeAreaFragment(packets[0]),newPending=combineAreaFragments(null,first).pending;assert.throws(()=>combineAreaFragments(newPending,{...first,chunk:first.chunk+'A'}),/Conflicting/);assert.equal(decodeAreaFragment(`AF:${area.id}:${area.revision.toString(36)}:0`).kind,'fragment-ack');
+console.log('Large area splits into bounded packets and reassembles out of order; conflicts are rejected.');

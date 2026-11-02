@@ -1,13 +1,13 @@
 # MeshCore Command user manual
 
-MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes the current preview (1.0.1-preview.1); secure Command group pairing remains an unintegrated research prototype.
+MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 1.0.1-preview.2. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
 
 ## Before you start
 
 - You need Windows, the Edge WebView2 runtime, a compatible Wi-Fi radio and an appropriate LoRa antenna. Connect the antenna before powering or transmitting with the radio.
 - The PC and radio need network access to each other. The companion connection uses TCP port 5000; discovery uses UDP port 5010.
 - Use a trusted local network: the companion protocol itself is unauthenticated and unencrypted. The PC bridge listens on loopback.
-- Download [Install MeshCore Command.exe](https://github.com/Nortag82/MeshCore-Command/releases/tag/v1.0.1-preview.1), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
+- Download [Install MeshCore Command.exe](https://github.com/Nortag82/MeshCore-Command/raw/refs/heads/main/downloads/Install%20MeshCore%20Command.exe), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
 
 ## 1. Set up or connect a radio
 
@@ -65,21 +65,27 @@ Search for a repeater on **Repeaters**, select it and log in with its admin pass
 
 ## 6. Monitoring and word alerts
 
-On **Monitoring**, add a known chat contact or repeater, choose an interval, and enable the desired ping, trace and telemetry checks. For repeaters, **Read time** and **Sync to PC** require an active admin login or saved password. A repeater may reject a backwards time correction; the displayed time is the last reading, not a live clock. Checks run only while the app is open and connected. A voltage-based battery percentage is an estimate and may not be appropriate for every power source.
+On **Monitoring**, add a known chat contact or repeater, then expand **Schedule checks** to choose an interval and checks. Compact cards show the latest results. Expand **Repeater time** for **Read time**, **Sync to PC** and any diagnostic details; these require an active admin login or saved password. A repeater may reject a backwards time correction; the displayed time is the last reading, not a live clock. Checks run only while the app is open and connected. A voltage-based battery percentage is an estimate and may not be appropriate for every power source.
 
 On **Word alerts**, enter one word or phrase per line and save. The app checks newly received direct messages and joined channel messages; it cannot monitor traffic it cannot receive or decrypt. Use **Send test notification** to check Windows notifications and sound. Windows notification or focus settings can suppress alerts. Matches are stored locally, and enabling message previews can put message text in desktop notifications.
 
 ## 7. Secure Coms
 
-Both participants need a compatible MeshCore Command installation and a MeshCore chat contact. One person generates a secret, shares it with the other person through a trusted separate channel, and both save it. Compare the displayed fingerprints using a trusted channel before marking the contact verified.
+Both participants need a compatible MeshCore Command installation and a MeshCore chat contact. In **Manage Secure Coms**, one person generates a secret, shares it with the other person through a trusted separate channel, and both save it. Compare the displayed fingerprints using a trusted channel before marking the contact verified.
 
-Secure Coms encrypts on the PC using AES-256-GCM and sends the encrypted content over MeshCore direct messages. It is experimental, has not had an independent security audit and does not provide forward secrecy or protect a compromised PC. Messages are short because of packet limits. Delivery acknowledgement is not a cryptographic read receipt.
+Secure Coms encrypts on the PC using AES-256-GCM and sends the encrypted content over MeshCore direct messages. It is experimental, has not had an independent security audit and does not provide forward secrecy or protect a compromised PC. Messages are short because of packet limits. New outgoing messages can show a radio delivery acknowledgement; this does not prove that the receiving app decrypted or a person read the message. Earlier messages cannot be retrospectively confirmed.
 
 ### Discover Command installations
 
-In **Secure Coms**, select **Discover Command installs** to send a request over the Public channel using the radio's default flood scope. Compatible installations that are running and can hear it can reply. Discovery requests and responses are visible to Public-channel users and disclose the sender's public key and app presence. Other MeshCore apps may show them as ordinary channel messages. Automatic responses are enabled by default; disable **Respond to discovery requests** if you do not want to reply. Requests and replies are rate limited.
+In **Manage Secure Coms**, select **Discover Command installs** to send a request over the Public channel using the radio's default flood scope. Compatible installations that are running and can hear it can reply. Discovery requests and responses are visible to Public-channel users and disclose the sender's public key and app presence. Other MeshCore apps may show them as ordinary channel messages. Automatic responses are enabled by default; disable **Respond to discovery requests** if you do not want to reply. Requests and replies are rate limited.
 
 Replies can be spoofed and are not verified identities. Select **Add & set up** to add an unknown radio contact, or **Set up** for a known one. Exchange the shared secret privately and compare fingerprints before marking the contact verified. Discovery requires compatible versions, the Public channel and a reachable flood scope; it cannot guarantee a response.
+
+### Local groups and backup
+
+Create a group in **Manage Secure Coms** by choosing a name and verified contacts. The group is a local recipient list; members do not need the group or another key. Sending to the group sends an individually encrypted direct message to each member using the existing shared secret. Replies appear in individual conversations. The group view shows per-recipient radio acknowledgements, which are not read receipts. The same groups can select recipients on the Secure Situation Map.
+
+Under **Settings**, export an encrypted Secure Coms backup with a password, and import it with that same password. It contains contacts, their shared secrets, group definitions and secure message state; it is not a complete backup of radio settings or offline maps. Keep both file and password safe. After importing, verify contact fingerprints again. An old backup cannot contain replay records created after it was made.
 
 ## 8. Terrain tools and coverage
 
@@ -87,13 +93,15 @@ Open **Terrain tools** and use the map or coordinate fields to set points. You c
 
 Coverage is a terrain visibility estimate, **not** measured signal strength or a guarantee of reception. Resolution, buildings, trees, antenna patterns, interference and weather affect real links. Verify important links in the field.
 
-## 9. Situation map and offline maps
+## 9. Secure Situation Map and offline maps
 
-Open **Situation map** to create and share map markers. Right-click the map to create a marker, or right-click an existing marker to edit it. To move one of your markers, select it, choose **Move selected marker**, click the new position, then select **Save marker**. Press Escape while choosing a position to cancel. Markers cannot be dragged. The marker editor opens when needed. Markers can be saved locally without a Secure Coms contact. To share updates, set up and verify a Secure Coms contact on both PCs, then choose recipients under **Settings**. Select a marker to see per-contact confirmations; these indicate that the receiving app saved that update, not that a person saw it.
+The floating toolbar provides **Marker**, **Area**, **Out of bounds**, **Share**, **Objects** and **Settings**. Choose Marker and click the map, or right-click it, then enter details and save. Select a marker and choose **Move selected marker** to change its position; markers are not draggable. Civilian and emergency icons are practical symbols, not certified emergency symbology. The newer icons require a compatible updated app at the receiving end.
 
-To send the picture, select **Send my picture**. The app sends markers separately to every verified Secure Coms contact currently known to the radio, and reports confirmations and failures per recipient. The View contact selector filters the display; it does not limit sending. Both apps must remain connected; retransmit unconfirmed markers as needed. Markers are identified by creator and random marker ID. Received markers are forwarded as copies; copies relayed by different contacts can appear separately. The protocol is experimental and does not support ATAK interoperability.
+To draw an area, choose **Area** or **Out of bounds**, enter a short name, click three to eight corners and finish. Large shapes are split into acknowledged encrypted packets, with retries; the receiving app needs the multi-packet update and both sides must remain connected during transfer. The app shows complete areas only after assembly. Out-of-bounds areas are visual planning aids and do not enforce boundaries.
 
-For an offline background, open **Settings**, select **Select download area**, click two opposite corners on the map, choose a detail level and select **Download area**. The initial download needs internet and obtains a verified Protomaps helper. Larger areas or higher detail take more space and time. You can also import a Protomaps vector PMTiles file or raster MBTiles file. The downloaded background works offline within its saved area and zoom levels. Terrain coverage calculations require separate online elevation data.
+Use **Share with** to select verified contacts or apply a local group. With no recipients selected, new objects stay on this PC. Changes to previously shared markers also go to their previous recipients after confirmation. **Send picture to selected** sends your markers and areas to selected recipients; forwarding markers received from others is an explicit option. App acknowledgements indicate a saved update, not that someone saw it. The experimental protocol is not ATAK compatible.
+
+For an offline background, open **Settings**, select **Select download area**, click two opposite corners on the map, choose a detail level and select **Download area**. The initial download needs internet and obtains a verified Protomaps helper. Larger areas or higher detail take more space and time. You can also import a Protomaps vector PMTiles file or raster MBTiles file. Online maps include light and dark street styles. The downloaded background works offline within its saved area and zoom levels. Terrain coverage calculations require separate online elevation data.
 
 ## 10. Troubleshooting
 

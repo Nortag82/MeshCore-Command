@@ -250,6 +250,31 @@ class API:
             try: window.destroy()
             except Exception: pass
 
+    def _backup_dialogs(self, radio):
+        def save_secure_backup(contents):
+            try:
+                if not isinstance(contents, str) or len(contents) > 8_000_000:
+                    return {'error': 'Invalid backup size.'}
+                envelope = json.loads(contents)
+                if envelope.get('format') != 'MeshCoreCommandSecureBackup' or not isinstance(envelope.get('ciphertext'), str):
+                    return {'error': 'Invalid encrypted backup.'}
+                files = radio.create_file_dialog(webview.FileDialog.SAVE, save_filename='MeshCore-Command-Secure-Backup.mccbackup', file_types=('MeshCore backup (*.mccbackup)',))
+                if not files: return {'cancelled': True}
+                Path(files[0]).write_text(contents, encoding='utf-8')
+                return {'ok': True}
+            except Exception:
+                return {'error': 'Could not save the backup file.'}
+        def open_secure_backup():
+            try:
+                files = radio.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=False, file_types=('MeshCore backup (*.mccbackup)',))
+                if not files: return {'cancelled': True}
+                path = Path(files[0])
+                if path.stat().st_size > 8_000_000: return {'error': 'Backup file is too large.'}
+                return {'contents': path.read_text(encoding='utf-8')}
+            except Exception:
+                return {'error': 'Could not read the backup file.'}
+        return save_secure_backup, open_secure_backup
+
     def open_serial(self, port):
         try:
             if port not in [p.device for p in list_ports.comports()]: return {'error':'Select an available USB COM port.'}
@@ -263,7 +288,7 @@ class API:
                     if not files: return {'cancelled': True}
                     return active_bridge.set_offline_map(files[0])
                 except Exception as error: return {'error': str(error)}
-            radio.expose(radio.toggle_fullscreen, radio.minimize, self.exit_app, choose_offline_map)
+            radio.expose(radio.toggle_fullscreen, radio.minimize, self.exit_app, choose_offline_map, *self._backup_dialogs(radio))
             radio.events.closed += lambda: active_bridge.close()
             return {'ok':True}
         except Exception as e: return {'error':str(e)}
@@ -282,7 +307,7 @@ class API:
                     if not files: return {'cancelled': True}
                     return active_bridge.set_offline_map(files[0])
                 except Exception as error: return {'error': str(error)}
-            radio.expose(radio.toggle_fullscreen, radio.minimize, self.exit_app, choose_offline_map)
+            radio.expose(radio.toggle_fullscreen, radio.minimize, self.exit_app, choose_offline_map, *self._backup_dialogs(radio))
             radio.events.closed += lambda: active_bridge.close()
             return {'ok':True}
         except Exception as e: return {'error':str(e)}

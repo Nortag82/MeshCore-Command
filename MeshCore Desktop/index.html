@@ -9,7 +9,7 @@
     <details id="find-radio"><summary>Find a radio or enter its IP address</summary>
       <p>Connect this PC and the radio to the same network. Scan the subnet or enter the radio's IP address.</p>
       <label for="subnet">Network subnet</label><input id="subnet" placeholder="192.168.1.0/24"><input id="key" type="hidden"><button id="scan" type="button">Scan network</button><section id="scan-progress-box" class="flash-progress" hidden aria-live="polite"><strong id="scan-stage">Scanning network</strong><progress id="scan-progress" aria-label="Network scan progress"></progress><p id="scan-progress-message"></p><small>Discovery probes do not confirm whether every address is reachable. Only responding radios appear.</small></section><div id="results"></div>
-      <label for="ip">Radio IP address</label><div class="row"><input id="ip" placeholder="192.0.2.1"><button id="open" type="button">Connect</button></div>
+      <label for="ip">Radio IP address</label><div class="row"><input id="ip" placeholder="192.0.2.10"><button id="open" type="button">Connect</button></div>
       <label for="device-name">Save as (optional)</label><input id="device-name" placeholder="e.g. Home radio" maxlength="80"><button type="button" id="save-device" class="secondary">Save radio</button><p id="login" class="message"></p>
     </details>
   </section>

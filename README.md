@@ -5,29 +5,29 @@ A Windows desktop companion for controlling a Wi-Fi connected MeshCore radio, wi
 This repository contains the desktop source in `MeshCore Desktop/` and the modified companion firmware and interface sources in `NeonPocket/`. The firmware tree is based on [NeonPocketMC](https://github.com/n30nex/NeonPocketMC-Heltec-V4) and retains its license files and upstream notices. See [desktop documentation](MeshCore%20Desktop/README.md) for features and device support.
 
 
-The current preview is **1.0.1-preview.1**. Secure Command group pairing is only an [unintegrated research prototype](experimental/secure-pairing/); it is not in the application or installer. Current Command discovery still uses Public.
+The current installer build is **1.0.1-preview.2**. Secure groups are local recipient lists that send individual encrypted messages; no group key is needed. The separate [secure pairing research prototype](experimental/secure-pairing/) is not integrated. Command discovery still uses Public.
 
 ## Download for Windows
 
-Download the installer and checksum from the [Windows preview release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v1.0.1-preview.1), then follow the [user manual](docs/USER-MANUAL.md). Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.
+Download the [latest Windows installer](https://github.com/Nortag82/MeshCore-Command/raw/refs/heads/main/downloads/Install%20MeshCore%20Command.exe) and [SHA-256 checksum](downloads/SHA256SUMS.txt), then follow the [user manual](docs/USER-MANUAL.md). Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.
 
 ## A look inside
 
 [See screenshots of every menu](docs/SCREENSHOTS.md), including connection and firmware setup.
 
-> Screenshots use simulated contacts, messages, telemetry and map markers. Map data © OpenStreetMap contributors.
+> Screenshots use simulated contacts, messages, telemetry and map markers. Some show an earlier layout. Map data © OpenStreetMap contributors.
 
 ### Situation map
 
-Build a shared picture using map markers with supported NATO APP-06 symbols. Right-click to create or edit a marker. To move it, select it, choose **Move selected marker**, click the new position and save. Markers cannot be dragged. Markers can be saved locally, even before you add a secure contact.
+Build a shared picture using markers, civilian and emergency icons, and drawn areas. The floating toolbar provides marker, area, sharing and map controls; right-click to create or edit a marker. To move it, select it, choose **Move selected marker**, click the new position and save. Markers cannot be dragged. Markers can be saved locally, even before you add a secure contact.
 
 ![Situation map showing example command, medical and reconnaissance markers](docs/images/situation-map.png)
 
-Share marker updates with verified Secure Coms contacts, or send your full picture to all verified Secure Coms contacts known to your radio. The app shows which marker updates the receiving app has confirmed saving. Both users need compatible MeshCore Command installations and a connected radio. Sharing uses the experimental Secure Coms protocol; it has not been independently audited and does not provide forward secrecy. It is not ATAK compatible.
+Share marker and area updates with selected verified Secure Coms contacts or local groups. Full-picture sharing targets selected recipients; forwarding received markers is separately opt-in. The app shows which marker updates the receiving app has confirmed saving. Both users need compatible MeshCore Command installations and a connected radio. Sharing uses the experimental Secure Coms protocol; it has not been independently audited and does not provide forward secrecy. It is not ATAK compatible.
 
 ### Find other Command users
 
-In **Secure Coms**, use **Discover Command installs** to send a discovery request on the Public channel using the radio's default flood scope. Other compatible, running Command installations can respond. Responses announce their public key and app presence, and automatic responses can be turned off. Discovery replies are unverified and can be spoofed: exchange a secret privately and compare fingerprints before trusting a contact. Other MeshCore apps may display discovery traffic as ordinary channel messages.
+In **Manage Secure Coms**, use **Discover Command installs** to send a discovery request on the Public channel using the radio's default flood scope. Other compatible, running Command installations can respond. Responses announce their public key and app presence, and automatic responses can be turned off. Discovery replies are unverified and can be spoofed: exchange a secret privately and compare fingerprints before trusting a contact. Other MeshCore apps may display discovery traffic as ordinary channel messages.
 
 ### Offline maps
 
