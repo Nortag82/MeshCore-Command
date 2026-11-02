@@ -581,6 +581,10 @@ function addMessage(message) {
   if (state.messages.length > MAX_HISTORY_MESSAGES) state.messages.splice(0, state.messages.length - MAX_HISTORY_MESSAGES);
   persistHistory();
   keywordWatch.check(item, {muted: channelIsMuted(item.key)});
+  if (item.direction === "in" && !channelIsMuted(item.key)) {
+    const kind = item.key.startsWith("room:") ? "room" : item.key.startsWith("ch:") ? "channel" : "direct";
+    void fetch('/api/notify', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title:'MeshCore Command', body:`New ${kind} message. Open MeshCore Command to read it.`})}).catch(() => {});
+  }
   renderMessages();
   renderHome();
   return item;

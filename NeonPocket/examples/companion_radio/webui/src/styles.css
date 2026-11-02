@@ -405,7 +405,7 @@ body{font-size:13px}
 
 @media (min-width:701px){.composer select.channels-recipient-redundant{display:none}}
 
-#secure-messages .bubble.in{background:#8e1d2c;border-color:#d54a5c;color:#fff}#secure-messages .bubble.out{background:#bb2639;border-color:#ed6677;color:#fff}#secure-messages .bubble p,#secure-messages .bubble small{color:#fff}
+#secure-messages .bubble.in,#secure-group-messages .bubble.in{background:#8e1d2c;border-color:#d54a5c;color:#fff}#secure-messages .bubble.out,#secure-group-messages .bubble.out{background:#155e9a;border-color:#4bb3ff;color:#fff}#secure-messages .bubble p,#secure-messages .bubble small,#secure-group-messages .bubble p,#secure-group-messages .bubble small{color:#fff}
 
 /* Unread secure messages remain visible on every page until read. */
 .secure-unread-indicator { min-height:38px; padding:0 13px; border:1px solid #ff7b85; border-radius:10px; background:#a9182b; color:#fff; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap; animation:secure-unread-pulse 1.4s ease-in-out infinite; }
