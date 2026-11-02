@@ -1,6 +1,6 @@
 # MeshCore Command user manual
 
-MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 1.0.1-preview.2. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
+MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 1.0.1-preview.3. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
 
 ## Before you start
 
@@ -90,6 +90,8 @@ Under **Settings**, export an encrypted Secure Coms backup with a password, and 
 ## 8. Terrain tools and coverage
 
 Open **Terrain tools** and use the map or coordinate fields to set points. You can add located known repeaters and planned repeaters, adjust positions and antenna heights, and calculate estimated line of sight and terrain visibility. Use the search radius to choose an area and display coverage for known nodes. Map tiles and elevation data require internet access and the calculation sends coordinates to those services.
+
+Open **Elevation finder**, enter a height in metres above sea level and select **Highlight visible area**. Purple marks terrain pixels above that height. The tool downloads Mapzen terrain tiles for the current view; the displayed tile resolution and underlying data limit the detail, and missing pixels are not assessed. After moving or zooming, calculate again. **Clear / cancel** removes the elevation highlight without clearing coverage or planned repeaters.
 
 Coverage is a terrain visibility estimate, **not** measured signal strength or a guarantee of reception. Resolution, buildings, trees, antenna patterns, interference and weather affect real links. Verify important links in the field.
 

@@ -219,6 +219,12 @@ SOFTWARE.
   <div class="terrain-panel-head"><div><p class="eyebrow">LINK PLANNING</p><h2>Terrain tools</h2></div><button type="button" class="secondary-button" id="terrain-back">Back to app</button><button class="secondary-button" id="terrain-cancel" type="button" hidden>Cancel</button><button type="button" class="secondary-button" id="terrain-hide-panel" aria-label="Hide planning controls">Hide</button></div>
   <p id="terrain-pick-message" role="status" hidden>Click the map to choose the centre. Press Escape or the button again to cancel.</p><p id="terrain-live-progress" aria-live="polite" hidden></p><div class="terrain-panel-scroll">
    <label>Map appearance<select id="terrain-map-style"><option value="light">Standard map</option><option value="dark">Dark map</option></select></label>
+   <details class="terrain-section" id="terrain-elevation-section"><summary>Elevation finder</summary>
+    <label>Highlight ground above (metres above sea level)<input id="terrain-elevation-height" type="number" min="-500" max="9000" step="any" value="300"></label>
+    <div class="action-buttons"><button type="button" class="secondary-button" id="terrain-elevation-show">Highlight visible area</button><button type="button" class="secondary-button" id="terrain-elevation-clear">Clear / cancel</button></div>
+    <p class="terrain-help"><span class="elevation-swatch" aria-hidden="true"></span> Purple shows estimated ground above the selected height. Move or zoom the map and calculate again to cover the new view.</p>
+    <p id="terrain-elevation-status" class="terrain-help" aria-live="polite">Uses online terrain data for the visible map area.</p>
+   </details>
    <p class="terrain-help">Click the map to set a point or place a planned repeater. Locations and antenna heights affect the estimates.</p>
    <label>Map click sets<select id="terrain-point"><option value="a">Point A / transmitter</option><option value="b">Point B / receiver</option><option value="repeater">New planned repeater</option></select></label><button class="secondary-button" id="terrain-use-self" type="button">Use radio location for A</button>
    <details open class="terrain-section"><summary>Coverage and point-to-point</summary>

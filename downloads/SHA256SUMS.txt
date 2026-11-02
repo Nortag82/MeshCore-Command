@@ -1,1 +1,1 @@
-d94f55b5f11c14fe8496d75eeb87fada6817b0aa82c3dd6dee903da2836e98a2  Install MeshCore Command.exe
+d7c60d1ace49531fc58928c9d3faaa952f68285bc94adf58e98036b8944c3fdd  Install MeshCore Command.exe

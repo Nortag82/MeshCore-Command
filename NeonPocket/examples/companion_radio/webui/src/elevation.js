@@ -20,7 +20,7 @@ export function chooseTileZoom(points) {
   }
   throw Error('Terrain area is too large to load; reduce the radius.');
 }
-async function tilePixels(zoom, tx, ty) {
+export async function tilePixels(zoom, tx, ty) {
   const key = `${zoom}/${tx}/${ty}`;
   if (cache.has(key)) return cache.get(key);
   const promise = (async () => {
