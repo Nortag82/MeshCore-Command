@@ -15,13 +15,13 @@ Download the [latest Windows installer](https://github.com/Nortag82/MeshCore-Com
 
 [See screenshots of every menu](docs/SCREENSHOTS.md), including connection and firmware setup.
 
-> Screenshots use simulated contacts, messages, telemetry and map markers. Some show an earlier layout. Map data © OpenStreetMap contributors.
+> Screenshots use simulated contacts, messages, telemetry and map markers. Map data © OpenStreetMap contributors.
 
-### Situation map
+### Secure Situation Map
 
 Build a shared picture using markers, civilian and emergency icons, and drawn areas. The floating toolbar provides marker, area, sharing and map controls; right-click to create or edit a marker. To move it, select it, choose **Move selected marker**, click the new position and save. Markers cannot be dragged. Markers can be saved locally, even before you add a secure contact.
 
-![Situation map showing example command, medical and reconnaissance markers](docs/images/situation-map.png)
+![Secure Situation Map showing the floating toolbar, selected recipients and example objects](docs/images/situation-map.png)
 
 Share marker and area updates with selected verified Secure Coms contacts or local groups. Full-picture sharing targets selected recipients; forwarding received markers is separately opt-in. The app shows which marker updates the receiving app has confirmed saving. Both users need compatible MeshCore Command installations and a connected radio. Sharing uses the experimental Secure Coms protocol; it has not been independently audited and does not provide forward secrecy. It is not ATAK compatible.
 
@@ -33,7 +33,7 @@ In **Manage Secure Coms**, use **Discover Command installs** to send a discovery
 
 Open **Settings** on the Situation map, select two corners of an area, choose a detail level and download it for later use without internet. You can also import a Protomaps PMTiles map or a raster MBTiles map. Map downloads require internet and use local disk space; terrain coverage tools need separate online elevation data.
 
-![Situation map settings showing a selected area ready for offline download](docs/images/situation-map-settings.png)
+![Secure Situation Map settings and offline map options](docs/images/situation-map-settings.png)
 
 ### Overview
 See radio status, recent activity, monitored nodes and quick actions in one place.
@@ -48,6 +48,8 @@ Switch between direct messages, channels and rooms; unread counts show which tab
 ### Elevation finder
 
 In **Terrain tools**, enter a height above sea level to highlight terrain above that threshold across the visible map. The result uses online Mapzen terrain tiles and is an estimate; its displayed resolution and the underlying source data limit the detail. Move or zoom the map and recalculate for the new view.
+
+![Terrain tools showing the elevation finder](docs/images/terrain-tools.png)
 
 ### Monitoring
 Schedule checks and review the latest available measurements for contacts and repeaters.

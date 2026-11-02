@@ -1,6 +1,6 @@
 # MeshCore Command screenshots
 
-Screens show simulated contacts, messages, addresses and map markers. Map data © OpenStreetMap contributors.
+Screens show the current interface with simulated contacts, messages, addresses, telemetry and map markers. Map data © OpenStreetMap contributors.
 
 ## Connect
 
@@ -38,17 +38,41 @@ View known locations and packet information.
 
 ![Contact map screen](images/contact-map.png)
 
-## Situation map
+## Secure Situation Map
 
-Create and share map markers.
+Use the floating toolbar to create markers and areas and share them with selected secure contacts or a group.
 
 ![Situation map screen](images/situation-map.png)
 
-## Secure Coms
+## Secure Coms Messages
 
-Set up encrypted contacts and discover compatible installations.
+Send encrypted messages to individual contacts.
 
-![Secure Coms screen](images/secure-coms.png)
+![Secure Coms Messages screen](images/secure-coms.png)
+
+## Secure groups
+
+Send to the members of a local recipient group.
+
+![Secure group conversation](images/secure-groups.png)
+
+## Manage Secure Coms
+
+Manage secure contacts, verify fingerprints and arrange local groups.
+
+![Manage Secure Coms screen](images/secure-manage.png)
+
+## Secure Coms backup
+
+Export or import an encrypted backup of secure settings.
+
+![Secure Coms backup](images/secure-backup.png)
+
+## Situation map settings
+
+Configure the map and offline map options.
+
+![Situation map settings](images/situation-map-settings.png)
 
 ## Word alerts
 
@@ -70,7 +94,7 @@ Control repeaters and review neighbour links.
 
 ## Terrain tools
 
-Plan links and estimate terrain visibility.
+Plan links, estimate terrain visibility and highlight terrain above a chosen elevation.
 
 ![Terrain tools screen](images/terrain-tools.png)
 
