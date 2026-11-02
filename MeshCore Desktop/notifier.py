@@ -11,6 +11,8 @@ import winsound
 WM_APP_NOTIFY = 0x8001
 WM_CLOSE = 0x0010
 WM_DESTROY = 0x0002
+WM_TIMER = 0x0113
+WM_LBUTTONUP = 0x0202
 NIM_ADD, NIM_MODIFY, NIM_DELETE = 0, 1, 2
 NIF_MESSAGE, NIF_ICON, NIF_TIP, NIF_INFO = 1, 2, 4, 16
 NIIF_INFO = 1
@@ -42,17 +44,33 @@ class DesktopNotifier:
             user.DefWindowProcW.argtypes=[wintypes.HWND,wintypes.UINT,wintypes.WPARAM,wintypes.LPARAM];user.DefWindowProcW.restype=LRESULT
             user.PostMessageW.argtypes=[wintypes.HWND,wintypes.UINT,wintypes.WPARAM,wintypes.LPARAM];user.PostMessageW.restype=wintypes.BOOL
             user.DestroyWindow.argtypes=[wintypes.HWND];user.DestroyWindow.restype=wintypes.BOOL
+            user.ShowWindow.argtypes=[wintypes.HWND,ctypes.c_int];user.ShowWindow.restype=wintypes.BOOL
+            user.GetSystemMetrics.argtypes=[ctypes.c_int];user.GetSystemMetrics.restype=ctypes.c_int
+            user.SetTimer.argtypes=[wintypes.HWND,ctypes.c_size_t,wintypes.UINT,ctypes.c_void_p];user.SetTimer.restype=ctypes.c_size_t
+            user.KillTimer.argtypes=[wintypes.HWND,ctypes.c_size_t];user.KillTimer.restype=wintypes.BOOL
             user.GetMessageW.argtypes=[ctypes.POINTER(wintypes.MSG),wintypes.HWND,wintypes.UINT,wintypes.UINT];user.GetMessageW.restype=ctypes.c_int
             user.TranslateMessage.argtypes=[ctypes.POINTER(wintypes.MSG)];user.DispatchMessageW.argtypes=[ctypes.POINTER(wintypes.MSG)]
             shell.Shell_NotifyIconW.argtypes=[wintypes.DWORD,ctypes.POINTER(NOTIFYICONDATA)];shell.Shell_NotifyIconW.restype=wintypes.BOOL
             inst=kernel.GetModuleHandleW(None); name='MeshCoreWifiWatchWindow'
             def window_proc(hwnd,msg,wparam,lparam):
+                if hwnd != self.hwnd and msg in (WM_TIMER, WM_LBUTTONUP):
+                    user.KillTimer(hwnd,1);user.DestroyWindow(hwnd);return 0
+                if hwnd != self.hwnd and msg == WM_DESTROY:
+                    if getattr(self,'popup',None)==hwnd:self.popup=None
+                    return 0
                 if msg==WM_APP_NOTIFY:
                     try:
                         title,body,result,done=self.pending.get_nowait()
                         n=NOTIFYICONDATA();n.cbSize=ctypes.sizeof(n);n.hWnd=hwnd;n.uID=1;n.uFlags=NIF_INFO;n.dwInfoFlags=NIIF_INFO;n.szInfoTitle=title[:63];n.szInfo=body[:255]
                         try:
-                            if not shell.Shell_NotifyIconW(NIM_MODIFY,ctypes.byref(n)): raise RuntimeError('Windows rejected the notification')
+                            shell.Shell_NotifyIconW(NIM_MODIFY,ctypes.byref(n))
+                            if getattr(self,'popup',None): user.DestroyWindow(self.popup)
+                            x=max(0,user.GetSystemMetrics(0)-380);y=max(0,user.GetSystemMetrics(1)-160)
+                            popup=user.CreateWindowExW(0x08000088,name,title+'\n\n'+body,0x80000000|0x00800000,x,y,350,110,None,None,inst,None)
+                            if not popup: raise ctypes.WinError(ctypes.get_last_error())
+                            label=user.CreateWindowExW(0,'STATIC',title+'\n\n'+body,0x40000000|0x10000000|0x00000000,12,10,324,90,popup,None,inst,None)
+                            if not label: user.DestroyWindow(popup);raise ctypes.WinError(ctypes.get_last_error())
+                            self.popup=popup;user.SetTimer(popup,1,8000,None);user.ShowWindow(popup,4)
                         except Exception as exc: result.append(str(exc))
                         finally: done.set()
                     except queue.Empty: pass

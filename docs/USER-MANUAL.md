@@ -1,19 +1,21 @@
 # MeshCore Command user manual
 
-MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 1.0.1-preview.3. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
+MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 1.0.1-preview.5. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
 
 ## Before you start
 
 - You need Windows, the Edge WebView2 runtime, a compatible Wi-Fi radio and an appropriate LoRa antenna. Connect the antenna before powering or transmitting with the radio.
 - The PC and radio need network access to each other. The companion connection uses TCP port 5000; discovery uses UDP port 5010.
 - Use a trusted local network: the companion protocol itself is unauthenticated and unencrypted. The PC bridge listens on loopback.
-- Download [Install MeshCore Command.exe](https://github.com/Nortag82/MeshCore-Command/raw/refs/heads/main/downloads/Install%20MeshCore%20Command.exe), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
+- Download the installer from the [Preview 5 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v1.0.1-preview.5), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
 
 ## 1. Set up or connect a radio
 
 1. Start MeshCore Command. If your radio is already configured, select or enter its IP address. You can save several radios with names for future use.
 2. To find a radio, enter the appropriate local network subnet and choose **Scan network**. Progress shows probes attempted followed by a wait for replies; a probe is not proof that an address is reachable. If you use a VPN or multiple adapters, check that the selected subnet belongs to the Wi-Fi network. You can also enter the IP manually.
 3. Select **Connect**. Only one companion controller should use the radio connection at a time.
+
+The setup window hides while the radio window is open. The app protects an active radio session from another window on supported Windows webviews. If **Another tab active** persists, close any other Command windows and reconnect. The app must remain connected to receive messages and show alerts; the minimise-and-restore fix has not yet been verified with a live radio.
 
 For a new board, open **Set up a new board** or **Flash firmware**, choose the exact board and screen variant, select its COM port, and enter the 2.4 GHz Wi-Fi name and password. The app uses DHCP and shows the address once provisioning succeeds. The progress panel shows the current flashing stage, any per-image percentage reported by the tool, Wi-Fi setup and DHCP; expand the log for diagnostics. A suggested serial port is not proof of the board model. Flashing replaces firmware; preserve important data first. Existing settings or data from another firmware layout may not be accessible afterwards.
 
@@ -31,6 +33,8 @@ A **channel** is a group chat; a **flood scope** is a routing choice. MeshCore C
 2. Search for a conversation, or start a direct conversation from **Contacts**.
 3. Type a message and press **Enter** to send; use **Shift+Enter** for a new line. Right-click a message to copy text, reply with a quote or send a thumbs-up as an ordinary message.
 4. Use **Mute channel** to suppress notifications and unread badges for that channel. Messages remain available; word matches are still recorded silently.
+
+New direct, room and unmuted channel messages request a Windows tray alert and an app pop-up. Secure messages use the separate **Alert me to secure messages** setting in **Manage Secure Coms**. Message text is not included in these general alerts. The app and radio must be connected, and Windows can suppress tray alerts or sound. In Secure Coms, your messages are blue and incoming messages are red.
 
 To join a channel, select **Channels → Add channel**. A hashtag channel derives its key from its exact name and is readable by anyone who knows that name. For a private channel, enter or generate the shared key and share it securely with the other members. You can paste a `meshcore://channel/add` invite into the invite field to fill the name and key; verify them before adding. Keep the invite private because it contains the shared key. Choose the flood region separately. For example, ScotMesh recommends `sco` as the default Scotland scope and uses `ioi` for the Island of Ireland path. Check current local guidance before configuring repeaters.
 

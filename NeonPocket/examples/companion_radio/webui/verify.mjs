@@ -26,7 +26,7 @@ if (!header.includes("extern const size_t RCC6_WEB_UI_INDEX_GZ_LEN;")) throw new
 if (/<script\s+[^>]*src=|<link\s+[^>]*rel=[\"']stylesheet/i.test(html)) throw new Error("External runtime asset detected");
 if (html.includes('data-screen="nearby"') || html.includes('data-view="nearby"')) throw new Error("Nearby page should be removed");
 if (html.includes("location.reload")) throw new Error("Reload-based transport recovery detected");
-if (html.includes("navigator.locks")) throw new Error("Secure-context Web Locks dependency detected");
+if (!appSource.includes("if (navigator.locks?.request)")) throw new Error("Web Locks must remain optional for insecure firmware origins");
 if (appSource.includes(".getWaitingMessages(")) throw new Error("Destructive batch message drain detected");
 for (const required of ["this.drainTask = this.drainRetainedFrames()", "if (!this.ready) throw"]) {
   if (!appSource.includes(required)) throw new Error(`Takeover drain guard is missing ${required}`);

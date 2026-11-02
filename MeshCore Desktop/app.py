@@ -34,6 +34,8 @@ class API:
     def __init__(self):
         self._window = None
         self._bridge = None
+        self._radio_open_lock = threading.Lock()
+        self._radio_window = None
         self._state = {'busy': False, 'message': 'Ready.', 'log': '', 'ip': '', 'key': '', 'flash_phase': 'idle', 'flash_progress': None, 'scan_phase': 'idle', 'scan_sent': 0, 'scan_total': 0, 'scan_remaining': None, 'scan_failed': 0}
         self._lock = threading.Lock()
         self._startup_ready = threading.Event()
@@ -275,13 +277,21 @@ class API:
                 return {'error': 'Could not read the backup file.'}
         return save_secure_backup, open_secure_backup
 
-    def open_serial(self, port):
+    def _open_radio(self, address, serial_port=False):
+        if not self._radio_open_lock.acquire(blocking=False):
+            return {'error':'A radio connection is already opening.'}
         try:
-            if port not in [p.device for p in list_ports.comports()]: return {'error':'Select an available USB COM port.'}
-            if self._bridge: self._bridge.close()
-            self._bridge = CompanionBridge(None, ROOT/'radio.html', serial_port=port)
-            radio = webview.create_window('MeshCore Command — '+port, self._bridge.url, width=1250,height=850,min_size=(800,600),fullscreen=True)
+            if self._radio_window is not None:
+                return {'error':'A radio window is already open. Close it before connecting another radio.'}
+            if serial_port:
+                if address not in [p.device for p in list_ports.comports()]: return {'error':'Select an available USB COM port.'}
+                self._bridge = CompanionBridge(None, ROOT/'radio.html', serial_port=address)
+            else:
+                address=str(ipaddress.IPv4Address(address))
+                self._bridge = CompanionBridge(address, ROOT/'radio.html')
             active_bridge=self._bridge
+            radio = webview.create_window('MeshCore Command — '+address, active_bridge.url, width=1250,height=850,min_size=(800,600),fullscreen=True)
+            self._radio_window=radio
             def choose_offline_map():
                 try:
                     files=radio.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=False, file_types=('Offline maps (*.mbtiles;*.pmtiles)',))
@@ -289,28 +299,29 @@ class API:
                     return active_bridge.set_offline_map(files[0])
                 except Exception as error: return {'error': str(error)}
             radio.expose(radio.toggle_fullscreen, radio.minimize, self.exit_app, choose_offline_map, *self._backup_dialogs(radio))
-            radio.events.closed += lambda: active_bridge.close()
+            def radio_closed():
+                active_bridge.close()
+                if self._radio_window is radio:
+                    self._radio_window=None
+                    self._bridge=None
+                    self._window.show()
+            radio.events.closed += radio_closed
+            self._window.hide()
             return {'ok':True}
-        except Exception as e: return {'error':str(e)}
-
-    def open_device(self, ip):
-        try:
-            ip=str(ipaddress.IPv4Address(ip))
+        except Exception as e:
             if self._bridge:
                 self._bridge.close()
-            self._bridge = CompanionBridge(ip, ROOT/'radio.html')
-            radio = webview.create_window('MeshCore Command — '+ip, self._bridge.url, width=1250,height=850,min_size=(800,600),fullscreen=True)
-            active_bridge=self._bridge
-            def choose_offline_map():
-                try:
-                    files=radio.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=False, file_types=('Offline maps (*.mbtiles;*.pmtiles)',))
-                    if not files: return {'cancelled': True}
-                    return active_bridge.set_offline_map(files[0])
-                except Exception as error: return {'error': str(error)}
-            radio.expose(radio.toggle_fullscreen, radio.minimize, self.exit_app, choose_offline_map, *self._backup_dialogs(radio))
-            radio.events.closed += lambda: active_bridge.close()
-            return {'ok':True}
-        except Exception as e: return {'error':str(e)}
+                self._bridge=None
+            self._radio_window=None
+            return {'error':str(e)}
+        finally:
+            self._radio_open_lock.release()
+
+    def open_serial(self, port):
+        return self._open_radio(port, serial_port=True)
+
+    def open_device(self, ip):
+        return self._open_radio(ip)
 
 def show_startup_splash(ready):
     """Keep a small native loading window responsive while WebView starts."""

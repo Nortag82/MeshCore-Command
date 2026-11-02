@@ -19,7 +19,7 @@ const POLL_DELAY_MS = 90;
 const COMMAND_TIMEOUT_MS = 30000;
 const MAX_RECOVERY_ATTEMPTS = 2;
 const RADIO_LEASE_KEY = "rcc6-radio-owner";
-const RADIO_LEASE_MS = 7000;
+const RADIO_LEASE_MS = 120000;
 const RADIO_HEARTBEAT_MS = 2000;
 const $ = (id) => document.getElementById(id);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -58,6 +58,10 @@ class HttpPollingConnection extends Connection {
     this.connecting = false;
     this.drainTask = null;
     this.leaseTimer = null;
+    this.webLockHeld = false;
+    this.releaseWebLock = null;
+    this.webLockRequest = null;
+    this.releasePending = null;
     this.storageListening = false;
     this.onStorage = (event) => {
       if (event.key === RADIO_LEASE_KEY && this.running && !this.ownsLease()) this.handleLeaseLoss();
@@ -77,6 +81,7 @@ class HttpPollingConnection extends Connection {
     if (this.running || this.connecting) return;
     this.connecting = true;
     try {
+      if (this.releasePending) { await this.releasePending; this.releasePending = null; }
       if (!this.storageListening) {
         window.addEventListener("storage", this.onStorage);
         this.storageListening = true;
@@ -107,7 +112,7 @@ class HttpPollingConnection extends Connection {
     try { await this.drainTask; } catch { /* aborted */ }
     try { await this.pollTask; } catch { /* aborted */ }
     if (wasReady) this.onDisconnected();
-    this.releaseLease();
+    await this.releaseLease();
     if (this.storageListening) window.removeEventListener("storage", this.onStorage);
     this.storageListening = false;
   }
@@ -120,8 +125,9 @@ class HttpPollingConnection extends Connection {
   }
 
   ownsLease() {
+    if (this.webLockHeld) return true;
     const lease = this.readLease();
-    return lease?.owner === TAB_OWNER_ID && lease.expires > Date.now();
+    return lease?.owner === TAB_OWNER_ID;
   }
 
   writeLease() {
@@ -132,6 +138,18 @@ class HttpPollingConnection extends Connection {
   }
 
   async claimLease() {
+    if (navigator.locks?.request) {
+      let report;
+      const claimed = new Promise(resolve => { report = resolve; });
+      this.webLockRequest = navigator.locks.request(RADIO_LEASE_KEY, {ifAvailable:true}, async lock => {
+        if (!lock) { report(false); return; }
+        this.webLockHeld = true;
+        report(true);
+        await new Promise(resolve => { this.releaseWebLock = resolve; });
+        this.webLockHeld = false;
+      }).catch(() => report(false));
+      return claimed;
+    }
     const current = this.readLease();
     if (current && current.owner !== TAB_OWNER_ID && current.expires > Date.now()) return false;
     if (!this.writeLease()) return false;
@@ -158,8 +176,15 @@ class HttpPollingConnection extends Connection {
     this.emit("transport-busy");
   }
 
-  releaseLease() {
+  async releaseLease() {
     this.stopHeartbeat();
+    if (this.releaseWebLock) {
+      const release=this.releaseWebLock, request=this.webLockRequest;
+      this.releaseWebLock=null; this.webLockHeld=false; release();
+      await request;
+      this.webLockRequest=null;
+      return;
+    }
     try {
       if (this.readLease()?.owner === TAB_OWNER_ID) localStorage.removeItem(RADIO_LEASE_KEY);
     } catch { /* storage unavailable */ }
@@ -169,7 +194,7 @@ class HttpPollingConnection extends Connection {
     this.running = false;
     this.ready = false;
     this.abortController?.abort();
-    this.releaseLease();
+    this.releasePending = this.releaseLease();
   }
 
   async sendToRadioFrame(data) {
