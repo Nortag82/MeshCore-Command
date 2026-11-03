@@ -1,3 +1,4 @@
+import {readRepeatEligibility,setCompanionRepeat} from './repeat-mode.js';
 import {createImageSharing} from './image-sharing.js';
 import {createSecureGroups} from './secure-groups.js';
 import {createTxActivity} from './tx-activity.js';
@@ -1493,6 +1494,12 @@ async function readPathHash(radio) { return pathHashCommand(radio,new Uint8Array
 function displayPathHash(mode) { $('setting-path-hash').value=String(mode);text('path-hash-status',`Current radio setting: ${mode+1} byte${mode?'s':''} per hop.`); }
 $('read-path-hash').onclick=async()=>{if(!state.connected){text('path-hash-status','Connect the radio first.');return}const button=$('read-path-hash'),radio=connection;button.disabled=true;text('path-hash-status','Reading current setting…');try{const mode=await exclusive(()=>readPathHash(radio));if(connection!==radio||!state.connected)throw Error('Radio connection changed.');displayPathHash(mode)}catch(e){text('path-hash-status',e?.message||'Could not read path size.')}finally{button.disabled=false}};
 $('path-hash-form').onsubmit=async event=>{event.preventDefault();const chosen=$('setting-path-hash').value,mode=Number(chosen);if(!state.connected){text('path-hash-status','Connect the radio first.');return}if(chosen===''||![0,1,2].includes(mode)){text('path-hash-status','Choose a path size.');return}const radio=connection,button=event.currentTarget.querySelector('button[type=submit]');button.disabled=true;text('path-hash-status','Saving and checking…');try{const actual=await exclusive(async()=>{await pathHashCommand(radio,new Uint8Array([61,0,mode]),Constants.ResponseCodes.Ok);return readPathHash(radio)});if(connection!==radio||!state.connected)throw Error('Radio connection changed.');if(actual!==mode)throw Error(`Radio reports ${actual+1} byte(s); the requested setting was not confirmed.`);displayPathHash(actual);toast('Path size saved and verified.')}catch(e){text('path-hash-status',e?.message||'Could not verify path size.')}finally{button.disabled=false}};
+function repeatSummary(info){const allowed=info.ranges.map(r=>r.low===r.high?`${(r.low/1000).toFixed(3)} MHz`:`${(r.low/1000).toFixed(3)}–${(r.high/1000).toFixed(3)} MHz`).join(', ');return `Current: ${(info.self.radioFreq/1000).toFixed(3)} MHz · ${info.allowed?'permitted':'not permitted'} for companion repeat. Radio-reported frequencies: ${allowed}.`}
+async function repeatAction(mode){
+ const output=$('companion-repeat-status');if(!state.connected){output.textContent='Connect the radio first.';return}const radio=connection,buttons=['repeat-check','repeat-enable','repeat-disable'].map(id=>$(id));buttons.forEach(b=>b.disabled=true);output.textContent='Checking the radio…';
+ try{const info=await exclusive(()=>mode==='check'?readRepeatEligibility(radio,Constants.SupportedCompanionProtocolVersion):setCompanionRepeat(radio,mode==='enable',Constants.SupportedCompanionProtocolVersion));if(connection!==radio||!state.connected)throw Error('Radio connection changed; the result cannot be confirmed.');output.textContent=mode==='check'?`${repeatSummary(info)} The current on/off state is not reported.`:`Radio accepted the request to ${mode} companion repeat. ${repeatSummary(info)} This firmware does not report the on/off state for verification.`}catch(error){output.textContent=error?.message||'Could not check companion repeat.'}finally{buttons.forEach(b=>b.disabled=false)}
+}
+$('repeat-check').onclick=()=>void repeatAction('check');$('repeat-enable').onclick=()=>void repeatAction('enable');$('repeat-disable').onclick=()=>void repeatAction('disable');
 function settingForm(id, action) {
   $(id).addEventListener("submit", async event => {
     event.preventDefault();
@@ -1515,8 +1522,8 @@ settingForm("node-name-form", async () => {
 $("uk-preset-button").addEventListener("click", () => {
   $("setting-freq").value = "869.618"; $("setting-bw").value = "62.5"; $("setting-sf").value = "8"; $("setting-cr").value = "8";
 });
-settingForm("radio-settings-form", () => connection.setRadioParams(
-  Math.round(Number($("setting-freq").value) * 1000), Math.round(Number($("setting-bw").value) * 1000), Number($("setting-sf").value), Number($("setting-cr").value)));
+settingForm("radio-settings-form", async () => {await connection.setRadioParams(
+  Math.round(Number($("setting-freq").value) * 1000), Math.round(Number($("setting-bw").value) * 1000), Number($("setting-sf").value), Number($("setting-cr").value));text("companion-repeat-status", "Radio settings were saved with companion repeat disabled. The radio does not report its on/off state.");});
 settingForm("power-settings-form", () => connection.setTxPower(Number($("setting-power").value)));
 settingForm("contacts-settings-form", () => connection.setOtherParams(Number($("setting-contacts").value) === 1));
 settingForm("location-settings-form", () => connection.setAdvertLatLong(Math.round(Number($("setting-lat").value) * 1000000), Math.round(Number($("setting-lon").value) * 1000000)));

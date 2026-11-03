@@ -1,6 +1,6 @@
 # MeshCore Command screenshots
 
-Screens show the version 2.0.1 interface with simulated contacts, messages, addresses, telemetry, thumbnails and map markers. The example address belongs to a documentation-only network. Map data © OpenStreetMap contributors.
+Screens show the version 2.0.2 interface with simulated contacts, messages, addresses, telemetry, thumbnails and map markers. The example address belongs to a documentation-only network. Map data © OpenStreetMap contributors.
 
 ## Connect
 
@@ -121,3 +121,9 @@ Review radio information and activity.
 Configure radio and MeshCore settings.
 
 ![Settings screen](images/settings.png)
+
+## Off-grid companion repeat
+
+Check the connected radio's permitted frequencies and request companion repeat on or off without changing the radio frequency.
+
+![Off-grid companion repeat controls](images/off-grid-repeat.png)

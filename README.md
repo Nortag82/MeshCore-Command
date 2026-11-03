@@ -5,11 +5,15 @@ A Windows desktop companion for controlling a Wi-Fi connected MeshCore radio, wi
 This repository contains the desktop source in `MeshCore Desktop/` and the modified companion firmware and interface sources in `NeonPocket/`. The firmware tree is based on [NeonPocketMC](https://github.com/n30nex/NeonPocketMC-Heltec-V4) and retains its license files and upstream notices. See [desktop documentation](MeshCore%20Desktop/README.md) for features and device support.
 
 
-The current installer build is **2.0.1**. Secure groups are local recipient lists that send individual encrypted messages; no group key is needed. The separate [secure pairing research prototype](experimental/secure-pairing/) is not integrated. Command discovery still uses Public.
+The current installer build is **2.0.2**. Secure groups are local recipient lists that send individual encrypted messages; no group key is needed. The separate [secure pairing research prototype](experimental/secure-pairing/) is not integrated. Command discovery still uses Public.
+
+Version 2.0.2 adds an opt-in control for MeshCore's off-grid companion-repeat mode. The app checks the radio's permitted frequency list and does not change frequency automatically. UK Narrow (869.618 MHz) is not allowed by the bundled firmware's default companion-repeat list. See the [manual](docs/USER-MANUAL.md#off-grid-companion-repeat).
+
+![Off-grid companion repeat controls](docs/images/off-grid-repeat.png)
 
 ## Download for Windows
 
-Download the [version 2.0.1 Windows installer](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.1), then follow the [user manual](docs/USER-MANUAL.md). The release page lists the installer checksum. Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.
+Download the [version 2.0.2 Windows installer](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.2), then follow the [user manual](docs/USER-MANUAL.md). The release page lists the installer checksum. Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.
 
 ## A look inside
 

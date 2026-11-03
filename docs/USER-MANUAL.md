@@ -1,13 +1,13 @@
 # MeshCore Command user manual
 
-MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.1. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
+MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.2. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
 
 ## Before you start
 
 - You need Windows, the Edge WebView2 runtime, a compatible Wi-Fi radio and an appropriate LoRa antenna. Connect the antenna before powering or transmitting with the radio.
 - The PC and radio need network access to each other. The companion connection uses TCP port 5000; discovery uses UDP port 5010.
 - Use a trusted local network: the companion protocol itself is unauthenticated and unencrypted. The PC bridge listens on loopback.
-- Download the installer from the [version 2.0.1 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.1), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
+- Download the installer from the [version 2.0.2 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.2), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
 
 ## 1. Set up or connect a radio
 
@@ -26,6 +26,12 @@ The supported choices include Heltec V3, V4 and V4 R8 variants, Heltec Wireless 
 Open **Settings** to change the radio name and other settings. **ScotMesh setup check** reads the radio's default scope and checks its settings against EU/UK Narrow. The **Set radio default to sco** button writes the scope and reads it back. For other networks, confirm the appropriate radio preset and scopes with the local community.
 
 A **channel** is a group chat; a **flood scope** is a routing choice. MeshCore Command remembers channel scope selections locally for each radio and channel. A channel choice does not change the radio's default scope, which also affects default-scoped flood adverts. Direct routes do not use a flood scope. Incoming messages may say the region was not reported when the radio does not provide it.
+
+### Off-grid companion repeat
+
+In **Settings → Off-grid companion repeat**, choose **Check current frequency** to ask the connected radio which frequencies it permits for companion repeat. On an allowed frequency, **Enable off-grid repeat** requests forwarding while the board continues to operate as a companion. **Disable repeat** requests that forwarding stop. The control preserves the radio's current frequency, bandwidth, spreading factor and coding rate; it does not change the network for you. The radio may acknowledge the request without reporting its actual repeat on/off state, so an accepted request is not independent verification that packets are being forwarded.
+
+This is MeshCore's standard off-grid companion mode, intended for small temporary networks without established repeater infrastructure; it is not a remotely managed repeater. The firmware supplied with this app permits 869.495 MHz, not UK Narrow at 869.618 MHz. To use an off-grid network, all participants must configure matching radio settings; changing frequency disconnects you from your previous mesh until you restore those settings. Saving **Radio** settings in this app turns companion repeat off, so re-enable it after changing the radio settings if needed. Use the radio's reported frequency list rather than assuming every firmware permits the same frequencies.
 
 ## 3. Messages and channels
 
