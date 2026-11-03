@@ -20,6 +20,8 @@ The MeshCore TCP companion protocol is unauthenticated and unencrypted, and the 
 
 ## Secure message alerts
 
+If a Secure Coms contact entry is missing but its secret remains in Windows Credential Manager, select the contact in **Manage Secure Coms** and choose **Recover saved secret**. The entry is restored unverified; messages and replay history are not recovered. Exchange a new secret through a trusted channel to restore replay protection, and compare fingerprints before verifying.
+
 Incoming direct, room and unmuted channel messages request a Windows tray notification and an app pop-up. Incoming authenticated Secure Coms chat messages also show an unread badge and use the separate **Alert me to secure messages** setting; **Test secure alert** checks the alert path. These general alerts do not contain message text or contact names. The app and radio connection must be open; Windows notification and focus settings can suppress tray pop-ups or sounds. Situation-map updates do not trigger chat alerts.
 
 ## Repeaters and terrain

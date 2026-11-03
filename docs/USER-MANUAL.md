@@ -1,13 +1,13 @@
 # MeshCore Command user manual
 
-MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 1.0.1-preview.5. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
+MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 1.0.1-preview.6. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
 
 ## Before you start
 
 - You need Windows, the Edge WebView2 runtime, a compatible Wi-Fi radio and an appropriate LoRa antenna. Connect the antenna before powering or transmitting with the radio.
 - The PC and radio need network access to each other. The companion connection uses TCP port 5000; discovery uses UDP port 5010.
 - Use a trusted local network: the companion protocol itself is unauthenticated and unencrypted. The PC bridge listens on loopback.
-- Download the installer from the [Preview 5 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v1.0.1-preview.5), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
+- Download the installer from the [Preview 6 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v1.0.1-preview.6), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
 
 ## 1. Set up or connect a radio
 
@@ -76,6 +76,8 @@ On **Word alerts**, enter one word or phrase per line and save. The app checks n
 ## 7. Secure Coms
 
 Both participants need a compatible MeshCore Command installation and a MeshCore chat contact. In **Manage Secure Coms**, one person generates a secret, shares it with the other person through a trusted separate channel, and both save it. Compare the displayed fingerprints using a trusted channel before marking the contact verified.
+
+If a contact entry is missing but its secret remains in Windows Credential Manager, connect the same radio, select the contact in **Manage Secure Coms**, and choose **Recover saved secret**. The contact is restored as unverified. This does not recover missing messages or replay-protection history; exchange a new secret privately to restore replay protection, then compare fingerprints before verifying.
 
 Secure Coms encrypts on the PC using AES-256-GCM and sends the encrypted content over MeshCore direct messages. It is experimental, has not had an independent security audit and does not provide forward secrecy or protect a compromised PC. Messages are short because of packet limits. New outgoing messages can show a radio delivery acknowledgement; this does not prove that the receiving app decrypted or a person read the message. Earlier messages cannot be retrospectively confirmed.
 
