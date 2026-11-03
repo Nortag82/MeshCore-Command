@@ -13,7 +13,7 @@ MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore 
 
 1. Start MeshCore Command. If your radio is already configured, select or enter its IP address. You can save several radios with names for future use.
 2. To find a radio, enter the appropriate local network subnet and choose **Scan network**. Progress shows probes attempted followed by a wait for replies; a probe is not proof that an address is reachable. If you use a VPN or multiple adapters, check that the selected subnet belongs to the Wi-Fi network. You can also enter the IP manually.
-3. Select **Connect**. Only one companion controller should use the radio connection at a time.
+3. Select **Connect**. An animated loading screen appears for at least six seconds while the radio view opens. Only one companion controller should use the radio connection at a time.
 
 The setup window hides while the radio window is open. The app protects an active radio session from another window on supported Windows webviews. If **Another tab active** persists, close any other Command windows and reconnect. The app must remain connected to receive messages and show alerts; the minimise-and-restore fix has not yet been verified with a live radio.
 
@@ -43,6 +43,8 @@ Select a conversation and use **Edit** or **Delete** in its header. Editing a ch
 Right-click a message and choose **Delete from this PC** to remove its local copy. For a sent message, **Edit and send a correction** prepares a new message; review it and send it yourself. Previously delivered messages cannot be edited or deleted on other devices.
 
 A delivery tick or acknowledgement applies only when the protocol reports one; a queued message is not proof that it was received or read. Channel broadcasts do not offer individual delivery confirmation for every recipient.
+
+The **TX** and **RX** indicators at the top summarize activity observed by the app. Select **TX** to open the transmission status panel and review recent queue results and radio acknowledgements. Packet counters update periodically; the indicators are not continuous measurements of radio airtime. A radio acknowledgement does not establish that a person read a message.
 
 ### Room servers
 
@@ -115,7 +117,7 @@ To draw an area, choose **Area** or **Out of bounds**, enter a short name, click
 
 Use **Share with** to select verified contacts or apply a local group. With no recipients selected, new objects stay on this PC. Changes to previously shared markers also go to their previous recipients after confirmation. **Send picture to selected** queues new and changed markers and areas separately for each selected recipient; previously confirmed revisions are skipped. In **More sharing options**, select **Force full picture** to resend confirmed objects, or opt in to forwarding received markers.
 
-The sharing queue runs while you use the app, survives restart, and resumes after your radio reconnects. Unconfirmed updates are retried with increasing delays. **Pause queue** stops further attempts; use **Resume queue** to continue. Changes to an object waiting in the queue replace its older queued revision. The object confirmations panel shows each recipient's result and provides an individual retry. A pending deletion can be removed from your local lists without claiming the other person deleted it. App acknowledgements indicate a saved update, not that someone saw it. The experimental protocol is not ATAK compatible.
+The sharing queue runs while you use the app, survives restart, and resumes after your radio reconnects. Unconfirmed updates are retried with increasing delays. **Pause queue** stops further attempts; use **Resume queue** to continue. Changes to an object waiting in the queue replace its older queued revision. The object confirmations panel shows each recipient's result and provides an individual retry. A pending deletion can be removed from your local lists without claiming the other person deleted it. Select **Show locally removed** in the confirmations panel to restore it to the list; a later picture send can still retry a pending deletion. App acknowledgements indicate a saved update, not that someone saw it. The experimental protocol is not ATAK compatible.
 
 For an offline background, open **Settings**, select **Select download area**, click two opposite corners on the map, choose a detail level and select **Download area**. The initial download needs internet and obtains a verified Protomaps helper. Larger areas or higher detail take more space and time. You can also import a Protomaps vector PMTiles file or raster MBTiles file. Online maps include light and dark street styles. The downloaded background works offline within its saved area and zoom levels. Terrain coverage calculations require separate online elevation data.
 
@@ -127,6 +129,7 @@ For an offline background, open **Settings**, select **Select download area**, c
 - **No telemetry or status:** check reachability, compatible firmware and permissions. A timeout does not establish why a node did not respond.
 - **No desktop alert:** use the test button and check Windows notification and focus settings; keep the app connected.
 - **Missing room history:** check login and the saved direct route. Only retained posts the server can provide can be requested.
+- **Image transfer not confirmed:** check that both installations support Secure Images, both radios are connected, and the contact is verified in Secure Coms. A weak link can delay or interrupt individual packets. If the transfer stops, start it again; incomplete images are not displayed.
 - **Unsupported request or old firmware:** a control may be unavailable even if it appears in the interface. Read the response before retrying or changing settings.
 
 For local Scotland guidance, see the [ScotMesh MeshCore FAQ](https://wiki.scotmesh.uk/en/MeshCore/faq). For implementation details and limitations, see the [desktop notes](../MeshCore%20Desktop/README.md).

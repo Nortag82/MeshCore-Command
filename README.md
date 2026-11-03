@@ -31,6 +31,8 @@ Version 2.0 adds a persistent sharing queue with automatic retries, pause and re
 
 Convert an image on your PC into a small JPEG thumbnail, preview its size and packet count, and send it to a verified Secure Coms contact. Both installations need the image-enabled update. Each encrypted packet is confirmed separately, so transfers can take several minutes and use substantial mesh airtime. Received thumbnails are stored locally on the PC. See the [manual](docs/USER-MANUAL.md#secure-images) for details and limitations.
 
+![Secure Images page showing a simulated converted image and received thumbnail](docs/images/secure-images.png)
+
 ### Find other Command users
 
 In **Manage Secure Coms**, use **Discover Command installs** to send a discovery request on the Public channel using the radio's default flood scope. Other compatible, running Command installations can respond. Responses announce their public key and app presence, and automatic responses can be turned off. Discovery replies are unverified and can be spoofed: exchange a secret privately and compare fingerprints before trusting a contact. Other MeshCore apps may display discovery traffic as ordinary channel messages.
@@ -50,6 +52,10 @@ See radio status, recent activity, monitored nodes and quick actions in one plac
 Switch between direct messages, channels and rooms; unread counts show which tabs and conversations have new messages. Choose a flood scope for a channel.
 
 ![Example channel conversation and flood scope selector](docs/images/messages.png)
+
+The TX and RX indicators summarize observed activity. Open TX to inspect recent queue and acknowledgement results; these indicators do not show continuous radio airtime.
+
+![Transmission status panel showing a simulated radio acknowledgement](docs/images/transmission-status.png)
 
 ### Elevation finder
 

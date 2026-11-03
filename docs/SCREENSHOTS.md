@@ -1,6 +1,6 @@
 # MeshCore Command screenshots
 
-Screens show the current interface with simulated contacts, messages, addresses, telemetry and map markers. Map data © OpenStreetMap contributors.
+Screens show the version 2.0.1 interface with simulated contacts, messages, addresses, telemetry, thumbnails and map markers. The example address belongs to a documentation-only network. Map data © OpenStreetMap contributors.
 
 ## Connect
 
@@ -40,7 +40,7 @@ View known locations and packet information.
 
 ## Secure Situation Map
 
-Use the floating toolbar to create markers and areas and share them with selected secure contacts or a group.
+Use the floating toolbar to create markers and areas and share them with selected secure contacts or a group. The confirmations panel shows per-contact results and retries.
 
 ![Situation map screen](images/situation-map.png)
 
@@ -49,6 +49,12 @@ Use the floating toolbar to create markers and areas and share them with selecte
 Send encrypted messages to individual contacts.
 
 ![Secure Coms Messages screen](images/secure-coms.png)
+
+## Secure images
+
+Convert and preview a thumbnail, review the packet count and choose a verified recipient. Received thumbnails appear on the right.
+
+![Secure images screen with a converted sample and received thumbnail](images/secure-images.png)
 
 ## Secure groups
 
@@ -67,6 +73,12 @@ Manage secure contacts, verify fingerprints and arrange local groups.
 Export or import an encrypted backup of secure settings.
 
 ![Secure Coms backup](images/secure-backup.png)
+
+## Transmission status
+
+Open the TX indicator to see recent queue and radio acknowledgement results. These indicators do not show continuous radio airtime.
+
+![Transmission status panel over the Messages page](images/transmission-status.png)
 
 ## Situation map settings
 
