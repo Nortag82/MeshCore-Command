@@ -63,7 +63,6 @@ SOFTWARE.
         <button data-view="contacts"><svg><use href="#i-near"/></svg><span>Contacts</span></button><button data-view="contactmap"><svg><use href="#i-near"/></svg><span>Contact map</span></button>
         <button data-view="situation"><svg><use href="#i-near"/></svg><span>Secure Situation Map</span></button>
         <button data-view="secure"><svg><use href="#i-msg"/></svg><span>Secure Coms Messages</span><b id="secure-unread" hidden>0</b></button>
-        <button data-view="images"><svg><use href="#i-msg"/></svg><span>Secure images</span></button>
         <button data-view="secure-manage"><svg><use href="#i-more"/></svg><span>Manage Secure Coms</span></button>
         <button data-view="watch"><svg><use href="#i-msg"/></svg><span>Word alerts</span></button>
         <button data-view="monitoring"><svg><use href="#i-radio"/></svg><span>Monitoring</span></button><button data-view="repeaters"><svg><use href="#i-near"/></svg><span>Repeaters</span></button><button data-view="terrain"><svg><use href="#i-near"/></svg><span>Terrain tools</span></button>
@@ -147,11 +146,6 @@ SOFTWARE.
             </article>
           </div>
         </div>
-      </section>
-
-      <section class="screen" data-screen="images">
-        <div class="section-head page-head"><div><p class="eyebrow">PRIVATE APP-TO-APP</p><h2>Secure images</h2><p>Convert a small thumbnail and send it to a verified Secure Coms contact.</p></div></div>
-        <div class="secure-image-layout"><section class="card secure-image-panel"><h3>Prepare an image</h3><p class="quiet">Images are converted on this PC. Both people need this version of MeshCore Command and a verified Secure Coms connection.</p><label for="image-file">Choose an image (up to 10 MB)</label><input id="image-file" type="file" accept="image/*"><label for="image-size">Maximum dimension</label><select id="image-size"><option value="48">48 pixels · fewer packets</option><option value="64" selected>64 pixels</option><option value="96">96 pixels · more packets</option></select><button type="button" class="secondary-button" id="image-convert">Convert and preview</button><div class="secure-image-preview"><img id="image-preview" alt="Converted image preview" hidden><p id="image-info" class="quiet">Choose and convert an image to see its size.</p></div><label for="image-contact">Send to</label><select id="image-contact"><option value="">Choose a verified secure contact</option></select><div class="action-buttons"><button type="button" class="primary-button" id="image-send" disabled>Send image</button><button type="button" class="secondary-button" id="image-cancel" disabled>Stop sending</button></div><p id="image-status" aria-live="polite">Images require multiple radio packets and may take several minutes.</p></section><section class="card secure-image-panel"><h3>Received images</h3><p class="quiet">Images are saved on this PC. Select Save image to export a copy.</p><div id="image-inbox" class="secure-image-inbox"></div></section></div>
       </section>
 
       <section class="screen" data-screen="contacts">

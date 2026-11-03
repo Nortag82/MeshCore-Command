@@ -1,6 +1,6 @@
 # MeshCore Command screenshots
 
-Screens show the version 2.0.2 interface with simulated contacts, messages, addresses, telemetry, thumbnails and map markers. The example address belongs to a documentation-only network. Map data © OpenStreetMap contributors.
+Screens show the version 2.0.3 interface with simulated contacts, messages, addresses, telemetry and map markers. The example address belongs to a documentation-only network. Map data © OpenStreetMap contributors.
 
 ## Connect
 
@@ -49,12 +49,6 @@ Use the floating toolbar to create markers and areas and share them with selecte
 Send encrypted messages to individual contacts.
 
 ![Secure Coms Messages screen](images/secure-coms.png)
-
-## Secure images
-
-Convert and preview a thumbnail, review the packet count and choose a verified recipient. Received thumbnails appear on the right.
-
-![Secure images screen with a converted sample and received thumbnail](images/secure-images.png)
 
 ## Secure groups
 
