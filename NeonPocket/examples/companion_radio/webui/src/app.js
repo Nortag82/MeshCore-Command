@@ -321,7 +321,7 @@ const state = {
   ultimateSettings: null,
   historyNode: "",
 };
-const txActivity=createTxActivity({document,getView:()=>state.view});
+const txActivity=createTxActivity({document});
 
 let connection = new HttpPollingConnection();
 let commandTail = Promise.resolve();
@@ -1663,10 +1663,6 @@ function updateComposeCount() {
 }
 
 function bindConnectionEvents(radio) {
-  for (const [method,kind,isChannel] of [['sendTextMessage','Direct message',false],['sendChannelTextMessage','Channel message',true]]) {
-    const original=radio[method].bind(radio);
-    radio[method]=async (...args)=>{const record=txActivity.begin(kind);try{const response=await original(...args);txActivity.queued(record,response,radio,isChannel);return response}catch(error){txActivity.failed(record);throw error}};
-  }
   radio.on(Constants.ResponseCodes.ContactMsgRecv, (message) => { unannouncedMessages += ingestWaiting({ contactMessage: message }); });
   radio.on(Constants.ResponseCodes.ChannelMsgRecv, (message) => { unannouncedMessages += ingestWaiting({ channelMessage: message }); });
   radio.on("connected", () => {
@@ -1696,7 +1692,6 @@ function bindConnectionEvents(radio) {
   });
   radio.on(Constants.PushCodes.Advert, () => { if (radio.ready) exclusive(refreshContacts).catch(() => {}); });
   radio.on(Constants.PushCodes.SendConfirmed, (confirmation) => {
-    txActivity.acknowledge(confirmation.ackCode,radio);
     const pending = [...state.messages].reverse().find((item) => item.direction === "out" && (item.key.startsWith("dm:") || item.key.startsWith("room:")) && item.status === "queued" && Number.isInteger(item.expectedAckCrc) && item.expectedAckCrc === confirmation.ackCode);
     if (pending) { pending.status = "delivered"; persistHistory(); renderMessages(); toast(pending.key.startsWith("room:") ? "Delivered to room server" : "Direct message delivered"); }
     else if (Number.isInteger(confirmation.ackCode) && !secureComs.noteRadioAck(radio, confirmation.ackCode)) { recentAcks.push({code: confirmation.ackCode, time: Date.now()}); while (recentAcks.length > 40 || recentAcks[0]?.time < Date.now() - 60000) recentAcks.shift(); }

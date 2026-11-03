@@ -1,6 +1,6 @@
 # MeshCore Command screenshots
 
-Screens show the version 2.0.3 interface with simulated contacts, messages, addresses, telemetry and map markers. The example address belongs to a documentation-only network. Map data © OpenStreetMap contributors.
+Screens show the version 2.0.4 interface with simulated contacts, messages, addresses, telemetry and map markers. The example address belongs to a documentation-only network. Map data © OpenStreetMap contributors.
 
 ## Connect
 
@@ -67,12 +67,6 @@ Manage secure contacts, verify fingerprints and arrange local groups.
 Export or import an encrypted backup of secure settings.
 
 ![Secure Coms backup](images/secure-backup.png)
-
-## Transmission status
-
-Open the TX indicator to see recent queue and radio acknowledgement results. These indicators do not show continuous radio airtime.
-
-![Transmission status panel over the Messages page](images/transmission-status.png)
 
 ## Situation map settings
 
