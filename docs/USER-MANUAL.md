@@ -1,13 +1,13 @@
 # MeshCore Command user manual
 
-MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 1.0.1-preview.6. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
+MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.0. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
 
 ## Before you start
 
 - You need Windows, the Edge WebView2 runtime, a compatible Wi-Fi radio and an appropriate LoRa antenna. Connect the antenna before powering or transmitting with the radio.
 - The PC and radio need network access to each other. The companion connection uses TCP port 5000; discovery uses UDP port 5010.
 - Use a trusted local network: the companion protocol itself is unauthenticated and unencrypted. The PC bridge listens on loopback.
-- Download the installer from the [Preview 6 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v1.0.1-preview.6), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
+- Download the installer from the [version 2.0 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.0), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
 
 ## 1. Set up or connect a radio
 
@@ -107,7 +107,9 @@ The floating toolbar provides **Marker**, **Area**, **Out of bounds**, **Share**
 
 To draw an area, choose **Area** or **Out of bounds**, enter a short name, click three to eight corners and finish. Large shapes are split into acknowledged encrypted packets, with retries; the receiving app needs the multi-packet update and both sides must remain connected during transfer. The app shows complete areas only after assembly. Out-of-bounds areas are visual planning aids and do not enforce boundaries.
 
-Use **Share with** to select verified contacts or apply a local group. With no recipients selected, new objects stay on this PC. Changes to previously shared markers also go to their previous recipients after confirmation. **Send picture to selected** sends your markers and areas to selected recipients; forwarding markers received from others is an explicit option. App acknowledgements indicate a saved update, not that someone saw it. The experimental protocol is not ATAK compatible.
+Use **Share with** to select verified contacts or apply a local group. With no recipients selected, new objects stay on this PC. Changes to previously shared markers also go to their previous recipients after confirmation. **Send picture to selected** queues new and changed markers and areas separately for each selected recipient; previously confirmed revisions are skipped. In **More sharing options**, select **Force full picture** to resend confirmed objects, or opt in to forwarding received markers.
+
+The sharing queue runs while you use the app, survives restart, and resumes after your radio reconnects. Unconfirmed updates are retried with increasing delays. **Pause queue** stops further attempts; use **Resume queue** to continue. Changes to an object waiting in the queue replace its older queued revision. The object confirmations panel shows each recipient's result and provides an individual retry. A pending deletion can be removed from your local lists without claiming the other person deleted it. App acknowledgements indicate a saved update, not that someone saw it. The experimental protocol is not ATAK compatible.
 
 For an offline background, open **Settings**, select **Select download area**, click two opposite corners on the map, choose a detail level and select **Download area**. The initial download needs internet and obtains a verified Protomaps helper. Larger areas or higher detail take more space and time. You can also import a Protomaps vector PMTiles file or raster MBTiles file. Online maps include light and dark street styles. The downloaded background works offline within its saved area and zoom levels. Terrain coverage calculations require separate online elevation data.
 

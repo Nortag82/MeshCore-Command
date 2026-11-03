@@ -280,6 +280,7 @@ class API:
     def _open_radio(self, address, serial_port=False):
         if not self._radio_open_lock.acquire(blocking=False):
             return {'error':'A radio connection is already opening.'}
+        started = time.monotonic()
         try:
             if self._radio_window is not None:
                 return {'error':'A radio window is already open. Close it before connecting another radio.'}
@@ -290,7 +291,7 @@ class API:
                 address=str(ipaddress.IPv4Address(address))
                 self._bridge = CompanionBridge(address, ROOT/'radio.html')
             active_bridge=self._bridge
-            radio = webview.create_window('MeshCore Command — '+address, active_bridge.url, width=1250,height=850,min_size=(800,600),fullscreen=True)
+            radio = webview.create_window('MeshCore Command — '+address, active_bridge.url, width=1250,height=850,min_size=(800,600),fullscreen=True,hidden=True)
             self._radio_window=radio
             def choose_offline_map():
                 try:
@@ -306,6 +307,12 @@ class API:
                     self._bridge=None
                     self._window.show()
             radio.events.closed += radio_closed
+            if not radio.events.loaded.wait(30):
+                radio.destroy()
+                raise RuntimeError('The radio window did not finish loading. Please try again.')
+            remaining = 6 - (time.monotonic() - started)
+            if remaining > 0: time.sleep(remaining)
+            radio.show()
             self._window.hide()
             return {'ok':True}
         except Exception as e:

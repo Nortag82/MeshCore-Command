@@ -1,4 +1,5 @@
 import {createSecureGroups} from './secure-groups.js';
+import {createTxActivity} from './tx-activity.js';
 import {setupSecureBackup} from './secure-backup.js';
 import {createCommandDiscovery} from './command-discovery.js';
 import {createSituationMap} from "./situation-map.js";
@@ -319,6 +320,7 @@ const state = {
   ultimateSettings: null,
   historyNode: "",
 };
+const txActivity=createTxActivity({document,getView:()=>state.view});
 
 let connection = new HttpPollingConnection();
 let commandTail = Promise.resolve();
@@ -548,6 +550,7 @@ function toast(message, kind = "ok") {
 
 function setLink(status) {
   const online = status === "connected";
+  txActivity.connected(online);
   if (!online && state.connected) { $("setting-path-hash").value=""; text("path-hash-status", "Radio disconnected; read the current setting after reconnecting."); }
   state.connected = online;
   state.linkStatus = status;
@@ -560,6 +563,7 @@ function setLink(status) {
   updateAdvertControls();
   $("home-sync").disabled = !online;
   secureComs.refresh();
+  if (state.view === 'situation') situationMap?.refreshDelivery();
   contactMap.schedule();
 }
 
@@ -618,6 +622,7 @@ function addMessage(message) {
 function ingestWaiting(item) {
   if (item.contactMessage) {
     const message = item.contactMessage;
+    txActivity.received();
     if (secureComs.ingest(message)) return 0;
     if (repeaterTools.handleMessage(message)) return 0;
     const key = targetForContactPrefix(message.pubKeyPrefix);
@@ -627,6 +632,7 @@ function ingestWaiting(item) {
   }
   if (item.channelMessage) {
     const message = item.channelMessage;
+    txActivity.received();
     if (commandDiscovery.ingest(message)) return 0;
     const key = `ch:${message.channelIdx}`;
     const added = addMessage({ id: messageId("channel", key, message.senderTimestamp, message.text), key, text: message.text, timestamp: message.senderTimestamp, direction: "in", status: "received", unread: document.hidden || state.view !== "messages" || state.selected !== key, snr: message.snr, pathLen: message.pathLen });
@@ -679,7 +685,7 @@ async function refreshStats() {
     if (Number.isFinite(state.radio.lastRssi)) state.rfSamples.push(state.radio.lastRssi);
     state.rfSamples = state.rfSamples.slice(-36);
   } catch { /* optional */ }
-  try { state.packets = (await connection.getStatsPackets()).data; } catch { /* optional */ }
+  try { state.packets = (await connection.getStatsPackets()).data; txActivity.stats(state.packets); } catch { /* optional */ }
   renderAll();
 }
 
@@ -1650,6 +1656,10 @@ function updateComposeCount() {
 }
 
 function bindConnectionEvents(radio) {
+  for (const [method,kind,isChannel] of [['sendTextMessage','Direct message',false],['sendChannelTextMessage','Channel message',true]]) {
+    const original=radio[method].bind(radio);
+    radio[method]=async (...args)=>{const record=txActivity.begin(kind);try{const response=await original(...args);txActivity.queued(record,response,radio,isChannel);return response}catch(error){txActivity.failed(record);throw error}};
+  }
   radio.on(Constants.ResponseCodes.ContactMsgRecv, (message) => { unannouncedMessages += ingestWaiting({ contactMessage: message }); });
   radio.on(Constants.ResponseCodes.ChannelMsgRecv, (message) => { unannouncedMessages += ingestWaiting({ channelMessage: message }); });
   radio.on("connected", () => {
@@ -1679,11 +1689,13 @@ function bindConnectionEvents(radio) {
   });
   radio.on(Constants.PushCodes.Advert, () => { if (radio.ready) exclusive(refreshContacts).catch(() => {}); });
   radio.on(Constants.PushCodes.SendConfirmed, (confirmation) => {
+    txActivity.acknowledge(confirmation.ackCode,radio);
     const pending = [...state.messages].reverse().find((item) => item.direction === "out" && (item.key.startsWith("dm:") || item.key.startsWith("room:")) && item.status === "queued" && Number.isInteger(item.expectedAckCrc) && item.expectedAckCrc === confirmation.ackCode);
     if (pending) { pending.status = "delivered"; persistHistory(); renderMessages(); toast(pending.key.startsWith("room:") ? "Delivered to room server" : "Direct message delivered"); }
     else if (Number.isInteger(confirmation.ackCode) && !secureComs.noteRadioAck(radio, confirmation.ackCode)) { recentAcks.push({code: confirmation.ackCode, time: Date.now()}); while (recentAcks.length > 40 || recentAcks[0]?.time < Date.now() - 60000) recentAcks.shift(); }
   });
   radio.on(Constants.PushCodes.LogRxData, (sample) => {
+    txActivity.received();
     contactMap.ingest(sample);
     state.radio = { ...(state.radio || {}), lastRssi: sample.lastRssi, lastSnr: sample.lastSnr };
     state.rfSamples.push(sample.lastRssi); state.rfSamples = state.rfSamples.slice(-36); renderHome(); renderRadio();
