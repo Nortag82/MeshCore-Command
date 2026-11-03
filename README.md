@@ -5,11 +5,11 @@ A Windows desktop companion for controlling a Wi-Fi connected MeshCore radio, wi
 This repository contains the desktop source in `MeshCore Desktop/` and the modified companion firmware and interface sources in `NeonPocket/`. The firmware tree is based on [NeonPocketMC](https://github.com/n30nex/NeonPocketMC-Heltec-V4) and retains its license files and upstream notices. See [desktop documentation](MeshCore%20Desktop/README.md) for features and device support.
 
 
-The current installer build is **2.0.0**. Secure groups are local recipient lists that send individual encrypted messages; no group key is needed. The separate [secure pairing research prototype](experimental/secure-pairing/) is not integrated. Command discovery still uses Public.
+The current installer build is **2.0.1**. Secure groups are local recipient lists that send individual encrypted messages; no group key is needed. The separate [secure pairing research prototype](experimental/secure-pairing/) is not integrated. Command discovery still uses Public.
 
 ## Download for Windows
 
-Download the [version 2.0 Windows installer](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.0), then follow the [user manual](docs/USER-MANUAL.md). The release page lists the installer checksum. Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.
+Download the [version 2.0.1 Windows installer](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.1), then follow the [user manual](docs/USER-MANUAL.md). The release page lists the installer checksum. Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.
 
 ## A look inside
 
@@ -26,6 +26,10 @@ Build a shared picture using markers, civilian and emergency icons, and drawn ar
 Share marker and area updates with selected verified Secure Coms contacts or local groups. Full-picture sharing targets selected recipients; forwarding received markers is separately opt-in. The app shows which marker updates the receiving app has confirmed saving. Both users need compatible MeshCore Command installations and a connected radio. Sharing uses the experimental Secure Coms protocol; it has not been independently audited and does not provide forward secrecy. It is not ATAK compatible.
 
 Version 2.0 adds a persistent sharing queue with automatic retries, pause and resume, and per-recipient incremental picture sharing. You can retry one unconfirmed object, force a full picture, or remove a pending deletion from your local lists. TX/RX indicators and a transmission activity view help you follow radio activity.
+
+### Secure images
+
+Convert an image on your PC into a small JPEG thumbnail, preview its size and packet count, and send it to a verified Secure Coms contact. Both installations need the image-enabled update. Each encrypted packet is confirmed separately, so transfers can take several minutes and use substantial mesh airtime. Received thumbnails are stored locally on the PC. See the [manual](docs/USER-MANUAL.md#secure-images) for details and limitations.
 
 ### Find other Command users
 

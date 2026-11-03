@@ -1,13 +1,13 @@
 # MeshCore Command user manual
 
-MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.0. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
+MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.1. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
 
 ## Before you start
 
 - You need Windows, the Edge WebView2 runtime, a compatible Wi-Fi radio and an appropriate LoRa antenna. Connect the antenna before powering or transmitting with the radio.
 - The PC and radio need network access to each other. The companion connection uses TCP port 5000; discovery uses UDP port 5010.
 - Use a trusted local network: the companion protocol itself is unauthenticated and unencrypted. The PC bridge listens on loopback.
-- Download the installer from the [version 2.0 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.0), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
+- Download the installer from the [version 2.0.1 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.1), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
 
 ## 1. Set up or connect a radio
 
@@ -92,6 +92,12 @@ Replies can be spoofed and are not verified identities. Select **Add & set up** 
 Create a group in **Manage Secure Coms** by choosing a name and verified contacts. The group is a local recipient list; members do not need the group or another key. Sending to the group sends an individually encrypted direct message to each member using the existing shared secret. Replies appear in individual conversations. The group view shows per-recipient radio acknowledgements, which are not read receipts. The same groups can select recipients on the Secure Situation Map.
 
 Under **Settings**, export an encrypted Secure Coms backup with a password, and import it with that same password. It contains contacts, their shared secrets, group definitions and secure message state; it is not a complete backup of radio settings or offline maps. Keep both file and password safe. After importing, verify contact fingerprints again. An old backup cannot contain replay records created after it was made.
+
+### Secure images
+
+On **Secure images**, choose a picture, select a maximum dimension and choose **Convert and preview**. Conversion happens on the PC; the thumbnail is a JPEG of at most 1,536 bytes. The page shows its dimensions, size and number of packets before you choose a verified Secure Coms contact and send. Both people need a version that supports Secure images and must remain connected during the transfer. Each encrypted packet is individually acknowledged; transfers can take several minutes and use substantial mesh airtime. The receiver sees an image only after all pieces have been saved. A confirmation means the receiving app saved it, not that the person viewed it.
+
+Received thumbnails and incomplete transfers are stored locally on the PC, not included in the Secure Coms backup. The page keeps the ten most recent received images; save a copy if you want to retain it elsewhere. You can stop a transfer; if it fails or the app closes, send it again from the beginning. Incomplete received pieces expire after 24 hours when a new image packet arrives.
 
 ## 8. Terrain tools and coverage
 
