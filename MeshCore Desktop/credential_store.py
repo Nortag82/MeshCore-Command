@@ -39,3 +39,24 @@ def put(key, password, scope='repeater'):
 
 def delete(key, scope='repeater'):
     if not advapi.CredDeleteW(target(key, scope), 1, 0) and ctypes.get_last_error() != 1168: raise ctypes.WinError(ctypes.get_last_error())
+
+# Enumerate only this application's generic credentials, including orphaned entries.
+advapi.CredEnumerateW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD), ctypes.POINTER(ctypes.POINTER(ctypes.POINTER(CREDENTIAL)))]
+advapi.CredEnumerateW.restype = wintypes.BOOL
+
+def list_saved():
+    count = wintypes.DWORD()
+    found = ctypes.POINTER(ctypes.POINTER(CREDENTIAL))()
+    if not advapi.CredEnumerateW('MeshCore Command/*', 0, ctypes.byref(count), ctypes.byref(found)):
+        if ctypes.get_last_error() == 1168: return {}
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        result = {}
+        import re
+        for i in range(count.value):
+            item = found[i].contents
+            match = re.fullmatch(r'MeshCore Command/(secure|repeater)/([0-9a-f]{64})', item.TargetName or '')
+            if match and item.Type == 1:
+                result[match.group(1) + '/' + match.group(2)] = ctypes.string_at(item.CredentialBlob, item.CredentialBlobSize).decode('utf-8')
+        return result
+    finally: advapi.CredFree(found)

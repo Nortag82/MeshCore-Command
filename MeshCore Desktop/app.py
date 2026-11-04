@@ -9,6 +9,7 @@ import webview
 from webview.http import _get_random_port
 from bridge import CompanionBridge
 import updater
+import full_backup
 from version import VERSION
 
 ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
@@ -311,6 +312,43 @@ class API:
                 return {'error': 'Could not read the backup file.'}
         return save_secure_backup, open_secure_backup
 
+    def _full_backup_dialogs(self, radio):
+        pending = {}
+        def export_full_backup(storage, password):
+            try:
+                files=radio.create_file_dialog(webview.FileDialog.SAVE, save_filename='MeshCore-Command-Full-Backup.mccfull', file_types=('MeshCore full backup (*.mccfull)',))
+                if not files: return {'cancelled':True}
+                encrypted=full_backup.encrypt(full_backup.snapshot(storage),password)
+                full_backup.write_atomic(Path(files[0]),encrypted)
+                return {'ok':True}
+            except Exception as error: return {'error':str(error) or 'Could not export backup.'}
+        def prepare_full_restore(storage, password):
+            pending.clear()
+            try:
+                files=radio.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=False, file_types=('MeshCore full backup (*.mccfull)',))
+                if not files: return {'cancelled':True}
+                source=Path(files[0])
+                if source.stat().st_size>full_backup.LIMIT+1024: raise ValueError('Backup exceeds the 256 MB limit.')
+                meta,contents=full_backup.decode(source.read_bytes(),password)
+                recovery=full_backup.data_dir() / 'recovery-backups' / ('before-restore-'+time.strftime('%Y%m%d-%H%M%S')+'-'+os.urandom(4).hex()+'.mccfull')
+                full_backup.write_atomic(recovery,full_backup.encrypt(full_backup.snapshot(storage),password))
+                pending.update(meta=meta,contents=contents)
+                return {'storage':meta['storage'],'recovery':str(recovery)}
+            except Exception as error: return {'error':str(error) or 'Could not open backup.'}
+        def commit_full_restore():
+            if not pending: return {'error':'No restore is ready.'}
+            try:
+                full_backup.apply(pending['meta'],pending['contents'])
+                pending.clear()
+                return {'ok':True}
+            except Exception as error:
+                pending.clear()
+                return {'error':str(error) or 'Could not restore desktop data.'}
+        def cancel_full_restore():
+            pending.clear()
+            return {'ok':True}
+        return export_full_backup,prepare_full_restore,commit_full_restore,cancel_full_restore
+
     def _open_radio(self, address, serial_port=False):
         if not self._radio_open_lock.acquire(blocking=False):
             return {'error':'A radio connection is already opening.'}
@@ -333,7 +371,7 @@ class API:
                     if not files: return {'cancelled': True}
                     return active_bridge.set_offline_map(files[0])
                 except Exception as error: return {'error': str(error)}
-            radio.expose(radio.toggle_fullscreen, radio.minimize, self.exit_app, choose_offline_map, self.check_app_update, self.install_app_update, *self._backup_dialogs(radio))
+            radio.expose(radio.toggle_fullscreen, radio.minimize, self.exit_app, choose_offline_map, self.check_app_update, self.install_app_update, *self._backup_dialogs(radio), *self._full_backup_dialogs(radio))
             def radio_closed():
                 active_bridge.close()
                 if self._radio_window is radio:

@@ -1,6 +1,6 @@
 # MeshCore Command user manual
 
-MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.9. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
+MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.13. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
 
 An experimental Android app is described separately in the [Android instructions](../Android/README.md). Windows 2.0.5 includes Wi-Fi reconnection and startup-crash mitigations.
 
@@ -9,7 +9,7 @@ An experimental Android app is described separately in the [Android instructions
 - You need Windows, the Edge WebView2 runtime, a compatible Wi-Fi radio and an appropriate LoRa antenna. Connect the antenna before powering or transmitting with the radio.
 - The PC and radio need network access to each other. The companion connection uses TCP port 5000; discovery uses UDP port 5010.
 - Use a trusted local network: the companion protocol itself is unauthenticated and unencrypted. The PC bridge listens on loopback.
-- Download the installer from the [version 2.0.9 test release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.9), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
+- Download the installer from the [version 2.0.13 test release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.13), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
 
 ### Updating the Windows app
 
@@ -68,11 +68,13 @@ Under **Rooms**, add a known room server and enter its password. You may save th
 
 ## 4. Contacts and contact map
 
+When a compatible radio reports that its contact table is full, Command can replace the oldest inactive eligible contact with the newly received advert while the app is connected. It compares the last advert and any newer received direct message. Favourites (on the PC or radio), Secure Coms contacts, monitored nodes, saved rooms, and the selected conversation are protected. Contacts without a valid advert time are skipped. You can turn this off in **Settings → MeshCore settings**. The radio may also have an independent overwrite-oldest setting; its own rules apply if enabled. If a replacement fails, Command attempts to restore the removed contact and reports the outcome. This feature is tested with simulated radio responses.
+
 Open **Contacts** to search nodes by name, role or key, and star favourites. Choose a contact for messaging, status, telemetry, path reset, ping or route tracing. **Discover contacts** searches for nearby compatible nodes; it does not guarantee that all network users will respond.
 
 A chat ping sends the word `ping` as a message. A repeater ping uses a direct trace. Traces in this version support known single-byte paths only; short hashes can collide, and a trace is not proof of final message delivery. Availability of status and telemetry depends on node firmware, permissions and reachability.
 
-**Contact map** shows nodes with advertised positions. Its received-packet list can display reported flood-path segments when key prefixes can be matched unambiguously to located contacts. Gaps and hash collisions are possible; lines are not proof of delivery. Internet access is needed for map tiles.
+**Contact map** shows nodes with advertised positions. To set your radio location, choose **Set my location**, click the map, and select **Save location**. Command reads the radio back to confirm. A local or flood advert can announce the new position only if the radio’s location-sharing policy allows it. You can also enter coordinates under Settings → MeshCore settings. Its received-packet list can display reported flood-path segments when key prefixes can be matched unambiguously to located contacts. Gaps and hash collisions are possible; lines are not proof of delivery. Internet access is needed for map tiles.
 
 ## 5. Repeaters
 
@@ -87,7 +89,7 @@ Search for a repeater on **Repeaters**, select it and log in with its admin pass
 
 ## 6. Monitoring and word alerts
 
-On **Monitoring**, add a known chat contact or repeater, then expand **Schedule checks** to choose an interval and checks. Compact cards show the latest results. Expand **Repeater time** for **Read time**, **Sync to PC** and any diagnostic details; these require an active admin login or saved password. A repeater may reject a backwards time correction; the displayed time is the last reading, not a live clock. Checks run only while the app is open and connected. A voltage-based battery percentage is an estimate and may not be appropriate for every power source.
+On **Monitoring**, add a known chat contact or repeater, then expand **Schedule checks** to choose an interval and checks. Compact cards show the latest results. Expand **Global telemetry schedule** to enable periodic telemetry for all monitored nodes, including nodes added later; it is independent of per-node ping and trace schedules. Requests are processed one at a time while Command is open and connected. Expand **Repeater time** for **Read time**, **Sync to PC** and any diagnostic details; these require an active admin login or saved password. A repeater may reject a backwards time correction; the displayed time is the last reading, not a live clock. Checks run only while the app is open and connected. A voltage-based battery percentage is an estimate and may not be appropriate for every power source.
 
 Monitored repeater cards show up to seven days of device-voltage telemetry stored on this PC. Run Telemetry or enable it under Schedule checks; readings collect only while Command is open and connected and the repeater responds. Gaps indicate missing readings, and existing history cannot be reconstructed. Device voltage is not necessarily battery voltage. Removing a monitored node also removes its local graph history.
 
@@ -112,6 +114,8 @@ Replies can be spoofed and are not verified identities. Select **Add & set up** 
 ### Local groups and backup
 
 Create a group in **Manage Secure Coms** by choosing a name and verified contacts. The group is a local recipient list; members do not need the group or another key. Sending to the group sends an individually encrypted direct message to each member using the existing shared secret. Replies appear in individual conversations. The group view shows per-recipient radio acknowledgements, which are not read receipts. The same groups can select recipients on the Secure Situation Map.
+
+Under **Settings → Full PC backup**, enter a password of at least 12 characters and choose **Export full backup**. It includes this PC’s app storage, message and secure state, Secure Coms secrets, repeater and room passwords, saved radio addresses, situation map data and offline map files. Offline maps are limited to 256 MB in total; export fails rather than silently omitting them. Radio-only settings and data stored on other devices are not included. Import replaces matching PC data after confirmation and creates an encrypted recovery backup using the same password. Keep that password safe. An older backup can roll back replay protection; verify fingerprints and exchange a new shared secret where replay protection matters.
 
 Under **Settings**, export an encrypted Secure Coms backup with a password, and import it with that same password. It contains contacts, their shared secrets, group definitions and secure message state; it is not a complete backup of radio settings or offline maps. Keep both file and password safe. After importing, verify contact fingerprints again. An old backup cannot contain replay records created after it was made.
 

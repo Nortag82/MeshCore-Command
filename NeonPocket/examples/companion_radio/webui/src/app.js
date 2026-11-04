@@ -1,3 +1,5 @@
+import {setRadioLocation} from './radio-location.js';
+import {CLEANUP_SETTING,protectedContacts,oldestContact,contactArguments,replaceContact} from './contact-cleanup.js';
 import {readRepeatEligibility,setCompanionRepeat} from './repeat-mode.js';
 import {createSecureGroups} from './secure-groups.js';
 import {createTxActivity} from './tx-activity.js';
@@ -333,7 +335,7 @@ let advertSending = false;
 let messageMenuTarget = null;
 const favorites = createFavorites(window.localStorage);
 const repeaterTools = createRepeaterTools({state, getConnection: () => connection, exclusive, toast, hex, refreshContacts, Constants, favorites, showView});
-const contactMap = createContactMap({state, hex});
+const contactMap = createContactMap({state, hex, saveOwnLocation});
 const keywordWatch = createKeywordWatch({toast, targetInfo});
 let situationMap, secureGroups;
 const secureComs = createSecureComs({state,getConnection:()=>connection,exclusive,hex,toast,onObject:(peer,value)=>value.startsWith('IM1:')||value.startsWith('IA1:')?undefined:situationMap.ingest(peer,value),getGroupUnread:()=>secureGroups?.unread()||0,isGroupSelected:()=>secureGroups?.active()||false});
@@ -668,6 +670,11 @@ function ingestWaiting(item) {
     return added && !channelIsMuted(key) ? 1 : 0;
   }
   return 0;
+}
+
+async function saveOwnLocation(latitude,longitude){
+ await setRadioLocation({getState:()=>state,getConnection:()=>connection,exclusive,hex},latitude,longitude);
+ fillMeshSettings();renderHome();renderRadio();renderMore();
 }
 
 function refreshNearbyFromContacts() {
@@ -1690,6 +1697,26 @@ function updateComposeCount() {
   $("compose-count").className = count > MAX_MESSAGE_BYTES ? "error" : "";
 }
 
+const cleanupControl=$('contact-cleanup-enabled'),cleanupStatus=$('contact-cleanup-status');
+try{cleanupControl.checked=localStorage.getItem(CLEANUP_SETTING)!=='off'}catch{cleanupControl.checked=false;cleanupStatus.textContent='Contact cleanup unavailable: PC settings could not be read.'}
+cleanupControl.onchange=()=>{try{localStorage.setItem(CLEANUP_SETTING,cleanupControl.checked?'on':'off');cleanupStatus.textContent=cleanupControl.checked?'Automatic contact cleanup enabled.':'Automatic contact cleanup disabled.'}catch{cleanupControl.checked=false;cleanupStatus.textContent='Could not save contact cleanup setting.'}};
+let lastNewAdvert=null,cleanupBusy=false,lastCleanup=0;
+async function cleanupFullContacts(radio,advert){
+ if(!cleanupControl.checked||cleanupBusy||!radio.ready||connection!==radio||!state.connected||!advert||Date.now()-advert.time>3000||Date.now()-lastCleanup<30000)return;
+ cleanupBusy=true;lastCleanup=Date.now();
+ try{await exclusive(async()=>{
+  if(!state.connected||connection!==radio||!cleanupControl.checked)return;
+  const own=state.self?.publicKey?hex(state.self.publicKey):'',incoming=advert.contact,incomingKey=hex(incoming.publicKey);contactArguments(incoming);
+  const contacts=await radio.getContacts();if(!state.connected||connection!==radio||!cleanupControl.checked||Date.now()-advert.time>15000)return;
+  const protect=protectedContacts(localStorage,own,favorites);
+  if(contacts.some(c=>hex(c.publicKey)===incomingKey))return;
+  const candidate=oldestContact(contacts,state.messages,protect,hex,Math.floor(Date.now()/1000),state.selected);
+  if(!candidate){cleanupStatus.textContent='Radio full: no eligible inactive contact. Protected or undated contacts were kept.';toast('Contacts full: no eligible contact to replace','warn');return}
+  await replaceContact(radio,candidate,incoming,()=>state.connected&&connection===radio);
+  await refreshContacts();cleanupStatus.textContent=`Replaced inactive ${candidate.advName||hex(candidate.publicKey).slice(0,8)} with ${incoming.advName||incomingKey.slice(0,8)}.`;toast(cleanupStatus.textContent,'warn');
+ })}catch(error){cleanupStatus.textContent=error?.message||'Automatic contact cleanup failed.';toast(cleanupStatus.textContent,'error')}finally{cleanupBusy=false}
+}
+
 function bindConnectionEvents(radio) {
   radio.on(Constants.ResponseCodes.ContactMsgRecv, (message) => { unannouncedMessages += ingestWaiting({ contactMessage: message }); });
   radio.on(Constants.ResponseCodes.ChannelMsgRecv, (message) => { unannouncedMessages += ingestWaiting({ channelMessage: message }); });
@@ -1714,10 +1741,10 @@ function bindConnectionEvents(radio) {
   });
   radio.on(Constants.PushCodes.MsgWaiting, () => { if (radio.ready) exclusive(syncMessages).catch(() => toast("Message sync failed", "error")); });
   radio.on(Constants.PushCodes.NewAdvert, (advert) => {
-    const existing = state.contacts.findIndex((item) => hex(item.publicKey) === hex(advert.publicKey));
-    if (existing >= 0) state.contacts[existing] = advert; else state.contacts.unshift(advert);
-    refreshNearbyFromContacts(); renderAll(); toast(`${advert.advName || "A node"} is nearby`, "warn");
+    // A new-advert push can describe a discovered contact that the radio did not save.
+    if(connection===radio)lastNewAdvert={contact:advert,time:Date.now()};
   });
+  radio.on('rx',frame=>{if(frame instanceof Uint8Array&&frame[0]===0x90)void cleanupFullContacts(radio,lastNewAdvert)});
   radio.on(Constants.PushCodes.Advert, () => { if (radio.ready) exclusive(refreshContacts).catch(() => {}); });
   radio.on(Constants.PushCodes.SendConfirmed, (confirmation) => {
     const pending = [...state.messages].reverse().find((item) => item.direction === "out" && (item.key.startsWith("dm:") || item.key.startsWith("room:")) && item.status === "queued" && Number.isInteger(item.expectedAckCrc) && item.expectedAckCrc === confirmation.ackCode);
@@ -2137,4 +2164,12 @@ function createRoomTools() {
 }
 
 setupSecureBackup(()=>{secureComs.reload();secureGroups.reload();secureComs.refresh()});
+function setupFullBackup(){
+ const password=$('full-backup-password'),status=$('full-backup-status'),buttons=[$('full-backup-export'),$('full-backup-import')];
+ const snapshot=()=>Object.fromEntries(Array.from({length:localStorage.length},(_,i)=>localStorage.key(i)).filter(k=>k&&!['rcc6-session','rcc6-radio-owner'].includes(k)).map(k=>[k,localStorage.getItem(k)]));
+ async function run(task){buttons.forEach(b=>b.disabled=true);try{if(password.value.length<12)throw Error('Enter a backup password of at least 12 characters.');if(!window.pywebview?.api?.export_full_backup)throw Error('This feature requires the updated desktop app.');await task(password.value)}catch(error){status.textContent=error.message||'Backup failed.'}finally{password.value='';buttons.forEach(b=>b.disabled=false)}}
+ buttons[0].onclick=()=>run(async pass=>{status.textContent='Preparing encrypted backup; large maps may take time…';const result=await window.pywebview.api.export_full_backup(snapshot(),pass);if(result.error)throw Error(result.error);status.textContent=result.cancelled?'Export cancelled.':'Full encrypted backup saved.'});
+ buttons[1].onclick=()=>run(async pass=>{if(!confirm('Importing replaces matching settings, messages and secrets on this PC. A recovery backup will be created first. Secure Coms replay records may be older: compare fingerprints and exchange a new secret where replay protection matters. Continue?'))return;status.textContent='Checking backup and creating encrypted recovery copy…';const before=snapshot(),result=await window.pywebview.api.prepare_full_restore(before,pass);if(result.error)throw Error(result.error);if(result.cancelled){status.textContent='Import cancelled.';return}const changed=[];try{for(const [key,value] of Object.entries(result.storage)){const old=localStorage.getItem(key);localStorage.setItem(key,value);changed.push([key,old])}const done=await window.pywebview.api.commit_full_restore();if(done.error)throw Error(done.error)}catch(error){let rollbackFailed=false;for(const [key,old] of changed.reverse())try{if(old===null)localStorage.removeItem(key);else localStorage.setItem(key,old)}catch{rollbackFailed=true}await window.pywebview.api.cancel_full_restore();throw Error(`${error.message} ${rollbackFailed?'Some local changes could not be rolled back. ':''}Recovery backup: ${result.recovery}`)}status.textContent=`Restored. Recovery backup: ${result.recovery}. Restarting view…`;alert(`Backup restored. Your previous data was saved to:\n${result.recovery}\n\nCompare Secure Coms fingerprints before use.`);location.reload()});
+}
+setupFullBackup();
 $('secure-unread-indicator').addEventListener('click',()=>{if(!secureGroups.openUnread()){secureGroups.showIndividual();secureComs.selectFirstUnread()}showView('secure')});

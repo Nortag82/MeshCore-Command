@@ -126,3 +126,12 @@ Choose **Area** or **Out of bounds** on the floating toolbar, enter a short name
 ### Elevation finder
 
 Open **Terrain tools → Elevation finder**, enter a height in metres above sea level, and choose **Highlight visible area**. Purple marks terrain pixels above the threshold. The calculation covers the current map view using online Mapzen terrain tiles; zoom in and recalculate for more detail. The status reports tile resolution, while the underlying elevation data may be coarser. Missing pixels are not assessed. After moving or zooming, calculate again for the new view. **Clear / cancel** removes only the elevation highlight and does not clear coverage or repeater planning layers.
+
+
+## Full PC backup and monitoring
+
+In Settings, **Full PC backup** exports encrypted local settings, message and map data, saved radio addresses and Windows-stored Secure Coms secrets and repeater/room passwords. Selected and downloaded offline map files are included up to a 256 MB total limit. Radio-only settings are not included. Import creates an encrypted recovery backup before replacing matching data. Keep the password safe and exchange new Secure Coms secrets if replay protection after restoring older data matters.
+
+Monitoring offers an optional global telemetry schedule for all monitored contacts and repeaters, including newly added nodes. Requests are processed one at a time while the app is open and connected. The Contact map offers **Set my location**: select a point and save it to the radio, with readback verification. Sending an advert does not include the location if the radio’s sharing policy disables it.
+
+When the connected radio reports that its contact table is full, optional automatic cleanup replaces the oldest eligible contact with the new advertised contact. PC and radio favourites, Secure Coms contacts, monitored nodes, saved rooms and the selected conversation are protected. Undated contacts are skipped. The radio’s independent overwrite settings have their own rules.
