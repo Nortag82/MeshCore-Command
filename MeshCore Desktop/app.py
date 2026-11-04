@@ -287,31 +287,6 @@ class API:
             try: window.destroy()
             except Exception: pass
 
-    def _backup_dialogs(self, radio):
-        def save_secure_backup(contents):
-            try:
-                if not isinstance(contents, str) or len(contents) > 8_000_000:
-                    return {'error': 'Invalid backup size.'}
-                envelope = json.loads(contents)
-                if envelope.get('format') != 'MeshCoreCommandSecureBackup' or not isinstance(envelope.get('ciphertext'), str):
-                    return {'error': 'Invalid encrypted backup.'}
-                files = radio.create_file_dialog(webview.FileDialog.SAVE, save_filename='MeshCore-Command-Secure-Backup.mccbackup', file_types=('MeshCore backup (*.mccbackup)',))
-                if not files: return {'cancelled': True}
-                Path(files[0]).write_text(contents, encoding='utf-8')
-                return {'ok': True}
-            except Exception:
-                return {'error': 'Could not save the backup file.'}
-        def open_secure_backup():
-            try:
-                files = radio.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=False, file_types=('MeshCore backup (*.mccbackup)',))
-                if not files: return {'cancelled': True}
-                path = Path(files[0])
-                if path.stat().st_size > 8_000_000: return {'error': 'Backup file is too large.'}
-                return {'contents': path.read_text(encoding='utf-8')}
-            except Exception:
-                return {'error': 'Could not read the backup file.'}
-        return save_secure_backup, open_secure_backup
-
     def _full_backup_dialogs(self, radio):
         pending = {}
         def export_full_backup(storage, password, radio_config=None):
@@ -325,11 +300,17 @@ class API:
         def prepare_full_restore(storage, password):
             pending.clear()
             try:
-                files=radio.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=False, file_types=('MeshCore full backup (*.mccfull)',))
+                files=radio.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=False, file_types=('MeshCore backups (*.mccfull;*.mccbackup)',))
                 if not files: return {'cancelled':True}
-                source=Path(files[0])
-                if source.stat().st_size>full_backup.LIMIT+1024: raise ValueError('Backup exceeds the 256 MB limit.')
-                meta,contents=full_backup.decode(source.read_bytes(),password)
+                source=Path(files[0]);size=source.stat().st_size
+                if size>full_backup.LIMIT+1024: raise ValueError('Backup exceeds the 256 MB limit.')
+                contents=source.read_bytes()
+                if not contents.startswith(full_backup.MAGIC):
+                    if size>8_000_000: raise ValueError('Invalid or unsupported backup.')
+                    legacy=json.loads(contents.decode('utf-8'))
+                    if not isinstance(legacy,dict) or legacy.get('format')!='MeshCoreCommandSecureBackup' or not isinstance(legacy.get('ciphertext'),str): raise ValueError('Invalid or unsupported backup.')
+                    return {'legacy_secure':contents.decode('utf-8')}
+                meta,contents=full_backup.decode(contents,password)
                 recovery=full_backup.data_dir() / 'recovery-backups' / ('before-restore-'+time.strftime('%Y%m%d-%H%M%S')+'-'+os.urandom(4).hex()+'.mccfull')
                 full_backup.write_atomic(recovery,full_backup.encrypt(full_backup.snapshot(storage),password))
                 pending.update(meta=meta,contents=contents)
@@ -347,6 +328,12 @@ class API:
         def cancel_full_restore():
             pending.clear()
             return {'ok':True}
+        def save_pc_recovery(storage,password):
+            try:
+                recovery=full_backup.data_dir() / 'recovery-backups' / ('before-legacy-restore-'+time.strftime('%Y%m%d-%H%M%S')+'-'+os.urandom(4).hex()+'.mccfull')
+                full_backup.write_atomic(recovery,full_backup.encrypt(full_backup.snapshot(storage),password))
+                return {'recovery':str(recovery)}
+            except Exception as error: return {'error':str(error) or 'Could not create the recovery backup.'}
         def open_radio_backup(password):
             try:
                 files=radio.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=False, file_types=('MeshCore full backup (*.mccfull)',))
@@ -364,7 +351,7 @@ class API:
                 full_backup.write_atomic(recovery,full_backup.encrypt(full_backup.snapshot(storage,radio_config),password))
                 return {'recovery':str(recovery)}
             except Exception as error: return {'error':str(error) or 'Could not create the radio recovery backup.'}
-        return export_full_backup,prepare_full_restore,commit_full_restore,cancel_full_restore,open_radio_backup,save_radio_recovery
+        return export_full_backup,prepare_full_restore,commit_full_restore,cancel_full_restore,open_radio_backup,save_radio_recovery,save_pc_recovery
 
     def _open_radio(self, address, serial_port=False):
         if not self._radio_open_lock.acquire(blocking=False):
@@ -388,7 +375,7 @@ class API:
                     if not files: return {'cancelled': True}
                     return active_bridge.set_offline_map(files[0])
                 except Exception as error: return {'error': str(error)}
-            radio.expose(radio.toggle_fullscreen, radio.minimize, self.exit_app, choose_offline_map, self.check_app_update, self.install_app_update, *self._backup_dialogs(radio), *self._full_backup_dialogs(radio))
+            radio.expose(radio.toggle_fullscreen, radio.minimize, self.exit_app, choose_offline_map, self.check_app_update, self.install_app_update, *self._full_backup_dialogs(radio))
             def radio_closed():
                 active_bridge.close()
                 if self._radio_window is radio:

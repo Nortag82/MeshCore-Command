@@ -125,11 +125,4 @@ async function restore(data) {
   }
   return true;
 }
-export function setupSecureBackup(onRestore=()=>{}) {
-  const $=id=>document.getElementById(id),status=$('backup-status'),password=$('backup-password'),buttons=[$('backup-export'),$('backup-import')];
-  async function run(task){buttons.forEach(b=>b.disabled=true);try{if(password.value.length<12)throw Error('Enter a backup password of at least 12 characters.');if(!window.pywebview?.api?.save_secure_backup)throw Error('This feature requires the updated desktop app.');await task(password.value)}catch(e){status.textContent=e?.message||'Backup operation failed.'}finally{password.value='';buttons.forEach(b=>b.disabled=false)}}
-  buttons[0].onclick=()=>run(async pass=>{status.textContent='Encrypting backup…';const contents=await encryptBackup(await collect(),pass);const result=await window.pywebview.api.save_secure_backup(contents);status.textContent=result.error|| (result.cancelled?'Export cancelled.':'Encrypted Secure Coms backup saved.');});
-  buttons[1].onclick=()=>run(async pass=>{const result=await window.pywebview.api.open_secure_backup();if(result.error)throw Error(result.error);if(result.cancelled){status.textContent='Import cancelled.';return}status.textContent='Checking backup…';if(await restore(await decryptBackup(result.contents,pass))){onRestore();status.textContent='Secure Coms restored. Compare fingerprints for imported contacts.'}else status.textContent='Import cancelled.'});
-}
-
 export {encryptBackup, decryptBackup, restore};

@@ -26,10 +26,19 @@ class Tests(unittest.TestCase):
    path=Path(tmp)/'backup.mccfull'
    class Window:
     def create_file_dialog(self,*args,**kwargs):return [str(path)]
-   api=app.API();export,prepare,commit,cancel,open_radio,recovery=api._full_backup_dialogs(Window());radio={'version':1,'privateKey':['identity-secret']};password='long password 123'
+   api=app.API();export,prepare,commit,cancel,open_radio,recovery,pc_recovery=api._full_backup_dialogs(Window());radio={'version':1,'privateKey':['identity-secret']};password='long password 123'
    self.assertEqual(export({'key':'value'},password,radio),{'ok':True});self.assertNotIn(b'identity-secret',path.read_bytes());self.assertEqual(open_radio(password)['radio'],radio)
    self.assertIn('error',open_radio('incorrect password'))
    result=recovery({'key':'value'},password,radio);self.assertTrue(Path(result['recovery']).is_file());self.assertNotIn(b'identity-secret',Path(result['recovery']).read_bytes())
+ def test_legacy_backup_is_detected_and_recovery_is_encrypted(self):
+  import app
+  with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'LOCALAPPDATA':tmp}),patch.object(b.credential_store,'list_saved',return_value={}):
+   path=Path(tmp)/'legacy.mccbackup';data={'format':'MeshCoreCommandSecureBackup','ciphertext':'encrypted'};path.write_text(json.dumps(data))
+   class Window:
+    def create_file_dialog(self,*args,**kwargs):return [str(path)]
+   _,prepare,_,cancel,_,_,recovery=app.API()._full_backup_dialogs(Window());result=prepare({'message':'private'},'long password 123');self.assertEqual(json.loads(result['legacy_secure']),data)
+   backup=recovery({'message':'private'},'long password 123');raw=Path(backup['recovery']).read_bytes();self.assertNotIn(b'private',raw);meta,_=b.decode(raw,'long password 123');self.assertEqual(meta['storage']['message'],'private')
+   path.write_text('{"not":"a backup"}');self.assertIn('error',prepare({},'long password 123'))
  def test_rollback(self):
   with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'LOCALAPPDATA':tmp}),patch.object(b.credential_store,'get',return_value=None),patch.object(b.credential_store,'put',side_effect=OSError('failure')),patch.object(b.credential_store,'delete'):
    root=b.data_dir();root.mkdir();(root/'devices.json').write_text('old')
