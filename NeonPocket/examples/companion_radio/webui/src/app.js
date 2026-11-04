@@ -1,3 +1,4 @@
+import {captureRadioBackup,restoreRadioBackup,validateRadioBackup} from './radio-backup.js';
 import {createSettingsLocationMap} from './settings-location-map.js';
 import {setRadioLocation} from './radio-location.js';
 import {CLEANUP_SETTING,protectedContacts,oldestContact,contactArguments,replaceContact} from './contact-cleanup.js';
@@ -328,6 +329,7 @@ const txActivity=createTxActivity({document});
 
 let connection = new HttpPollingConnection();
 let commandTail = Promise.resolve();
+let radioBackupActive = false;
 let syncing = false;
 let recovering = false;
 let recoveryAttempts = 0;
@@ -349,7 +351,8 @@ const monitoring = createMonitoring({state,getConnection:()=>connection,exclusiv
 const contactsTools = createContactsTools({state, getConnection: () => connection, exclusive, toast, hex, refreshContacts, selectTarget, showView, addMessage, Constants, favorites});
 favorites.subscribe(() => { repeaterTools.render(); contactsTools.render(); });
 
-function exclusive(task) {
+function exclusive(task, backupOperation=false) {
+  if(radioBackupActive&&!backupOperation)return Promise.reject(Error('Radio backup or restore is in progress.'));
   const result = commandTail.then(() => {
     let timer;
     const timeout = new Promise((_, reject) => {
@@ -2169,11 +2172,14 @@ function createRoomTools() {
 
 setupSecureBackup(()=>{secureComs.reload();secureGroups.reload();secureComs.refresh()});
 function setupFullBackup(){
- const password=$('full-backup-password'),status=$('full-backup-status'),buttons=[$('full-backup-export'),$('full-backup-import')];
+ const password=$('full-backup-password'),status=$('full-backup-status'),buttons=[$('full-backup-export'),$('full-backup-import'),$('full-backup-radio-import')];
  const snapshot=()=>Object.fromEntries(Array.from({length:localStorage.length},(_,i)=>localStorage.key(i)).filter(k=>k&&!['rcc6-session','rcc6-radio-owner'].includes(k)).map(k=>[k,localStorage.getItem(k)]));
  async function run(task){buttons.forEach(b=>b.disabled=true);try{if(password.value.length<12)throw Error('Enter a backup password of at least 12 characters.');if(!window.pywebview?.api?.export_full_backup)throw Error('This feature requires the updated desktop app.');await task(password.value)}catch(error){status.textContent=error.message||'Backup failed.'}finally{password.value='';buttons.forEach(b=>b.disabled=false)}}
- buttons[0].onclick=()=>run(async pass=>{status.textContent='Preparing encrypted backup; large maps may take time…';const result=await window.pywebview.api.export_full_backup(snapshot(),pass);if(result.error)throw Error(result.error);status.textContent=result.cancelled?'Export cancelled.':'Full encrypted backup saved.'});
+ function radioContext(){if(!state.connected||!state.self?.publicKey)throw Error('Connect the radio first, or uncheck Include the connected radio for a PC-only backup.');const radio=connection,identity=hex(state.self.publicKey);return {radio,run:fn=>exclusive(fn,true),protocolVersion:Constants.SupportedCompanionProtocolVersion,check:()=>{if(!state.connected||connection!==radio||!state.self?.publicKey||hex(state.self.publicKey)!==identity)throw Error('Radio connection or identity changed; operation stopped.')},progress:message=>{status.textContent=message}}}
+ async function withRadioOperation(task){if(radioBackupActive)throw Error('A radio backup or restore is already in progress.');radioBackupActive=true;try{return await task()}finally{radioBackupActive=false}}
+ buttons[0].onclick=()=>run(async pass=>{let radioBackup=null;if($('full-backup-radio').checked){radioBackup=await withRadioOperation(async()=>{const ctx=radioContext(),value=await captureRadioBackup(ctx);ctx.check();return value})}status.textContent='Encrypting backup; large maps may take time…';const result=await window.pywebview.api.export_full_backup(snapshot(),pass,radioBackup);if(result.error)throw Error(result.error);status.textContent=result.cancelled?'Export cancelled.':radioBackup?'Encrypted PC and radio backup saved. Wi-Fi credentials and some firmware-specific settings are not included.':'Encrypted PC-only backup saved; radio identity and settings were not included.'});
  buttons[1].onclick=()=>run(async pass=>{if(!confirm('Importing replaces matching settings, messages and secrets on this PC. A recovery backup will be created first. Secure Coms replay records may be older: compare fingerprints and exchange a new secret where replay protection matters. Continue?'))return;status.textContent='Checking backup and creating encrypted recovery copy…';const before=snapshot(),result=await window.pywebview.api.prepare_full_restore(before,pass);if(result.error)throw Error(result.error);if(result.cancelled){status.textContent='Import cancelled.';return}const changed=[];try{for(const [key,value] of Object.entries(result.storage)){const old=localStorage.getItem(key);localStorage.setItem(key,value);changed.push([key,old])}const done=await window.pywebview.api.commit_full_restore();if(done.error)throw Error(done.error)}catch(error){let rollbackFailed=false;for(const [key,old] of changed.reverse())try{if(old===null)localStorage.removeItem(key);else localStorage.setItem(key,old)}catch{rollbackFailed=true}await window.pywebview.api.cancel_full_restore();throw Error(`${error.message} ${rollbackFailed?'Some local changes could not be rolled back. ':''}Recovery backup: ${result.recovery}`)}status.textContent=`Restored. Recovery backup: ${result.recovery}. Restarting view…`;alert(`Backup restored. Your previous data was saved to:\n${result.recovery}\n\nCompare Secure Coms fingerprints before use.`);location.reload()});
+ buttons[2].onclick=()=>run(async pass=>withRadioOperation(async()=>{const ctx=radioContext();if(!window.pywebview.api.open_radio_backup)throw Error('Install the updated desktop app before restoring radio settings.');const result=await window.pywebview.api.open_radio_backup(pass);if(result.error)throw Error(result.error);if(result.cancelled){status.textContent='Radio restore cancelled.';return}const backup=validateRadioBackup(result.radio),target=await captureRadioBackup(ctx);ctx.check();const source=hex(new Uint8Array(backup.self.publicKey)),destination=hex(new Uint8Array(target.self.publicKey));if(!confirm(`Restore the saved radio ${backup.self.name||source.slice(0,8)} (${source.slice(0,12)}) to the connected radio ${target.self.name||destination.slice(0,8)} (${destination.slice(0,12)})? This overwrites its identity, radio settings and channel slots, and merges contacts. An encrypted recovery backup of the connected radio will be created first. Wi-Fi credentials and some firmware-specific settings are not restored.`)){status.textContent='Radio restore cancelled.';return}status.textContent='Saving encrypted recovery backup of this PC and radio…';const recovery=await window.pywebview.api.save_radio_recovery(snapshot(),pass,target);if(recovery.error)throw Error(recovery.error);try{const restored=await restoreRadioBackup(ctx,backup,target);state.self=restored;status.textContent=`Radio identity and supported settings restored and core settings verified. Recovery backup: ${recovery.recovery}. Reconnect the app to refresh contacts.`;alert(status.textContent);location.reload()}catch(error){throw Error(`${error?.message||'Radio restore failed.'} Radio changes may be partial. Recovery backup: ${recovery.recovery}`)}}));
 }
 setupFullBackup();
 $('secure-unread-indicator').addEventListener('click',()=>{if(!secureGroups.openUnread()){secureGroups.showIndividual();secureComs.selectFirstUnread()}showView('secure')});

@@ -314,11 +314,11 @@ class API:
 
     def _full_backup_dialogs(self, radio):
         pending = {}
-        def export_full_backup(storage, password):
+        def export_full_backup(storage, password, radio_config=None):
             try:
                 files=radio.create_file_dialog(webview.FileDialog.SAVE, save_filename='MeshCore-Command-Full-Backup.mccfull', file_types=('MeshCore full backup (*.mccfull)',))
                 if not files: return {'cancelled':True}
-                encrypted=full_backup.encrypt(full_backup.snapshot(storage),password)
+                encrypted=full_backup.encrypt(full_backup.snapshot(storage,radio_config),password)
                 full_backup.write_atomic(Path(files[0]),encrypted)
                 return {'ok':True}
             except Exception as error: return {'error':str(error) or 'Could not export backup.'}
@@ -347,7 +347,24 @@ class API:
         def cancel_full_restore():
             pending.clear()
             return {'ok':True}
-        return export_full_backup,prepare_full_restore,commit_full_restore,cancel_full_restore
+        def open_radio_backup(password):
+            try:
+                files=radio.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=False, file_types=('MeshCore full backup (*.mccfull)',))
+                if not files: return {'cancelled':True}
+                source=Path(files[0])
+                if source.stat().st_size>full_backup.LIMIT+1024: raise ValueError('Backup exceeds the 256 MB limit.')
+                meta,_=full_backup.decode(source.read_bytes(),password)
+                if not meta.get('radio'): raise ValueError('This backup has no radio configuration or identity.')
+                return {'radio':meta['radio']}
+            except Exception as error: return {'error':str(error) or 'Could not read radio backup.'}
+        def save_radio_recovery(storage,password,radio_config):
+            try:
+                if not radio_config: raise ValueError('Current radio backup is missing.')
+                recovery=full_backup.data_dir() / 'recovery-backups' / ('before-radio-restore-'+time.strftime('%Y%m%d-%H%M%S')+'-'+os.urandom(4).hex()+'.mccfull')
+                full_backup.write_atomic(recovery,full_backup.encrypt(full_backup.snapshot(storage,radio_config),password))
+                return {'recovery':str(recovery)}
+            except Exception as error: return {'error':str(error) or 'Could not create the radio recovery backup.'}
+        return export_full_backup,prepare_full_restore,commit_full_restore,cancel_full_restore,open_radio_backup,save_radio_recovery
 
     def _open_radio(self, address, serial_port=False):
         if not self._radio_open_lock.acquire(blocking=False):

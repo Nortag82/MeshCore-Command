@@ -13,6 +13,23 @@ class Tests(unittest.TestCase):
    meta,files=b.decode(e,'long password 123');self.assertEqual(meta['storage'],{'messages':'private'});self.assertEqual(files[meta['selected']],b'map');self.assertEqual(len(meta['credentials']),1)
    with patch.object(b.credential_store,'get',return_value=None),patch.object(b.credential_store,'put'),patch.object(b.credential_store,'delete'):b.apply(meta,files)
    self.assertTrue(Path(json.loads((root/'offline-map.json').read_text())['path']).exists())
+ def test_radio_identity_is_encrypted_and_optional_in_older_backups(self):
+  with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'LOCALAPPDATA':tmp}),patch.object(b.credential_store,'list_saved',return_value={}):
+   radio={'version':1,'privateKey':['sensitive-test-identity'],'channels':[]}
+   encrypted=b.encrypt(b.snapshot({'test':'data'},radio),'long password 123');self.assertNotIn(b'sensitive-test-identity',encrypted)
+   meta,_=b.decode(encrypted,'long password 123');self.assertEqual(meta['radio'],radio)
+   old,_=b.decode(b.encrypt(b.snapshot({}),'long password 123'),'long password 123');self.assertIsNone(old['radio'])
+   with self.assertRaises(ValueError):b.snapshot({}, {'version':9})
+ def test_radio_backup_dialogs_preserve_identity_in_encrypted_file(self):
+  import app
+  with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'LOCALAPPDATA':tmp}),patch.object(b.credential_store,'list_saved',return_value={}):
+   path=Path(tmp)/'backup.mccfull'
+   class Window:
+    def create_file_dialog(self,*args,**kwargs):return [str(path)]
+   api=app.API();export,prepare,commit,cancel,open_radio,recovery=api._full_backup_dialogs(Window());radio={'version':1,'privateKey':['identity-secret']};password='long password 123'
+   self.assertEqual(export({'key':'value'},password,radio),{'ok':True});self.assertNotIn(b'identity-secret',path.read_bytes());self.assertEqual(open_radio(password)['radio'],radio)
+   self.assertIn('error',open_radio('incorrect password'))
+   result=recovery({'key':'value'},password,radio);self.assertTrue(Path(result['recovery']).is_file());self.assertNotIn(b'identity-secret',Path(result['recovery']).read_bytes())
  def test_rollback(self):
   with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'LOCALAPPDATA':tmp}),patch.object(b.credential_store,'get',return_value=None),patch.object(b.credential_store,'put',side_effect=OSError('failure')),patch.object(b.credential_store,'delete'):
    root=b.data_dir();root.mkdir();(root/'devices.json').write_text('old')

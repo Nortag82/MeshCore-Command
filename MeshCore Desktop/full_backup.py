@@ -19,7 +19,12 @@ def validate_storage(storage):
     if len(json.dumps(storage,ensure_ascii=False).encode())>32*1024*1024: raise ValueError('App data is too large for a backup.')
     return {k:v for k,v in storage.items() if k not in ('rcc6-session','rcc6-radio-owner')}
 
-def snapshot(storage):
+def validate_radio(radio):
+    if radio is None: return None
+    if not isinstance(radio,dict) or radio.get('version')!=1 or len(json.dumps(radio,ensure_ascii=False).encode('utf-8'))>2_000_000: raise ValueError('Invalid radio backup.')
+    return radio
+
+def snapshot(storage, radio=None):
     storage=validate_storage(storage); root=data_dir(); credentials=credential_store.list_saved(); files={}
     devices=root/'devices.json'
     if devices.exists(): files['devices.json']=devices.read_bytes()
@@ -35,7 +40,7 @@ def snapshot(storage):
     for p in sorted(maps):
         data=p.read_bytes(); name='maps/'+hashlib.sha256(data).hexdigest()+p.suffix.lower();files[name]=data
         if p==selected_path: selected=name
-    meta={'version':1,'storage':storage,'credentials':credentials,'selected':selected}
+    meta={'version':1,'storage':storage,'credentials':credentials,'selected':selected,'radio':validate_radio(radio)}
     output=io.BytesIO()
     with zipfile.ZipFile(output,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=4) as z:
         z.writestr('manifest.json',json.dumps(meta,ensure_ascii=False))
@@ -57,7 +62,7 @@ def decode(data,password):
         if any(n!='manifest.json' and n!='devices.json' and not re.fullmatch(r'maps/[0-9a-f]{64}\.(mbtiles|pmtiles)',n) for n in names):raise ValueError('Invalid backup file name.')
         meta=json.loads(z.read('manifest.json'));files={n:z.read(n) for n in names if n!='manifest.json'}
     if meta.get('version')!=1:raise ValueError('Unsupported backup version.')
-    meta['storage']=validate_storage(meta.get('storage'));creds=meta.get('credentials')
+    meta['storage']=validate_storage(meta.get('storage'));meta['radio']=validate_radio(meta.get('radio'));creds=meta.get('credentials')
     if not isinstance(creds,dict) or len(creds)>10000 or any(not re.fullmatch(r'(secure|repeater)/[0-9a-f]{64}',k) or not isinstance(v,str) or not 1<=len(v.encode())<=512 for k,v in creds.items()):raise ValueError('Invalid backup credentials.')
     if meta.get('selected') is not None and meta['selected'] not in files:raise ValueError('Selected offline map is missing from backup.')
     for name,data in files.items():
