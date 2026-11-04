@@ -469,3 +469,5 @@ body{font-size:13px}
 .monitor-global{margin-top:14px;border-top:1px solid #344450;padding-top:10px}.monitor-global summary{cursor:pointer;font-weight:700}.monitor-global label{margin:8px 0 4px}.monitor-global input[type=checkbox]{width:auto}.monitor-global p{font-size:11px;line-height:1.4}.monitor-global button{margin-top:8px}
 
 .contact-map-card .map-location-status{font-size:11px;line-height:1.35;margin:0 0 6px}
+
+#setting-location-map-panel{margin:8px 0}#setting-location-map-panel summary{cursor:pointer;color:#70e4bd;font-weight:700}#setting-location-map{height:300px;min-width:0;margin:8px 0;border-radius:8px;background:#29333c;z-index:0}

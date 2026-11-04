@@ -1,3 +1,4 @@
+import {createSettingsLocationMap} from './settings-location-map.js';
 import {setRadioLocation} from './radio-location.js';
 import {CLEANUP_SETTING,protectedContacts,oldestContact,contactArguments,replaceContact} from './contact-cleanup.js';
 import {readRepeatEligibility,setCompanionRepeat} from './repeat-mode.js';
@@ -1497,6 +1498,9 @@ async function sendMessage(event, quickText = null) {
 }
 
 
+let locationDraftDirty=false,locationDraftOwner='';
+const locationSettingsMap=createSettingsLocationMap({onEdit:()=>{locationDraftDirty=true}});
+
 function fillMeshSettings() {
   const self = state.self;
   if (!self || $("mesh-settings").contains(document.activeElement)) return;
@@ -1508,8 +1512,8 @@ function fillMeshSettings() {
   $("setting-power").value = self.txPower;
   $("setting-power").max = Math.min(22, self.maxTxPower);
   $("setting-contacts").value = String(self.manualAddContacts ? 1 : 0);
-  $("setting-lat").value = self.advLat / 1000000;
-  $("setting-lon").value = self.advLon / 1000000;
+  const ownKey=self.publicKey?hex(self.publicKey):'';if(ownKey!==locationDraftOwner){locationDraftOwner=ownKey;locationDraftDirty=false}
+  if(!locationDraftDirty){$("setting-lat").value = self.advLat / 1000000;$("setting-lon").value = self.advLon / 1000000;locationSettingsMap.sync()}
   text("setting-channel-list", state.channels.length ? "Configured slots: " + state.channels.map(c => `${c.channelIdx}: ${c.name}`).join(", ") : "No channels configured.");
 }
 // Protocol v10+ appends the companion's path mode to DEVICE_INFO. The
@@ -1558,7 +1562,7 @@ settingForm("radio-settings-form", async () => {await connection.setRadioParams(
   Math.round(Number($("setting-freq").value) * 1000), Math.round(Number($("setting-bw").value) * 1000), Number($("setting-sf").value), Number($("setting-cr").value));text("companion-repeat-status", "Radio settings were saved with companion repeat disabled. The radio does not report its on/off state.");});
 settingForm("power-settings-form", () => connection.setTxPower(Number($("setting-power").value)));
 settingForm("contacts-settings-form", () => connection.setOtherParams(Number($("setting-contacts").value) === 1));
-settingForm("location-settings-form", () => connection.setAdvertLatLong(Math.round(Number($("setting-lat").value) * 1000000), Math.round(Number($("setting-lon").value) * 1000000)));
+$('location-settings-form').addEventListener('submit',async event=>{event.preventDefault();const button=event.currentTarget.querySelector('button[type="submit"]'),status=$('setting-location-status');button.disabled=true;status.textContent='Saving and checking radio location…';try{const lat=$('setting-lat').value.trim(),lon=$('setting-lon').value.trim();if(!lat||!lon)throw Error('Enter a latitude and longitude or choose a point on the map.');if(locationDraftDirty&&locationDraftOwner!==hex(state.self?.publicKey||[]))throw Error('The connected radio changed. Reopen the location settings and choose the position again.');await saveOwnLocation(Number(lat),Number(lon));locationDraftDirty=false;locationSettingsMap.sync();status.textContent='Location saved and confirmed on the radio. Adverts include it only if the radio shares its location.';toast('Location saved and confirmed')}catch(error){status.textContent=error?.message||'Location could not be confirmed.';toast(status.textContent,'error')}finally{button.disabled=false}});
 settingForm("channel-settings-form", async () => {
   const name = $("setting-channel-name").value.trim();
   if (!name || encoder.encode(name).length > 31) throw new Error("Channel name must be 1–31 UTF-8 bytes");
