@@ -8,6 +8,8 @@ from serial.tools import list_ports
 import webview
 from webview.http import _get_random_port
 from bridge import CompanionBridge
+import updater
+from version import VERSION
 
 ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
 FIRMWARE = ROOT / 'firmware'
@@ -40,11 +42,43 @@ class API:
         self._lock = threading.Lock()
         self._startup_ready = threading.Event()
         self._devices_lock = threading.Lock()
+        self._update_lock = threading.Lock()
+        self._update_started = False
         self._devices_file = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'MeshCore Command Data' / 'devices.json'
     def _update(self, **kw):
         with self._lock: self._state.update(kw)
     def status(self):
         with self._lock: return dict(self._state)
+    def app_version(self):
+        return VERSION
+    def check_app_update(self):
+        try: return updater.check()
+        except Exception as error: return {'error': 'Could not check for updates: ' + str(error)}
+
+    def install_app_update(self, version):
+        if not self._update_lock.acquire(blocking=False): return {'error': 'An update is already in progress.'}
+        try:
+            if self._update_started: return {'error': 'The update is already starting.'}
+            if not getattr(sys, 'frozen', False): return {'error': 'Automatic installation is only available in an installed Windows build.'}
+            if not isinstance(version, str) or updater.parse_version(version) is None: return {'error': 'Invalid update version.'}
+            with self._lock:
+                if self._state['busy']: return {'error': 'Wait for the current scan or flash operation to finish.'}
+            installer = updater.download(version)
+            with self._lock:
+                if self._state['busy']: return {'error': 'Wait for the current scan or flash operation to finish.'}
+                self._state['busy'] = True
+            try:
+                subprocess.Popen([installer, '--update', str(os.getpid())], close_fds=True, creationflags=CREATE_NO_WINDOW | getattr(subprocess, 'DETACHED_PROCESS', 0))
+            except Exception:
+                with self._lock: self._state['busy'] = False
+                raise
+            self._update_started = True
+            threading.Timer(1.5, self.exit_app).start()
+            return {'ok': True}
+        except Exception as error:
+            return {'error': 'Update was not started: ' + str(error)}
+        finally:
+            self._update_lock.release()
     def ports(self):
         found=[]
         for p in list_ports.comports():
@@ -299,7 +333,7 @@ class API:
                     if not files: return {'cancelled': True}
                     return active_bridge.set_offline_map(files[0])
                 except Exception as error: return {'error': str(error)}
-            radio.expose(radio.toggle_fullscreen, radio.minimize, self.exit_app, choose_offline_map, *self._backup_dialogs(radio))
+            radio.expose(radio.toggle_fullscreen, radio.minimize, self.exit_app, choose_offline_map, self.check_app_update, self.install_app_update, *self._backup_dialogs(radio))
             def radio_closed():
                 active_bridge.close()
                 if self._radio_window is radio:

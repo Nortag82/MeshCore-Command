@@ -1,6 +1,6 @@
 # MeshCore Command user manual
 
-MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.5. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
+MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.7. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
 
 An experimental Android app is described separately in the [Android instructions](../Android/README.md). Windows 2.0.5 includes Wi-Fi reconnection and startup-crash mitigations.
 
@@ -9,7 +9,11 @@ An experimental Android app is described separately in the [Android instructions
 - You need Windows, the Edge WebView2 runtime, a compatible Wi-Fi radio and an appropriate LoRa antenna. Connect the antenna before powering or transmitting with the radio.
 - The PC and radio need network access to each other. The companion connection uses TCP port 5000; discovery uses UDP port 5010.
 - Use a trusted local network: the companion protocol itself is unauthenticated and unencrypted. The PC bridge listens on loopback.
-- Download the installer from the [version 2.0.5 test release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.5), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
+- Download the installer from the [version 2.0.7 test release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.7), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
+
+### Updating the Windows app
+
+In Windows builds that include the updater, choose **Check for updates** on the connection screen or under **Settings**. The app checks published GitHub releases, including test releases, and identifies the Windows installer for a newer numbered version. It asks before downloading and restarting. Finish any flash operation or message first. The download is checked against GitHub's SHA-256 asset digest; this detects mismatched downloads but is not an independent code signature. If verification fails, no installer runs. Updating does not flash the radio. Keep a Secure Coms backup and protect its password. Internet access is required.
 
 ## 1. Set up or connect a radio
 

@@ -1927,6 +1927,18 @@ connection.connect().catch(() => { setLink("offline"); $("boot").classList.add("
 document.addEventListener("keydown", event => { if (event.key === "F11" && window.pywebview?.api?.toggle_fullscreen) { event.preventDefault(); window.pywebview.api.toggle_fullscreen(); } });
 
 function initWindowControls(){const api=window.pywebview?.api;if(!api)return;document.getElementById('window-controls').hidden=false;document.getElementById('window-minimize').onclick=()=>api.minimize();document.getElementById('window-restore').onclick=()=>api.toggle_fullscreen();document.getElementById('window-exit').onclick=()=>api.exit_app();}window.addEventListener('pywebviewready',initWindowControls);if(window.pywebview?.api)initWindowControls();
+function initDesktopUpdate(){
+  const api=window.pywebview?.api, host=document.getElementById('mesh-settings');
+  if(!api?.check_app_update||!api?.install_app_update||!host||document.getElementById('desktop-update-card'))return;
+  const card=document.createElement('section');card.className='card';card.id='desktop-update-card';
+  const title=document.createElement('h3');title.textContent='MeshCore Command updates';
+  const description=document.createElement('p');description.textContent='Check GitHub for a newer Windows version. Updating closes and restarts Command; radio firmware and saved settings are not changed.';
+  const button=document.createElement('button');button.type='button';button.className='secondary-button';button.textContent='Check for updates';
+  const status=document.createElement('p');status.setAttribute('aria-live','polite');status.textContent='Updates are checked only when you choose this button.';
+  button.onclick=async()=>{button.disabled=true;status.textContent='Checking GitHub for updates...';try{const info=await api.check_app_update();if(info.error)throw Error(info.error);if(!info.available){status.textContent=`Version ${info.current} is up to date.`;return}const preview=info.prerelease?' (test release)':'';status.textContent=`Version ${info.version}${preview} is available.`;if(!confirm(`Install MeshCore Command ${info.version}${preview}? The app will close and restart after the download. Finish any messages or flashing first.`))return;status.textContent='Downloading and checking the installer...';const result=await api.install_app_update(info.version);if(result.error)throw Error(result.error);status.textContent='Installer verified. Closing and restarting...'}catch(error){status.textContent=error.message||'Update failed.'}finally{button.disabled=false}};
+  card.append(title,description,button,status);host.prepend(card);
+}
+window.addEventListener('pywebviewready',initDesktopUpdate);if(window.pywebview?.api)initDesktopUpdate();
 
 
 function createRoomTools() {

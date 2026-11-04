@@ -8,6 +8,10 @@ import zipfile
 from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox, ttk
+import ctypes
+import csv
+import io
+import time
 
 ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).parent))
 TARGET = Path(os.environ['LOCALAPPDATA']) / 'MeshCore Command'
@@ -68,7 +72,44 @@ if (Test-Path -LiteralPath $old) {
     report('Installation complete.', 100)
 
 
+def update_after_exit(pid):
+    """Run in the downloaded installer, after the user agreed to restart."""
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+    kernel.OpenProcess.restype = ctypes.c_void_p
+    kernel.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+    kernel.WaitForSingleObject.restype = ctypes.c_uint32
+    kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+    handle = kernel.OpenProcess(0x00100000, False, pid)
+    if handle:
+        try:
+            if kernel.WaitForSingleObject(handle, 60000) != 0:
+                raise RuntimeError('The app did not close. Close it and try again.')
+        finally: kernel.CloseHandle(handle)
+    elif ctypes.get_last_error() != 87:
+        raise RuntimeError('Could not confirm that the app has closed.')
+    # A second instance would keep files locked. Never replace an active app.
+    for _ in range(10):
+        result = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq MeshCore Command.exe', '/FO', 'CSV', '/NH'], capture_output=True, text=True, check=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        rows = list(csv.reader(io.StringIO(result.stdout)))
+        if not any(row and row[0].lower() == 'meshcore command.exe' for row in rows): break
+        time.sleep(1)
+    else: raise RuntimeError('Another MeshCore Command window is still running. Close it and try again.')
+    install_payload(ROOT, TARGET, lambda *_: None)
+    os.startfile(str(TARGET / 'MeshCore Command.exe'))
+
+
 def main():
+    if '--update' in sys.argv:
+        try:
+            index = sys.argv.index('--update')
+            pid = int(sys.argv[index + 1])
+            if pid <= 0: raise ValueError('Invalid app process.')
+            update_after_exit(pid)
+            return 0
+        except Exception as error:
+            ctypes.windll.user32.MessageBoxW(None, 'Update failed: ' + str(error) + '\n\nYour settings have not been intentionally removed. Start MeshCore Command again or run the installer manually.', 'MeshCore Command update', 0x10)
+            return 1
     if '--silent' in sys.argv:
         try:
             install_payload(ROOT, TARGET, lambda *_: None)
