@@ -135,3 +135,6 @@ In Settings, **Encrypted backup** exports encrypted local settings, message and 
 Monitoring offers an optional global telemetry schedule for all monitored contacts and repeaters, including newly added nodes. Requests are processed one at a time while the app is open and connected. Under Settings, **Advertised location → Choose location on map** fills the coordinate fields; **Save coordinates** writes and verifies the radio position. The Contact map also offers **Set my location**: select a point and save it to the radio, with readback verification. Sending an advert does not include the location if the radio’s sharing policy disables it.
 
 When the connected radio reports that its contact table is full, optional automatic cleanup replaces the oldest eligible contact with the new advertised contact. PC and radio favourites, Secure Coms contacts, monitored nodes, saved rooms and the selected conversation are protected. Undated contacts are skipped. The radio’s independent overwrite settings have their own rules.
+
+
+At startup, the desktop app checks for updates in the background and asks before installation. It defers the prompt while a radio window, connection, scan or flash is active. Manual checks remain available on the connection screen and in Settings.

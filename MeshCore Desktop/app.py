@@ -56,6 +56,10 @@ class API:
         try: return updater.check()
         except Exception as error: return {'error': 'Could not check for updates: ' + str(error)}
 
+    def can_prompt_update(self):
+        with self._lock: busy = bool(self._state['busy'])
+        return {'allowed': not busy and self._radio_window is None and not self._radio_open_lock.locked() and not self._update_started}
+
     def install_app_update(self, version):
         if not self._update_lock.acquire(blocking=False): return {'error': 'An update is already in progress.'}
         try:
