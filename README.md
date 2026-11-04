@@ -1,11 +1,13 @@
 # MeshCore Command
 
-A Windows desktop companion for controlling a Wi-Fi connected MeshCore radio, with messaging, contacts, repeater management, monitoring, terrain planning and a shared situation map with offline basemaps.
+A Windows desktop companion for controlling a Wi-Fi connected MeshCore radio, with messaging, contacts, repeater management, monitoring, terrain planning and a shared situation map with offline basemaps. An experimental Android Bluetooth companion is also included.
 
 This repository contains the desktop source in `MeshCore Desktop/` and the modified companion firmware and interface sources in `NeonPocket/`. The firmware tree is based on [NeonPocketMC](https://github.com/n30nex/NeonPocketMC-Heltec-V4) and retains its license files and upstream notices. See [desktop documentation](MeshCore%20Desktop/README.md) for features and device support.
 
 
-The current installer build is **2.0.4**. Secure groups are local recipient lists that send individual encrypted messages; no group key is needed. The separate [secure pairing research prototype](experimental/secure-pairing/) is not integrated. Command discovery still uses Public.
+The current test release is **2.0.5** for Windows and **0.2.1** for Android. Secure groups are local recipient lists that send individual encrypted messages; no group key is needed. The separate [secure pairing research prototype](experimental/secure-pairing/) is not integrated. Command discovery still uses Public.
+
+Windows 2.0.5 adds Wi-Fi reconnect and startup crash mitigations. The reconnect code retries a dropped network connection without automatically retransmitting uncertain messages. The startup loading window runs separately from the main app to isolate Tcl/Tk faults. These changes need further testing with real radios.
 
 Version 2.0.3 removes Secure Images and image transfers. Secure Situation Map picture sharing remains available.
 
@@ -15,7 +17,15 @@ Version 2.0.2 adds an opt-in control for MeshCore's off-grid companion-repeat mo
 
 ## Download for Windows
 
-Download the [version 2.0.4 Windows installer](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.4), then follow the [user manual](docs/USER-MANUAL.md). The release page lists the installer checksum. Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.
+Download the [version 2.0.5 Windows installer](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.5), then follow the [user manual](docs/USER-MANUAL.md). The release page lists the installer checksum. Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.
+
+## Android test app
+
+The experimental [Android source and setup instructions](Android/README.md) target Android 12 and newer and connect over Bluetooth to standard MeshCore BLE companion firmware. The phone interface includes messaging, Secure Coms, the Secure Situation Map and selected Command tools. Secure message and map compatibility, Bluetooth pairing, and radio operations still require testing on physical devices. Map tiles require internet and receiving while the app is closed is not supported. Download the experimental [Android 0.2.1 APK](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.5) from the test release.
+
+These phone previews use simulated conversations and a simulated radio connection:
+
+<img src="docs/images/android-messages-list.png" alt="Android conversation list" width="280"> <img src="docs/images/android-messages-chat.png" alt="Android conversation view" width="280">
 
 ## A look inside
 

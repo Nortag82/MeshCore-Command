@@ -330,8 +330,14 @@ class API:
     def open_device(self, ip):
         return self._open_radio(ip)
 
-def show_startup_splash(ready):
-    """Keep a small native loading window responsive while WebView starts."""
+def show_startup_splash():
+    """Run Tk on the main thread of a disposable splash-only process."""
+    ready=threading.Event()
+    def wait_for_parent():
+        try: sys.stdin.buffer.read(1)
+        except (OSError, AttributeError): pass
+        ready.set()
+    threading.Thread(target=wait_for_parent,daemon=True).start()
     root=tk.Tk()
     root.title('MeshCore Command')
     root.resizable(False,False)
@@ -349,17 +355,36 @@ def show_startup_splash(ready):
         if time.monotonic()-started>25:
             label.configure(text='Startup is taking longer than expected. You can close this window and try again.')
         root.after(200,check)
-    # Closing the loading box cancels startup, even if WebView has stalled.
-    root.protocol('WM_DELETE_WINDOW',lambda:os._exit(1))
+    # Closing the loading box only closes this helper, not the main app.
+    root.protocol('WM_DELETE_WINDOW',root.destroy)
     root.after(200,check)
     root.mainloop()
 
+def start_splash_process():
+    command=[sys.executable]
+    if not getattr(sys, 'frozen', False): command.append(str(Path(__file__).resolve()))
+    command.append('--startup-splash')
+    try:
+        return subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
+    except OSError:
+        return None
+
+def stop_splash_process(process):
+    if process and process.stdin:
+        try: process.stdin.close()
+        except OSError: pass
+
 if __name__ == '__main__':
+    if '--startup-splash' in sys.argv:
+        show_startup_splash()
+        sys.exit(0)
     api=API()
-    threading.Thread(target=show_startup_splash,args=(api._startup_ready,),daemon=True).start()
+    splash=start_splash_process()
     api._window=webview.create_window('MeshCore Command', str(ROOT/'index.html'), js_api=api,width=1060,height=760,min_size=(780,600),hidden=True,fullscreen=True)
     def reveal():
         api._startup_ready.wait()
+        stop_splash_process(splash)
         api._window.show()
     threading.Thread(target=reveal,daemon=True).start()
     profile = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'MeshCore WiFi Data' / 'WebView'

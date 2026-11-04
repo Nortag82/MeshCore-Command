@@ -1,0 +1,21 @@
+const fs = require('fs');
+const path = require('path');
+const root = path.resolve(__dirname, '../..');
+const web = path.join(root, 'NeonPocket/examples/companion_radio/webui');
+const deps = process.env.MESHCORE_NODE_MODULES || path.join(web, 'node_modules');
+const { build, transform } = require(path.join(deps, 'esbuild'));
+const read = p => fs.readFileSync(p, 'utf8');
+(async () => {
+  const pkg = JSON.parse(read(path.join(web, 'package.json')));
+  const js = await build({ entryPoints:[path.join(web,'src/app.js')], nodePaths:[deps], bundle:true, write:false, format:'iife', platform:'browser', target:['chrome100'], minify:true, charset:'utf8', legalComments:'none', define:{__APP_VERSION__:JSON.stringify(pkg.version), __MESHCORE_JS_VERSION__:JSON.stringify(pkg.dependencies['@liamcottle/meshcore.js'])} });
+  const css = await transform(read(path.join(deps,'leaflet/dist/leaflet.css'))+'\n'+read(path.join(web,'src/styles.css'))+'\n'+read(path.join(root,'Android/app/src/main/assets/android.css')), {loader:'css',minify:true});
+  let html = read(path.join(web,'src/index.html')).replace('/*__RCC6_CSS__*/',()=>css.code.trim()).replace('/*__RCC6_JS__*/',()=>js.outputFiles[0].text.trim());
+  const icon=fs.readFileSync(path.join(root,'MeshCore Desktop/meshcore-command-small.png')).toString('base64');
+  html=html.replaceAll('NeonPocketMC','MeshCore Command').replaceAll('MeshCore Desktop','MeshCore Command').replace('<svg class="brand-mark" aria-hidden="true"><use href="#brand-pocket"/></svg>',`<img class="brand-mark" alt="" src="data:image/png;base64,${icon}">`);
+  html=html.replaceAll('Windows Credential Manager','Android encrypted storage').replaceAll('Windows notification','Android notification').replaceAll('Windows controls','Android controls').replaceAll('Windows settings','Android settings').replaceAll('this PC','this phone').replaceAll('both PCs','both devices');
+  const csp="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://tile.openstreetmap.org; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
+  html=html.replace('</head>',`<meta http-equiv="Content-Security-Policy" content="${csp}"><script>${read(path.join(root,'Android/app/src/main/assets/android-bridge.js'))}</script></head>`);
+  if(html.includes('/*__RCC6_'))throw new Error('Missing build substitutions');
+  fs.writeFileSync(path.join(root,'Android/app/src/main/assets/index.html'),html);
+  console.log('Android interface built:',Buffer.byteLength(html),'bytes');
+})().catch(error=>{console.error(error);process.exit(1)});

@@ -29,6 +29,9 @@ class SerialTransport:
 
 class CompanionBridge:
     def __init__(self, host, html_path, port=19483, serial_port=None):
+        self.host = host
+        self.serial_port = serial_port
+        self.stop_event = threading.Event()
         self.socket = SerialTransport(serial_port) if serial_port else socket.create_connection((host,5000),timeout=5)
         self.socket.settimeout(None)
         self.html = Path(html_path).read_bytes()
@@ -160,7 +163,16 @@ class CompanionBridge:
                     if not 1<=length<=176:self.send(400);return
                     frame=self.rfile.read(length)
                     if len(frame)!=length:self.send(400);return
-                    with bridge.write_lock:bridge.socket.sendall(b'<' + struct.pack('<H',length)+frame)
+                    with bridge.write_lock:
+                        if not bridge.alive: self.send(503);return
+                        current=bridge.socket
+                        try: current.sendall(b'<' + struct.pack('<H',length)+frame)
+                        except OSError:
+                            # Do not retry a write: the radio may already have received it.
+                            bridge.alive=False
+                            try: current.shutdown(socket.SHUT_RDWR)
+                            except OSError: pass
+                            raise
                     self.send(200)
                 except (OSError, ValueError):self.send(503)
         class LocalServer(ThreadingHTTPServer):
@@ -198,28 +210,55 @@ class CompanionBridge:
         return {'available': available, 'name': self.offline_map_path.name if self.offline_map_path else '', 'format': self.offline_map_path.suffix.lower()[1:] if self.offline_map_path else '', 'maxZoom':max_zoom}
     @property
     def url(self): return 'http://127.0.0.1:%s/' % self.server.server_address[1]
-    def receive(self,n):
+    def receive(self,n,transport=None):
+        transport=transport or self.socket
         chunks=[]
         while n:
-            part=self.socket.recv(n)
+            part=transport.recv(n)
             if not part:raise EOFError()
             chunks.append(part);n-=len(part)
         return b''.join(chunks)
     def read_frames(self):
-        try:
-            while self.alive:
-                if self.receive(1)!=b'>':continue
-                n=struct.unpack('<H',self.receive(2))[0]
-                if not 1<=n<=176:raise ValueError('Invalid companion frame')
-                frame=self.receive(n)
-                with self.lock:
-                    if len(self.frames)==self.frames.maxlen:raise RuntimeError('Frame queue overflow')
-                    self.sequence=(self.sequence % 0xffffffff)+1
-                    self.frames.append((self.sequence,frame))
-        except (OSError,EOFError,ValueError,RuntimeError,serial.SerialException): self.alive=False
+        delay=1
+        while not self.stop_event.is_set():
+            current=self.socket
+            try:
+                while self.alive and not self.stop_event.is_set():
+                    if self.receive(1,current)!=b'>':continue
+                    n=struct.unpack('<H',self.receive(2,current))[0]
+                    if not 1<=n<=176:raise ValueError('Invalid companion frame')
+                    frame=self.receive(n,current)
+                    with self.lock:
+                        if len(self.frames)==self.frames.maxlen:raise RuntimeError('Frame queue overflow')
+                        self.sequence=(self.sequence % 0xffffffff)+1
+                        self.frames.append((self.sequence,frame))
+            except (OSError,EOFError,ValueError,RuntimeError,serial.SerialException):
+                pass
+            self.alive=False
+            try: current.close()
+            except OSError: pass
+            # USB devices may be deliberately disconnected for flashing; only
+            # reopen network radios automatically.
+            if self.serial_port:
+                return
+            while not self.stop_event.wait(delay):
+                try:
+                    replacement=socket.create_connection((self.host,5000),timeout=5)
+                    replacement.settimeout(None)
+                    with self.write_lock:
+                        if self.stop_event.is_set():
+                            replacement.close()
+                            return
+                        self.socket=replacement
+                        self.alive=True
+                    delay=1
+                    break
+                except (OSError,serial.SerialException):
+                    delay=min(delay*2,30)
     def close(self):
         if getattr(self, "closed", False): return
         self.closed=True
+        self.stop_event.set()
         self.alive=False
         try:self.socket.shutdown(socket.SHUT_RDWR)
         except OSError:pass
