@@ -7,7 +7,7 @@ import updater
 import app
 
 
-def release(version='2.0.9', content=b'installer'):
+def release(version='2.0.10', content=b'installer'):
     name=f'MeshCore-Command-Windows-{version}-Setup.exe'
     return {'tag_name':'v'+version,'draft':False,'published_at':'2026-01-01T00:00:00Z','prerelease':True,'assets':[{'name':name,'state':'uploaded','digest':'sha256:'+hashlib.sha256(content).hexdigest(),'size':len(content),'browser_download_url':f'https://github.com/Nortag82/MeshCore-Command/releases/download/v{version}/{name}'}]}
 
@@ -19,8 +19,8 @@ class Response(io.BytesIO):
 
 class UpdaterTests(unittest.TestCase):
     def test_highest_release_and_no_downgrade(self):
-        self.assertEqual(updater.select_release([release('2.0.9'),release('2.1.0')])['version'],'2.1.0')
-        self.assertIsNone(updater.select_release([release('2.0.7'),release('2.0.8')]))
+        self.assertEqual(updater.select_release([release('2.0.10'),release('2.1.0')])['version'],'2.1.0')
+        self.assertIsNone(updater.select_release([release('2.0.8'),release('2.0.9')]))
 
     def test_untrusted_url_missing_digest_and_duplicate_are_rejected(self):
         for mutate in ('url','digest','duplicate'):
@@ -35,13 +35,13 @@ class UpdaterTests(unittest.TestCase):
         class Opener:
             def open(self,req,*args,**kwargs):return Response(json.dumps([r]).encode() if req.full_url==updater.API else data)
         with patch.object(updater.urllib.request,'build_opener',return_value=Opener()):
-            path=updater.Path(updater.download('2.0.9'))
+            path=updater.Path(updater.download('2.0.10'))
             try:self.assertEqual(path.read_bytes(),data)
             finally:path.unlink();path.parent.rmdir()
-            with self.assertRaises(ValueError):updater.download('2.0.10')
+            with self.assertRaises(ValueError):updater.download('2.0.11')
         r['assets'][0]['digest']='sha256:'+'0'*64
         with patch.object(updater.urllib.request,'build_opener',return_value=Opener()):
-            with self.assertRaisesRegex(ValueError,'SHA-256'):updater.download('2.0.9')
+            with self.assertRaisesRegex(ValueError,'SHA-256'):updater.download('2.0.10')
 
     def test_redirect_rejects_untrusted_host(self):
         h=updater.SafeRedirect()
@@ -51,12 +51,12 @@ class UpdaterTests(unittest.TestCase):
         api=app.API()
         with patch.object(app.sys,'frozen',True,create=True),patch.object(app.updater,'download',return_value='C:\\temp\\installer.exe') as download,patch.object(app.subprocess,'Popen') as launch,patch.object(app.threading,'Timer') as timer:
             api._state['busy']=True
-            self.assertIn('error',api.install_app_update('2.0.9'))
+            self.assertIn('error',api.install_app_update('2.0.10'))
             download.assert_not_called();launch.assert_not_called()
             api._state['busy']=False
-            self.assertEqual(api.install_app_update('2.0.9'),{'ok':True})
+            self.assertEqual(api.install_app_update('2.0.10'),{'ok':True})
             launch.assert_called_once();timer.assert_called_once()
-            self.assertIn('error',api.install_app_update('2.0.9'))
+            self.assertIn('error',api.install_app_update('2.0.10'))
 
 
 if __name__=='__main__':unittest.main()
