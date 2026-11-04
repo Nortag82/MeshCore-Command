@@ -344,6 +344,12 @@ bool UltimateService::writeSlot(uint16_t slot, const UltimateHistoryRecord& reco
 }
 
 bool UltimateService::appendRecord(const PendingEvent& event) {
+#ifdef PC_WIFI
+  // PC companion builds keep conversation history on the computer. Existing
+  // radio journal files are preserved, but no new message records are added.
+  (void)event;
+  return true;
+#endif
   if (settings.history_capacity == 0) return true;
   UltimateHistoryRecord record = {};
   record.magic = history_magic;
@@ -817,6 +823,11 @@ bool UltimateService::begin(
     Serial.println("Ultimate: journal initialization failed");
     return false;
   }
+#ifdef PC_WIFI
+  // Older installations may have stored a non-zero history capacity. Keep the
+  // files intact but report and enforce that logging is off for this build.
+  settings.history_capacity = 0;
+#endif
   if (meta.generation == 0 && !writeMeta()) return false;
   if (settings.history_capacity != 0 && settings.history_capacity != meta.capacity &&
       !setHistoryCapacity(settings.history_capacity)) {
@@ -1069,6 +1080,9 @@ bool UltimateService::clearHistory() {
 }
 
 bool UltimateService::setHistoryCapacity(uint16_t capacity) {
+#ifdef PC_WIFI
+  if (capacity != 0) return false;
+#endif
   if (!validCapacity(capacity)) return false;
   if (capacity == 0) {
     settings.history_capacity = 0;

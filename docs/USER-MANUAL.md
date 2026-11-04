@@ -1,6 +1,6 @@
 # MeshCore Command user manual
 
-MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.7. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
+MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.8. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
 
 An experimental Android app is described separately in the [Android instructions](../Android/README.md). Windows 2.0.5 includes Wi-Fi reconnection and startup-crash mitigations.
 
@@ -9,7 +9,7 @@ An experimental Android app is described separately in the [Android instructions
 - You need Windows, the Edge WebView2 runtime, a compatible Wi-Fi radio and an appropriate LoRa antenna. Connect the antenna before powering or transmitting with the radio.
 - The PC and radio need network access to each other. The companion connection uses TCP port 5000; discovery uses UDP port 5010.
 - Use a trusted local network: the companion protocol itself is unauthenticated and unencrypted. The PC bridge listens on loopback.
-- Download the installer from the [version 2.0.7 test release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.7), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
+- Download the installer from the [version 2.0.8 test release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.8), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
 
 ### Updating the Windows app
 
@@ -44,6 +44,10 @@ This is MeshCore's standard off-grid companion mode, intended for small temporar
 1. Open **Messages**, then select **Direct messages**, **Channels** or **Rooms**. Unread badges identify the tabs and conversations with new messages; muted channels do not contribute to the badges.
 2. Search for a conversation, or start a direct conversation from **Contacts**.
 3. Type a message and press **Enter** to send; use **Shift+Enter** for a new line. Right-click a message to copy text, reply with a quote or send a thumbs-up as an ordinary message.
+
+Ordinary direct, channel and room conversation history is stored locally in the PC's MeshCore Command WebView profile under `%LOCALAPPDATA%\MeshCore WiFi Data\WebView`, separately for each radio identity. Command keeps the latest 5,000 messages per radio; older entries are discarded from this local history. The Messages page shows the local storage status and warns if history cannot be read or saved. Do not delete the WebView profile if you want to retain this history. Ordinary messages in this profile are not separately encrypted by Command.
+
+The companion radio temporarily queues messages in memory until the app retrieves them, and room servers maintain their own retained posts. Older PC Wi-Fi companion firmware may also keep a persistent on-radio message journal. Updating the PC app alone does not change the radio firmware or erase that journal. The 2.0.8 flasher includes an updated **Heltec V4 automatic display/headless** PC Wi-Fi build that disables new journal records while preserving existing journal files. It must be flashed to the exact matching board to take effect; back up the radio first. Other bundled board variants are unchanged. The new firmware has compiled successfully but has not yet been tested on physical hardware. Secure Coms has its own separately protected storage and backup workflow.
 4. Use **Mute channel** to suppress notifications and unread badges for that channel. Messages remain available; word matches are still recorded silently.
 
 New direct, room and unmuted channel messages request a Windows tray alert and an app pop-up. Secure messages use the separate **Alert me to secure messages** setting in **Manage Secure Coms**. Message text is not included in these general alerts. The app and radio must be connected, and Windows can suppress tray alerts or sound. In Secure Coms, your messages are blue and incoming messages are red.

@@ -153,6 +153,8 @@ main { grid-column: 2; width: min(100%, 1320px); margin: 0 auto; padding: 24px c
 .thread-copy { min-width: 0; display: grid; gap: 3px; }
 .thread-copy strong, .thread-copy small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .thread-copy strong { font-size: 12px; }.thread-copy small { color: var(--muted); font-size: 10px; }
+.history-storage-status { margin: 0 4px 8px; color: var(--muted); font-size: 10px; line-height: 1.35; }
+.history-storage-status.error { color: #ff9a9a; }
 .thread-time { color: var(--muted); font-size: 10px; }
 .thread-badge { min-width: 20px; height: 20px; padding: 0 5px; display: grid; place-items: center; border-radius: 10px; color: #151000; background: var(--yellow); font-size: 9px; font-weight: 800; }
 .avatar { display: grid; place-items: center; flex: 0 0 auto; border-radius: 13px; color: var(--blue); background: rgba(66, 165, 255, .11); font-size: 12px; font-weight: 800; }

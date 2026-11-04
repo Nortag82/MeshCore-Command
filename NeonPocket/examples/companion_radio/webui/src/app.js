@@ -402,14 +402,37 @@ function hashText(value) {
 function historyKey() { return state.self?.publicKey ? `rcc6-history-${hex(state.self.publicKey)}` : ""; }
 function pendingHistoryKey() { return `rcc6-history-pending-${connection.sessionId}`; }
 function messageId(kind, key, timestamp, value) { return `${kind}:${key}:${timestamp}:${hashText(value)}`; }
+const unreadableHistoryKeys = new Set();
+let historyStorageWarning = false;
+function historyStorageStatus(message, failed) {
+  const label = document.getElementById('history-storage-status');
+  if (label) { label.textContent = message; label.classList.toggle('error', failed); }
+  if (failed && !historyStorageWarning) { historyStorageWarning = true; toast(message, 'error'); }
+  if (!failed) historyStorageWarning = false;
+}
 function persistHistory() {
   const key = historyKey() || pendingHistoryKey();
-  try { localStorage.setItem(key, JSON.stringify(state.messages.slice(-MAX_HISTORY_MESSAGES))); } catch { /* storage is optional */ }
+  if (unreadableHistoryKeys.has(key)) {
+    historyStorageStatus('Message history could not be read. Existing local data was preserved; new messages may not be saved.', true);
+    return false;
+  }
+  try {
+    localStorage.setItem(key, JSON.stringify(state.messages.slice(-MAX_HISTORY_MESSAGES)));
+    if (unreadableHistoryKeys.has(pendingHistoryKey())) {
+      historyStorageStatus('Some pending message history could not be read and was preserved for recovery.', true);
+    } else {
+      historyStorageStatus('Message history is saved on this device (latest 5,000 messages).', false);
+    }
+    return true;
+  } catch {
+    historyStorageStatus('Could not save message history on this device. New messages may be lost when the app closes.', true);
+    return false;
+  }
 }
 function readHistory(key) {
   try {
     const saved = JSON.parse(localStorage.getItem(key) || "[]");
-    if (!Array.isArray(saved)) return [];
+    if (!Array.isArray(saved)) throw new Error('Invalid local message history');
     return saved.filter((item) => item && typeof item.id === "string" && typeof item.key === "string" && typeof item.text === "string")
       .slice(-MAX_HISTORY_MESSAGES)
       .map((item) => ({
@@ -425,7 +448,11 @@ function readHistory(key) {
         authorPrefix: typeof item.authorPrefix === "string" && /^[0-9a-f]{8}$/.test(item.authorPrefix) ? item.authorPrefix : undefined,
         expectedAckCrc: Number.isInteger(item.expectedAckCrc) ? item.expectedAckCrc : undefined,
       }));
-  } catch { return []; }
+  } catch {
+    unreadableHistoryKeys.add(key);
+    historyStorageStatus('Message history could not be read. Existing local data was preserved; new messages may not be saved.', true);
+    return [];
+  }
 }
 function loadHistoryForNode() {
   const key = historyKey();
@@ -434,8 +461,9 @@ function loadHistoryForNode() {
   const merged = [...readHistory(key), ...readHistory(pendingHistoryKey()), ...state.messages];
   const seen = new Set();
   state.messages = merged.filter((item) => !seen.has(item.id) && seen.add(item.id)).slice(-MAX_HISTORY_MESSAGES);
-  try { localStorage.removeItem(pendingHistoryKey()); } catch { /* storage is optional */ }
-  persistHistory();
+  if (persistHistory() && !unreadableHistoryKeys.has(pendingHistoryKey())) {
+    try { localStorage.removeItem(pendingHistoryKey()); } catch { /* Keep the pending copy if removal fails. */ }
+  }
 }
 function channelKey(channel) { return `ch:${channel.channelIdx}`; }
 function mutedChannelId(key) {
