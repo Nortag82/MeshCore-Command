@@ -1,6 +1,6 @@
 # MeshCore Command user manual
 
-MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.17. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
+MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.18. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
 
 An experimental Android app is described separately in the [Android instructions](../Android/README.md). Windows 2.0.5 includes Wi-Fi reconnection and startup-crash mitigations.
 
@@ -9,7 +9,7 @@ An experimental Android app is described separately in the [Android instructions
 - You need Windows, the Edge WebView2 runtime, a compatible Wi-Fi radio and an appropriate LoRa antenna. Connect the antenna before powering or transmitting with the radio.
 - The PC and radio need network access to each other. The companion connection uses TCP port 5000; discovery uses UDP port 5010.
 - Use a trusted local network: the companion protocol itself is unauthenticated and unencrypted. The PC bridge listens on loopback.
-- Download the installer from the [version 2.0.17 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.17), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
+- Download the installer from the [version 2.0.18 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.18), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
 
 ### Updating the Windows app
 
@@ -111,6 +111,8 @@ In **Manage Secure Coms**, select **Discover Command installs** to send a reques
 
 Replies can be spoofed and are not verified identities. Select **Add & set up** to add an unknown radio contact, or **Set up** for a known one. Exchange the shared secret privately and compare fingerprints before marking the contact verified. Discovery requires compatible versions, the Public channel and a reachable flood scope; it cannot guarantee a response.
 
+New or updated received map markers show a message and a blinking **New map marker** box at the top of Command, plus a count beside Secure Situation Map. The count is saved on the PC per radio and clears when you open the map. Duplicates, acknowledgements and deletions do not create marker alerts.
+
 ### Local groups and backup
 
 Create a group in **Manage Secure Coms** by choosing a name and verified contacts. The group is a local recipient list; members do not need the group or another key. Sending to the group sends an individually encrypted direct message to each member using the existing shared secret. Replies appear in individual conversations. The group view shows per-recipient radio acknowledgements, which are not read receipts. The same groups can select recipients on the Secure Situation Map.
@@ -123,7 +125,7 @@ The unified encrypted backup includes Secure Coms contacts, secrets, groups and 
 
 ## 8. Terrain tools and coverage
 
-Open **Terrain tools** and use the map or coordinate fields to set points. You can add located known repeaters and planned repeaters, adjust positions and antenna heights, and calculate estimated line of sight and terrain visibility. Use the search radius to choose an area and display coverage for known nodes. Map tiles and elevation data require internet access and the calculation sends coordinates to those services.
+Open **Terrain tools**, choose **Place repeaters on map**, then click once for each planned site. Choose **Finish placing repeaters** when done. New repeater antenna heights default to 1 m above ground; edit each height if needed. You can also add located known repeaters, drag planned sites, and choose which are included. Set the coverage radius and B / coverage receiver height, then choose **Calculate coverage & links**. Each selected site gets a terrain-visibility layer; for two to 20 selected sites, every pair gets a coloured line and an expandable terrain profile. Open a link in the list or click it on the map to inspect it. Use **Calculate links only** when coverage is not needed. Existing saved plans retain their heights. Use the search radius to choose an area and display coverage for known nodes. Map tiles and elevation data require internet access and the calculation sends coordinates to those services.
 
 Open **Elevation finder**, enter a height in metres above sea level and select **Highlight visible area**. Purple marks terrain pixels above that height. The tool downloads Mapzen terrain tiles for the current view; the displayed tile resolution and underlying data limit the detail, and missing pixels are not assessed. After moving or zooming, calculate again. **Clear / cancel** removes the elevation highlight without clearing coverage or planned repeaters.
 

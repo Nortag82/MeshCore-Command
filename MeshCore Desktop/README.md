@@ -68,7 +68,7 @@ In Messages, select a channel and use Mute channel or Unmute channel. The settin
 Right-click a message to reply with a short quote or immediately send a thumbs-up referencing it. Both are ordinary MeshCore text messages, so other MeshCore clients can read them. Quotes count towards the 140-byte message limit.
 
 ## Terrain visibility
-Terrain Tools opens as a full-window planning map. Add up to eight located repeaters from radio contacts or place planned repeaters by choosing the map-click option. Drag markers, name each repeater and set its antenna height; plans are saved locally for the radio. Calculate repeater links to estimate every pair and click a link for its profile. Coverage can be calculated for point A or for selected repeaters, with independent switches for overlapping layers.
+Terrain Tools opens as a full-window planning map. Choose **Place repeaters on map** and click once per site; new repeater heights default to 1 m above ground. Add located contacts, drag markers, name sites and adjust heights; existing saved heights are preserved. Choose **Calculate coverage & links** to create visibility layers and estimate every pair among up to 20 selected repeaters. Each link has an expandable terrain profile, and clicking the map line also opens it. Use the individual layer switches to inspect overlapping coverage. Coverage can also be calculated for point A.
 
 Terrain tools estimate line of sight and 60% Fresnel clearance across a 241 × 241 terrain grid. The map colours show each calculated cell as clear, Fresnel-obstructed, blocked or unknown. Terrain height comes from Mapzen terrain tiles hosted by AWS; underlying data resolution varies. The app displays the grid cell size, which increases with the radius. Trees, buildings and propagation effects are not fully modelled, and this is not a signal-strength prediction.
 
@@ -138,3 +138,6 @@ When the connected radio reports that its contact table is full, optional automa
 
 
 At startup, the desktop app checks for updates in the background and asks before installation. It defers the prompt while a radio window, connection, scan or flash is active. Manual checks remain available on the connection screen and in Settings.
+
+
+New or updated Secure Situation Map markers show a blinking top-bar indicator and sidebar count until the map is opened. Counts are stored locally per radio; duplicate packets, acknowledgements and deletions do not create marker alerts.

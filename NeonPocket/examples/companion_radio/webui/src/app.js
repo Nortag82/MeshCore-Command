@@ -1,3 +1,4 @@
+import {createSituationUnread} from './situation-unread.js';
 import {captureRadioBackup,restoreRadioBackup,validateRadioBackup} from './radio-backup.js';
 import {createSettingsLocationMap} from './settings-location-map.js';
 import {setRadioLocation} from './radio-location.js';
@@ -342,7 +343,8 @@ const contactMap = createContactMap({state, hex, saveOwnLocation});
 const keywordWatch = createKeywordWatch({toast, targetInfo});
 let situationMap, secureGroups;
 const secureComs = createSecureComs({state,getConnection:()=>connection,exclusive,hex,toast,onObject:(peer,value)=>value.startsWith('IM1:')||value.startsWith('IA1:')?undefined:situationMap.ingest(peer,value),getGroupUnread:()=>secureGroups?.unread()||0,isGroupSelected:()=>secureGroups?.active()||false});
-situationMap = createSituationMap({state,secureComs,hex});
+const situationUnread=createSituationUnread({storage:window.localStorage,getOwner:()=>state.self?.publicKey?hex(state.self.publicKey):'',isViewing:()=>state.view==='situation'&&!document.hidden&&document.hasFocus(),onChange:count=>{const box=$('situation-unread-indicator'),badge=$('situation-unread');box.hidden=!count;badge.hidden=!count;badge.textContent=String(count);box.textContent=count===1?'New map marker':`${count} map marker updates`;box.setAttribute('aria-label',`${count} new Secure Situation Map marker update${count===1?'':'s'}`)}});
+situationMap = createSituationMap({state,secureComs,hex,onMarkerReceived:()=>{situationUnread.received();toast('New map marker received','warn')}});
 secureGroups = createSecureGroups({state,secureComs,hex,onChange:()=>secureComs.refresh()});
 $("secure-verified").addEventListener("change",()=>secureGroups.refresh());
 const commandDiscovery = createCommandDiscovery({state,getConnection:()=>connection,exclusive,hex,refreshContacts,secureComs});
@@ -1369,6 +1371,7 @@ function renderUltimate() {
 }
 
 function renderAll() {
+  situationUnread.sync();
   if (state.battery) {
     const volts = `${(state.battery / 1000).toFixed(2)} V`;
     text("battery-chip", volts);
@@ -1391,7 +1394,7 @@ function showView(view) {
   if (view === "contacts") contactsTools.render();
   if (view === "monitoring") monitoring.render();
   if (view === "secure" || view === "secure-manage") { secureGroups.refresh(); secureComs.refresh(); }
-  if (view === "situation") situationMap.visible();
+  if (view === "situation") { situationUnread.clear(); situationMap.visible(); }
   if (view === "contactmap") contactMap.visible();
   if (view === "messages" && state.selected) selectTarget(state.selected);
   if (view === "repeaters") repeaterTools.repeaterVisible();
@@ -2181,4 +2184,7 @@ function setupFullBackup(){
  buttons[2].onclick=()=>run(async pass=>withRadioOperation(async()=>{const ctx=radioContext();if(!window.pywebview.api.open_radio_backup)throw Error('Install the updated desktop app before restoring radio settings.');const result=await window.pywebview.api.open_radio_backup(pass);if(result.error)throw Error(result.error);if(result.cancelled){status.textContent='Radio restore cancelled.';return}const backup=validateRadioBackup(result.radio),target=await captureRadioBackup(ctx);ctx.check();const source=hex(new Uint8Array(backup.self.publicKey)),destination=hex(new Uint8Array(target.self.publicKey));if(!confirm(`Restore the saved radio ${backup.self.name||source.slice(0,8)} (${source.slice(0,12)}) to the connected radio ${target.self.name||destination.slice(0,8)} (${destination.slice(0,12)})? This overwrites its identity, radio settings and channel slots, and merges contacts. An encrypted recovery backup of the connected radio will be created first. Wi-Fi credentials and some firmware-specific settings are not restored.`)){status.textContent='Radio restore cancelled.';return}status.textContent='Saving encrypted recovery backup of this PC and radio…';const recovery=await window.pywebview.api.save_radio_recovery(snapshot(),pass,target);if(recovery.error)throw Error(recovery.error);try{const restored=await restoreRadioBackup(ctx,backup,target);state.self=restored;status.textContent=`Radio identity and supported settings restored and core settings verified. Recovery backup: ${recovery.recovery}. Reconnect the app to refresh contacts.`;alert(status.textContent);location.reload()}catch(error){throw Error(`${error?.message||'Radio restore failed.'} Radio changes may be partial. Recovery backup: ${recovery.recovery}`)}}));
 }
 setupFullBackup();
+$('situation-unread-indicator').addEventListener('click',()=>showView('situation'));
+window.addEventListener('focus',()=>{if(state.view==='situation'&&!document.hidden)situationUnread.clear()});
+document.addEventListener('visibilitychange',()=>{if(state.view==='situation'&&!document.hidden&&document.hasFocus())situationUnread.clear()});
 $('secure-unread-indicator').addEventListener('click',()=>{if(!secureGroups.openUnread()){secureGroups.showIndividual();secureComs.selectFirstUnread()}showView('secure')});
