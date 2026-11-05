@@ -70,6 +70,8 @@ Right-click a message to reply with a short quote or immediately send a thumbs-u
 ## Terrain visibility
 Terrain Tools opens as a full-window planning map. Choose **Place repeaters on map** and click once per site; new repeater heights default to 1 m above ground. Add located contacts, drag markers, name sites and adjust heights; existing saved heights are preserved. Choose **Calculate coverage & links** to create visibility layers and estimate every pair among up to 20 selected repeaters. Each link has an expandable terrain profile, and clicking the map line also opens it. Use the individual layer switches to inspect overlapping coverage. Coverage can also be calculated for point A.
 
+Under **Repeater plan**, choose **Save / share plan** to save a `.mccplan` file containing the sites, their positions, antenna heights and selection, plus the terrain calculation inputs. Share the file with another Command user, who can choose **Open plan**. Opening replaces the current plan after confirmation; save it first if needed. The file is not encrypted and contains locations. Coverage and link profiles are recalculated after opening and need online terrain data. The current repeater list also saves automatically on the PC for the connected radio.
+
 Terrain tools estimate line of sight and 60% Fresnel clearance across a 241 × 241 terrain grid. The map colours show each calculated cell as clear, Fresnel-obstructed, blocked or unknown. Terrain height comes from Mapzen terrain tiles hosted by AWS; underlying data resolution varies. The app displays the grid cell size, which increases with the radius. Trees, buildings and propagation effects are not fully modelled, and this is not a signal-strength prediction.
 
 

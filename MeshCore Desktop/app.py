@@ -379,7 +379,23 @@ class API:
                     if not files: return {'cancelled': True}
                     return active_bridge.set_offline_map(files[0])
                 except Exception as error: return {'error': str(error)}
-            radio.expose(radio.toggle_fullscreen, radio.minimize, self.exit_app, choose_offline_map, self.check_app_update, self.install_app_update, *self._full_backup_dialogs(radio))
+            def save_terrain_plan(contents):
+                try:
+                    if not isinstance(contents,str) or len(contents.encode('utf-8'))>1_000_000: raise ValueError('Plan exceeds the 1 MB limit.')
+                    files=radio.create_file_dialog(webview.FileDialog.SAVE, save_filename='MeshCore-Terrain-Plan.mccplan', file_types=('MeshCore terrain plan (*.mccplan)',))
+                    if not files: return {'cancelled':True}
+                    full_backup.write_atomic(Path(files[0]),contents.encode('utf-8'))
+                    return {'ok':True}
+                except Exception as error: return {'error':str(error) or 'Could not save plan.'}
+            def open_terrain_plan():
+                try:
+                    files=radio.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=False, file_types=('MeshCore terrain plan (*.mccplan)',))
+                    if not files: return {'cancelled':True}
+                    source=Path(files[0])
+                    if source.stat().st_size>1_000_000: raise ValueError('Plan exceeds the 1 MB limit.')
+                    return {'contents':source.read_text(encoding='utf-8')}
+                except Exception as error: return {'error':str(error) or 'Could not open plan.'}
+            radio.expose(radio.toggle_fullscreen, radio.minimize, self.exit_app, choose_offline_map, save_terrain_plan, open_terrain_plan, self.check_app_update, self.install_app_update, *self._full_backup_dialogs(radio))
             def radio_closed():
                 active_bridge.close()
                 if self._radio_window is radio:

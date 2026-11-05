@@ -1,6 +1,6 @@
 # MeshCore Command user manual
 
-MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.18. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
+MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.19. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
 
 An experimental Android app is described separately in the [Android instructions](../Android/README.md). Windows 2.0.5 includes Wi-Fi reconnection and startup-crash mitigations.
 
@@ -9,7 +9,7 @@ An experimental Android app is described separately in the [Android instructions
 - You need Windows, the Edge WebView2 runtime, a compatible Wi-Fi radio and an appropriate LoRa antenna. Connect the antenna before powering or transmitting with the radio.
 - The PC and radio need network access to each other. The companion connection uses TCP port 5000; discovery uses UDP port 5010.
 - Use a trusted local network: the companion protocol itself is unauthenticated and unencrypted. The PC bridge listens on loopback.
-- Download the installer from the [version 2.0.18 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.18), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
+- Download the installer from the [version 2.0.19 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.19), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
 
 ### Updating the Windows app
 
@@ -130,6 +130,8 @@ Open **Terrain tools**, choose **Place repeaters on map**, then click once for e
 Open **Elevation finder**, enter a height in metres above sea level and select **Highlight visible area**. Purple marks terrain pixels above that height. The tool downloads Mapzen terrain tiles for the current view; the displayed tile resolution and underlying data limit the detail, and missing pixels are not assessed. After moving or zooming, calculate again. **Clear / cancel** removes the elevation highlight without clearing coverage or planned repeaters.
 
 Coverage is a terrain visibility estimate, **not** measured signal strength or a guarantee of reception. Resolution, buildings, trees, antenna patterns, interference and weather affect real links. Verify important links in the field.
+
+Under **Repeater plan**, choose **Save / share plan** to save a `.mccplan` file containing the sites, their positions, antenna heights and selection, plus the terrain calculation inputs. Share the file with another Command user, who can choose **Open plan**. Opening replaces the current plan after confirmation; save it first if needed. The file is not encrypted and contains locations. Coverage and link profiles are recalculated after opening and need online terrain data. The current repeater list also saves automatically on the PC for the connected radio.
 
 ## 9. Secure Situation Map and offline maps
 

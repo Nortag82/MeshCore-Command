@@ -41,5 +41,7 @@ export function createTerrainPlan({state,hex,getMap,changed,getRevision,runExclu
  }
  $('terrain-plan-links').onclick=()=>runExclusive(async revision=>{sync();clearLinks();const selected=validated().filter(n=>n.include),mhz=frequency();if(selected.length>20)throw Error('Select up to 20 repeaters for link calculations; use Deselect all and select the ones to compare.');if(selected.length<2)throw Error('Select at least two repeaters to calculate links.');const pairs=[],points=[];for(let i=0;i<selected.length;i++)for(let j=i+1;j<selected.length;j++)pairs.push(preparePair(selected[i],selected[j],points));await calculatePairs(pairs,points,mhz,revision)},'terrain-plan-status');
  function init(){const map=getMap();if(!map.getPane('terrain-links')){const pane=map.createPane('terrain-links');pane.style.zIndex='450'}if(!nodeLayer)nodeLayer=L.layerGroup().addTo(map);sync();render()}
- return {init,sync,renderOptions,addManual,addKnownWithin,sources,clearLinks};
+ function exportNodes(){sync();return nodes.map(n=>({...n}))}
+ function importNodes(replacement){sync();const next=replacement.map(n=>({...n}));localStorage.setItem(storageKey,JSON.stringify(next));nodes=next;changed();render()}
+ return {init,sync,renderOptions,addManual,addKnownWithin,sources,clearLinks,exportNodes,importNodes};
 }

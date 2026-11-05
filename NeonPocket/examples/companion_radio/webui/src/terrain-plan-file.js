@@ -1,0 +1,9 @@
+const fields={ 'terrain-a-lat':[-90,90,true], 'terrain-a-lon':[-180,180,true], 'terrain-b-lat':[-90,90,true], 'terrain-b-lon':[-180,180,true], 'terrain-a-height':[0,500,false], 'terrain-b-height':[0,500,false], 'terrain-frequency':[150,2500,false], 'terrain-radius':[1,100,false], 'terrain-search-miles':[0.1,12400,false] };
+export const terrainPlanFields=Object.keys(fields);
+export function validateTerrainPlan(value){
+ if(!value||value.format!=='MeshCoreCommandTerrainPlan'||value.version!==1||!Array.isArray(value.nodes)||value.nodes.length>1000||!value.settings||typeof value.settings!=='object')throw Error('This is not a supported terrain plan.');
+ const ids=new Set();const nodes=value.nodes.map(n=>{if(!n||typeof n.id!=='string'||!n.id||n.id.length>200||ids.has(n.id)||typeof n.name!=='string'||!n.name.trim()||n.name.length>80||typeof n.lat!=='number'||!Number.isFinite(n.lat)||Math.abs(n.lat)>90||typeof n.lon!=='number'||!Number.isFinite(n.lon)||Math.abs(n.lon)>180||n.height===''||!Number.isFinite(Number(n.height))||Number(n.height)<0||Number(n.height)>500||typeof n.include!=='boolean')throw Error('The plan contains an invalid repeater.');ids.add(n.id);return {id:n.id,name:n.name,lat:n.lat,lon:n.lon,height:Number(n.height),include:n.include}});
+ const settings={};for(const [key,[min,max,optional]] of Object.entries(fields)){const v=value.settings[key];if(typeof v!=='string'||(!optional&&v.trim()==='')||(v.trim()!==''&&(!Number.isFinite(Number(v))||Number(v)<min||Number(v)>max)))throw Error('The plan contains an invalid '+key.replace('terrain-','')+' value.');settings[key]=v}
+ if(!['a','repeaters'].includes(value.settings['terrain-coverage-source']))throw Error('The plan has an invalid coverage source.');settings['terrain-coverage-source']=value.settings['terrain-coverage-source'];
+ return {format:'MeshCoreCommandTerrainPlan',version:1,nodes,settings};
+}
