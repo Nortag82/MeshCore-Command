@@ -8,6 +8,7 @@ from serial.tools import list_ports
 import webview
 from webview.http import _get_random_port
 from bridge import CompanionBridge
+from multi_board_controller import MultiBoardController
 import updater
 import full_backup
 from version import VERSION
@@ -37,6 +38,7 @@ class API:
     def __init__(self):
         self._window = None
         self._bridge = None
+        self._board_controller = None
         self._radio_open_lock = threading.Lock()
         self._radio_window = None
         self._state = {'busy': False, 'message': 'Ready.', 'log': '', 'ip': '', 'key': '', 'flash_phase': 'idle', 'flash_progress': None, 'scan_phase': 'idle', 'scan_sent': 0, 'scan_total': 0, 'scan_remaining': None, 'scan_failed': 0}
@@ -293,6 +295,10 @@ class API:
 
     def _full_backup_dialogs(self, radio):
         pending = {}
+        def ensure_single_board():
+            controller=self._board_controller
+            if controller and sum(1 for board in controller.registry.list() if board['open'])>1:
+                raise ValueError('Disconnect the other boards before restoring a backup, then reconnect them afterward.')
         def export_full_backup(storage, password, radio_config=None):
             try:
                 files=radio.create_file_dialog(webview.FileDialog.SAVE, save_filename='MeshCore-Command-Full-Backup.mccfull', file_types=('MeshCore full backup (*.mccfull)',))
@@ -304,6 +310,7 @@ class API:
         def prepare_full_restore(storage, password):
             pending.clear()
             try:
+                ensure_single_board()
                 files=radio.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=False, file_types=('MeshCore backups (*.mccfull;*.mccbackup)',))
                 if not files: return {'cancelled':True}
                 source=Path(files[0]);size=source.stat().st_size
@@ -340,6 +347,7 @@ class API:
             except Exception as error: return {'error':str(error) or 'Could not create the recovery backup.'}
         def open_radio_backup(password):
             try:
+                ensure_single_board()
                 files=radio.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=False, file_types=('MeshCore full backup (*.mccfull)',))
                 if not files: return {'cancelled':True}
                 source=Path(files[0])
@@ -364,20 +372,33 @@ class API:
         try:
             if self._radio_window is not None:
                 return {'error':'A radio window is already open. Close it before connecting another radio.'}
+            controller=None
             if serial_port:
                 if address not in [p.device for p in list_ports.comports()]: return {'error':'Select an available USB COM port.'}
                 self._bridge = CompanionBridge(None, ROOT/'radio.html', serial_port=address)
+                window_url=self._bridge.url
             else:
                 address=str(ipaddress.IPv4Address(address))
-                self._bridge = CompanionBridge(address, ROOT/'radio.html')
+                profiles=Path(os.environ.get('LOCALAPPDATA',str(Path.home()))) / 'MeshCore Command Data' / 'boards.json'
+                controller=MultiBoardController(ROOT/'radio.html',ROOT/'multi_board_shell.html',profiles,port=19483)
+                self._board_controller=controller
+                initial=controller.connect_wifi(address)['id']
+                self._bridge=controller.registry.active(initial)
+                window_url=controller.hub.origin+'/'
             active_bridge=self._bridge
-            radio = webview.create_window('MeshCore Command — '+address, active_bridge.url, width=1250,height=850,min_size=(800,600),fullscreen=True,hidden=True)
+            radio = webview.create_window('MeshCore Command — '+address, window_url, width=1250,height=850,min_size=(800,600),fullscreen=True,hidden=True)
             self._radio_window=radio
-            def choose_offline_map():
+            def choose_offline_map(board_id=None):
                 try:
                     files=radio.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=False, file_types=('Offline maps (*.mbtiles;*.pmtiles)',))
                     if not files: return {'cancelled': True}
-                    return active_bridge.set_offline_map(files[0])
+                    target=controller.registry.active(board_id) if controller and board_id else active_bridge
+                    result=target.set_offline_map(files[0])
+                    if controller:
+                        for board in controller.registry.list():
+                            if board['open'] and board['id']!=board_id:
+                                controller.registry.active(board['id']).set_offline_map(files[0],persist=False)
+                    return result
                 except Exception as error: return {'error': str(error)}
             def save_terrain_plan(contents):
                 try:
@@ -395,12 +416,25 @@ class API:
                     if source.stat().st_size>1_000_000: raise ValueError('Plan exceeds the 1 MB limit.')
                     return {'contents':source.read_text(encoding='utf-8')}
                 except Exception as error: return {'error':str(error) or 'Could not open plan.'}
+            if controller:
+                def call_board(action,*args):
+                    try:return action(*args)
+                    except Exception as error:return {'error':str(error) or 'Board operation failed.'}
+                def board_list():return call_board(controller.list_boards)
+                def board_connect_wifi(address):return call_board(controller.connect_wifi,address)
+                def board_scan_ble():return call_board(controller.scan_ble)
+                def board_connect_ble(address,pin):return call_board(controller.connect_ble,address,pin)
+                def board_rename(board_id,name):return call_board(controller.rename,board_id,name)
+                def board_disconnect(board_id):return call_board(controller.disconnect,board_id)
+                radio.expose(board_list,board_connect_wifi,board_scan_ble,board_connect_ble,board_rename,board_disconnect)
             radio.expose(radio.toggle_fullscreen, radio.minimize, self.exit_app, choose_offline_map, save_terrain_plan, open_terrain_plan, self.check_app_update, self.install_app_update, *self._full_backup_dialogs(radio))
             def radio_closed():
-                active_bridge.close()
+                if controller:controller.close()
+                else:active_bridge.close()
                 if self._radio_window is radio:
                     self._radio_window=None
                     self._bridge=None
+                    self._board_controller=None
                     self._window.show()
             radio.events.closed += radio_closed
             if not radio.events.loaded.wait(30):
@@ -412,7 +446,11 @@ class API:
             self._window.hide()
             return {'ok':True}
         except Exception as e:
-            if self._bridge:
+            if self._board_controller:
+                self._board_controller.close()
+                self._board_controller=None
+                self._bridge=None
+            elif self._bridge:
                 self._bridge.close()
                 self._bridge=None
             self._radio_window=None

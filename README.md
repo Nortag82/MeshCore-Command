@@ -17,6 +17,8 @@ Version 2.0.2 adds an opt-in control for MeshCore's off-grid companion-repeat mo
 
 ![Off-grid companion repeat controls](docs/images/off-grid-repeat.png)
 
+The current source also contains a **2.0.22 development build** with multiple radio tabs: connect a Wi-Fi companion first, then add separately paired MeshCore Bluetooth companions. Tabs can be renamed and remain active in the background. A Wi-Fi board and a standard BLE board were connected together in a local Windows test; longer-term use and all radio operations have not yet been verified. This development build is not yet a GitHub release.
+
 ## Download for Windows
 
 Download the [version 2.0.21 Windows installer](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.21), then follow the [user manual](docs/USER-MANUAL.md). The release page lists the installer checksum. Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.

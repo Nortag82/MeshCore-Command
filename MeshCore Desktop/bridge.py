@@ -28,11 +28,12 @@ class SerialTransport:
     def close(self): self.serial.close()
 
 class CompanionBridge:
-    def __init__(self, host, html_path, port=19483, serial_port=None):
+    def __init__(self, host, html_path, port=19483, serial_port=None, transport=None):
         self.host = host
         self.serial_port = serial_port
+        self.fixed_transport = transport is not None
         self.stop_event = threading.Event()
-        self.socket = SerialTransport(serial_port) if serial_port else socket.create_connection((host,5000),timeout=5)
+        self.socket = transport if transport is not None else SerialTransport(serial_port) if serial_port else socket.create_connection((host,5000),timeout=5)
         self.socket.settimeout(None)
         self.html = Path(html_path).read_bytes()
         self.offline_map_config = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'MeshCore Command Data' / 'offline-map.json'
@@ -239,7 +240,7 @@ class CompanionBridge:
             except OSError: pass
             # USB devices may be deliberately disconnected for flashing; only
             # reopen network radios automatically.
-            if self.serial_port:
+            if self.serial_port or self.fixed_transport:
                 return
             while not self.stop_event.wait(delay):
                 try:

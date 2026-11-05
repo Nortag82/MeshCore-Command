@@ -25,7 +25,9 @@ const MAX_HISTORY_MESSAGES = 5000;
 const POLL_DELAY_MS = 90;
 const COMMAND_TIMEOUT_MS = 30000;
 const MAX_RECOVERY_ATTEMPTS = 2;
-const RADIO_LEASE_KEY = "rcc6-radio-owner";
+const BOARD_SUFFIX = /^[0-9a-f]{32}$/.test(window.__MCC_BOARD_ID || "") ? `:${window.__MCC_BOARD_ID}` : "";
+const RADIO_LEASE_KEY = "rcc6-radio-owner" + BOARD_SUFFIX;
+const SESSION_STORAGE_KEY = "rcc6-session" + BOARD_SUFFIX;
 const RADIO_LEASE_MS = 120000;
 const RADIO_HEARTBEAT_MS = 2000;
 const $ = (id) => document.getElementById(id);
@@ -42,10 +44,14 @@ const TAB_OWNER_ID = createSessionId();
 
 function loadSessionId() {
   try {
-    const saved = localStorage.getItem("rcc6-session");
+    const saved = localStorage.getItem(SESSION_STORAGE_KEY);
     if (/^[0-9a-f]{32}$/.test(saved || "")) return saved;
+    if (BOARD_SUFFIX && window.__MCC_BOARD_FIRST) {
+      const legacy = localStorage.getItem("rcc6-session");
+      if (/^[0-9a-f]{32}$/.test(legacy || "")) { localStorage.setItem(SESSION_STORAGE_KEY,legacy); return legacy; }
+    }
     const created = createSessionId();
-    localStorage.setItem("rcc6-session", created);
+    localStorage.setItem(SESSION_STORAGE_KEY, created);
     return created;
   } catch {
     return createSessionId();
@@ -343,7 +349,7 @@ const contactMap = createContactMap({state, hex, saveOwnLocation});
 const keywordWatch = createKeywordWatch({toast, targetInfo});
 let situationMap, secureGroups;
 const secureComs = createSecureComs({state,getConnection:()=>connection,exclusive,hex,toast,onObject:(peer,value)=>value.startsWith('IM1:')||value.startsWith('IA1:')?undefined:value.startsWith('TP:')||value.startsWith('TK:')?repeaterTools.ingestTerrainPlan(peer,value):situationMap.ingest(peer,value),getGroupUnread:()=>secureGroups?.unread()||0,isGroupSelected:()=>secureGroups?.active()||false});
-const situationUnread=createSituationUnread({storage:window.localStorage,getOwner:()=>state.self?.publicKey?hex(state.self.publicKey):'',isViewing:()=>state.view==='situation'&&!document.hidden&&document.hasFocus(),onChange:count=>{const box=$('situation-unread-indicator'),badge=$('situation-unread');box.hidden=!count;badge.hidden=!count;badge.textContent=String(count);box.textContent=count===1?'New map marker':`${count} map marker updates`;box.setAttribute('aria-label',`${count} new Secure Situation Map marker update${count===1?'':'s'}`)}});
+const situationUnread=createSituationUnread({storage:window.localStorage,getOwner:()=>state.self?.publicKey?hex(state.self.publicKey):'',isViewing:()=>state.view==='situation'&&window.__MCC_BOARD_ACTIVE!==false&&!document.hidden&&document.hasFocus(),onChange:count=>{const box=$('situation-unread-indicator'),badge=$('situation-unread');box.hidden=!count;badge.hidden=!count;badge.textContent=String(count);box.textContent=count===1?'New map marker':`${count} map marker updates`;box.setAttribute('aria-label',`${count} new Secure Situation Map marker update${count===1?'':'s'}`)}});
 situationMap = createSituationMap({state,secureComs,hex,onMarkerReceived:()=>{situationUnread.received();toast('New map marker received','warn')}});
 secureGroups = createSecureGroups({state,secureComs,hex,onChange:()=>secureComs.refresh()});
 $("secure-verified").addEventListener("change",()=>secureGroups.refresh());
@@ -663,7 +669,7 @@ function ingestWaiting(item) {
     if (secureComs.ingest(message)) return 0;
     if (repeaterTools.handleMessage(message)) return 0;
     const key = targetForContactPrefix(message.pubKeyPrefix);
-    const added = addMessage({ id: messageId("dm", hex(message.pubKeyPrefix), message.senderTimestamp, message.authorPrefix ? `${hex(message.authorPrefix)}:${message.text}` : message.text), key, text: message.text, authorPrefix: message.authorPrefix ? hex(message.authorPrefix) : undefined, timestamp: message.senderTimestamp, direction: "in", status: "received", unread: document.hidden || state.view !== "messages" || state.selected !== key, snr: message.snr, pathLen: message.pathLen });
+    const added = addMessage({ id: messageId("dm", hex(message.pubKeyPrefix), message.senderTimestamp, message.authorPrefix ? `${hex(message.authorPrefix)}:${message.text}` : message.text), key, text: message.text, authorPrefix: message.authorPrefix ? hex(message.authorPrefix) : undefined, timestamp: message.senderTimestamp, direction: "in", status: "received", unread: window.__MCC_BOARD_ACTIVE === false || document.hidden || state.view !== "messages" || state.selected !== key, snr: message.snr, pathLen: message.pathLen });
     if (added && key.startsWith("room:")) roomTools.noteMessage(key);
     return added ? 1 : 0;
   }
@@ -672,7 +678,7 @@ function ingestWaiting(item) {
     txActivity.received();
     if (commandDiscovery.ingest(message)) return 0;
     const key = `ch:${message.channelIdx}`;
-    const added = addMessage({ id: messageId("channel", key, message.senderTimestamp, message.text), key, text: message.text, timestamp: message.senderTimestamp, direction: "in", status: "received", unread: document.hidden || state.view !== "messages" || state.selected !== key, snr: message.snr, pathLen: message.pathLen });
+    const added = addMessage({ id: messageId("channel", key, message.senderTimestamp, message.text), key, text: message.text, timestamp: message.senderTimestamp, direction: "in", status: "received", unread: window.__MCC_BOARD_ACTIVE === false || document.hidden || state.view !== "messages" || state.selected !== key, snr: message.snr, pathLen: message.pathLen });
     return added && !channelIsMuted(key) ? 1 : 0;
   }
   return 0;
@@ -2175,7 +2181,7 @@ function createRoomTools() {
 
 function setupFullBackup(){
  const password=$('full-backup-password'),status=$('full-backup-status'),buttons=[$('full-backup-export'),$('full-backup-import'),$('full-backup-radio-import')];
- const snapshot=()=>Object.fromEntries(Array.from({length:localStorage.length},(_,i)=>localStorage.key(i)).filter(k=>k&&!['rcc6-session','rcc6-radio-owner'].includes(k)).map(k=>[k,localStorage.getItem(k)]));
+ const snapshot=()=>Object.fromEntries(Array.from({length:localStorage.length},(_,i)=>localStorage.key(i)).filter(k=>k&&!/^rcc6-(?:session|radio-owner)(?::|$)/.test(k)).map(k=>[k,localStorage.getItem(k)]));
  async function run(task){buttons.forEach(b=>b.disabled=true);try{if(password.value.length<12)throw Error('Enter a backup password of at least 12 characters.');if(!window.pywebview?.api?.export_full_backup)throw Error('This feature requires the updated desktop app.');await task(password.value)}catch(error){status.textContent=error.message||'Backup failed.'}finally{password.value='';buttons.forEach(b=>b.disabled=false)}}
  function radioContext(){if(!state.connected||!state.self?.publicKey)throw Error('Connect the radio first, or uncheck Include the connected radio for a PC-only backup.');const radio=connection,identity=hex(state.self.publicKey);return {radio,run:fn=>exclusive(fn,true),protocolVersion:Constants.SupportedCompanionProtocolVersion,check:()=>{if(!state.connected||connection!==radio||!state.self?.publicKey||hex(state.self.publicKey)!==identity)throw Error('Radio connection or identity changed; operation stopped.')},progress:message=>{status.textContent=message}}}
  async function withRadioOperation(task){if(radioBackupActive)throw Error('A radio backup or restore is already in progress.');radioBackupActive=true;try{return await task()}finally{radioBackupActive=false}}
@@ -2185,6 +2191,6 @@ function setupFullBackup(){
 }
 setupFullBackup();
 $('situation-unread-indicator').addEventListener('click',()=>showView('situation'));
-window.addEventListener('focus',()=>{if(state.view==='situation'&&!document.hidden)situationUnread.clear()});
-document.addEventListener('visibilitychange',()=>{if(state.view==='situation'&&!document.hidden&&document.hasFocus())situationUnread.clear()});
+window.addEventListener('focus',()=>{if(state.view==='situation'&&window.__MCC_BOARD_ACTIVE!==false&&!document.hidden)situationUnread.clear()});
+document.addEventListener('visibilitychange',()=>{if(state.view==='situation'&&window.__MCC_BOARD_ACTIVE!==false&&!document.hidden&&document.hasFocus())situationUnread.clear()});
 $('secure-unread-indicator').addEventListener('click',()=>{if(!secureGroups.openUnread()){secureGroups.showIndividual();secureComs.selectFirstUnread()}showView('secure')});

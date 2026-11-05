@@ -17,7 +17,7 @@ def data_dir(): return Path(os.environ.get('LOCALAPPDATA',str(Path.home()))) / '
 def validate_storage(storage):
     if not isinstance(storage,dict) or len(storage)>10000 or any(not isinstance(k,str) or not isinstance(v,str) or len(k)>512 for k,v in storage.items()): raise ValueError('Invalid app storage.')
     if len(json.dumps(storage,ensure_ascii=False).encode())>32*1024*1024: raise ValueError('App data is too large for a backup.')
-    return {k:v for k,v in storage.items() if k not in ('rcc6-session','rcc6-radio-owner')}
+    return {k:v for k,v in storage.items() if k not in ('rcc6-session','rcc6-radio-owner') and not k.startswith(('rcc6-session:','rcc6-radio-owner:'))}
 
 def validate_radio(radio):
     if radio is None: return None

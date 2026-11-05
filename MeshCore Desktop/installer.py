@@ -5,7 +5,7 @@ import subprocess
 import sys
 import threading
 import zipfile
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import tkinter as tk
 from tkinter import messagebox, ttk
 import ctypes
@@ -23,8 +23,14 @@ def install_payload(root, target, report):
     with zipfile.ZipFile(root / 'payload.zip') as archive:
         entries = archive.infolist()
         for entry in entries:
-            if not (target / entry.filename).resolve().is_relative_to(target.resolve()):
+            relative = PureWindowsPath(entry.filename)
+            if relative.is_absolute() or relative.drive or '..' in relative.parts:
                 raise ValueError('Invalid installer path')
+            current = target
+            for part in relative.parts:
+                current = current / part
+                if current.is_symlink() or current.is_junction():
+                    raise ValueError('Installer path contains a link')
         total = sum(entry.file_size for entry in entries if not entry.is_dir()) or 1
         done = 0
         for entry in entries:
