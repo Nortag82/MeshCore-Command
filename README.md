@@ -5,7 +5,7 @@ A Windows desktop companion for controlling a Wi-Fi connected MeshCore radio, wi
 This repository contains the desktop source in `MeshCore Desktop/` and the modified companion firmware and interface sources in `NeonPocket/`. The firmware tree is based on [NeonPocketMC](https://github.com/n30nex/NeonPocketMC-Heltec-V4) and retains its license files and upstream notices. See [desktop documentation](MeshCore%20Desktop/README.md) for features and device support.
 
 
-The current release is **2.0.25** for Windows and **0.2.2** for Android. Secure groups are local recipient lists that send individual encrypted messages; no group key is needed. The separate [secure pairing research prototype](experimental/secure-pairing/) is not integrated. Command discovery still uses Public.
+The current release is **2.0.26** for Windows and **0.2.2** for Android. Secure groups are local recipient lists that send individual encrypted messages; no group key is needed. The separate [secure pairing research prototype](experimental/secure-pairing/) is not integrated. Command discovery still uses Public.
 
 Windows 2.0.6 and newer add a user-initiated update check. Release publishers must name future Windows assets `MeshCore-Command-Windows-X.Y.Z-Setup.exe`, retain the installer's `--update` mode, and publish the asset with GitHub's SHA-256 digest. The app compares that digest before launching the installer; the digest is not an independent signature.
 
@@ -17,11 +17,11 @@ Version 2.0.2 adds an opt-in control for MeshCore's off-grid companion-repeat mo
 
 ![Off-grid companion repeat controls](docs/images/off-grid-repeat.png)
 
-Windows 2.0.25 adds simultaneous Wi-Fi and Bluetooth companion tabs, unread message indicators for inactive boards, terrain-plan delivery status and received-site layers, and contact/group selection when creating situation markers. A Wi-Fi and BLE radio were connected together in a local Windows test; longer-term use and complete radio functionality require further testing. Received terrain plans contain sites and settings; calculate coverage locally. Android 0.2.2 includes the marker recipient controls, while terrain planning remains Windows-only.
+Windows 2.0.26 reorganises repeater management around a searchable node list and dedicated settings, regions, neighbours and console views. Windows 2.0.25 adds simultaneous Wi-Fi and Bluetooth companion tabs, unread message indicators for inactive boards, terrain-plan delivery status and received-site layers, and contact/group selection when creating situation markers. A Wi-Fi and BLE radio were connected together in a local Windows test; longer-term use and complete radio functionality require further testing. Received terrain plans contain sites and settings; calculate coverage locally. Android 0.2.2 includes the marker recipient controls, while terrain planning remains Windows-only.
 
 ## Download for Windows
 
-Download the [version 2.0.25 Windows installer](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.25), then follow the [user manual](docs/USER-MANUAL.md). The release page lists the installer checksum. Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.
+Download the [version 2.0.26 Windows installer](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.26), then follow the [user manual](docs/USER-MANUAL.md). The release page lists the installer checksum. Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.
 
 ## Android test app
 

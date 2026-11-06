@@ -1,6 +1,6 @@
 # MeshCore Command user manual
 
-MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.25. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
+MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.26. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
 
 An experimental Android app is described separately in the [Android instructions](../Android/README.md). Windows 2.0.5 includes Wi-Fi reconnection and startup-crash mitigations.
 
@@ -9,7 +9,7 @@ An experimental Android app is described separately in the [Android instructions
 - You need Windows, the Edge WebView2 runtime, a compatible Wi-Fi radio and an appropriate LoRa antenna. Connect the antenna before powering or transmitting with the radio.
 - The PC and radio need network access to each other. The companion connection uses TCP port 5000; discovery uses UDP port 5010.
 - Use a trusted local network: the companion protocol itself is unauthenticated and unencrypted. The PC bridge listens on loopback.
-- Download the installer from the [version 2.0.25 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.25), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
+- Download the installer from the [version 2.0.26 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.26), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
 
 ### Updating the Windows app
 
@@ -83,6 +83,8 @@ A chat ping sends the word `ping` as a message. A repeater ping uses a direct tr
 **Contact map** shows nodes with advertised positions. To set your radio location, choose **Set my location**, click the map, and select **Save location**. Command reads the radio back to confirm. A local or flood advert can announce the new position only if the radio’s location-sharing policy allows it. Under **Settings → MeshCore settings → Advertised location**, expand **Choose location on map** and click a point to fill the coordinates; press **Save coordinates** to write and verify the position. You can also type coordinates. Its received-packet list can display reported flood-path segments when key prefixes can be matched unambiguously to located contacts. Gaps and hash collisions are possible; lines are not proof of delivery. Internet access is needed for map tiles.
 
 ## 5. Repeaters
+
+Select a repeater in the searchable list on the left. Use Overview to log in and request status or telemetry; the Settings, Regions, Neighbours and Console tabs group the remaining tools. The Console includes read-only shortcuts documented by MeshCore; availability depends on repeater firmware. Log in before changing settings, inspect replies and read changes back. The official [MeshCore CLI reference](https://github.com/meshcore-dev/MeshCore/blob/main/docs/cli_commands.md) documents supported remote commands.
 
 Search for a repeater on **Repeaters**, select it and log in with its admin password. You can optionally save the password in Windows Credential Manager and star the repeater for easier access.
 
