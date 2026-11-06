@@ -5,7 +5,7 @@ A Windows desktop companion for controlling a Wi-Fi connected MeshCore radio, wi
 This repository contains the desktop source in `MeshCore Desktop/` and the modified companion firmware and interface sources in `NeonPocket/`. The firmware tree is based on [NeonPocketMC](https://github.com/n30nex/NeonPocketMC-Heltec-V4) and retains its license files and upstream notices. See [desktop documentation](MeshCore%20Desktop/README.md) for features and device support.
 
 
-The current release is **2.0.21** for Windows and **0.2.1** for Android. Secure groups are local recipient lists that send individual encrypted messages; no group key is needed. The separate [secure pairing research prototype](experimental/secure-pairing/) is not integrated. Command discovery still uses Public.
+The current release is **2.0.25** for Windows and **0.2.2** for Android. Secure groups are local recipient lists that send individual encrypted messages; no group key is needed. The separate [secure pairing research prototype](experimental/secure-pairing/) is not integrated. Command discovery still uses Public.
 
 Windows 2.0.6 and newer add a user-initiated update check. Release publishers must name future Windows assets `MeshCore-Command-Windows-X.Y.Z-Setup.exe`, retain the installer's `--update` mode, and publish the asset with GitHub's SHA-256 digest. The app compares that digest before launching the installer; the digest is not an independent signature.
 
@@ -17,15 +17,15 @@ Version 2.0.2 adds an opt-in control for MeshCore's off-grid companion-repeat mo
 
 ![Off-grid companion repeat controls](docs/images/off-grid-repeat.png)
 
-The current source also contains a **2.0.22 development build** with multiple radio tabs: connect a Wi-Fi companion first, then add separately paired MeshCore Bluetooth companions. Tabs can be renamed and remain active in the background. A Wi-Fi board and a standard BLE board were connected together in a local Windows test; longer-term use and all radio operations have not yet been verified. This development build is not yet a GitHub release.
+Windows 2.0.25 adds simultaneous Wi-Fi and Bluetooth companion tabs, unread message indicators for inactive boards, terrain-plan delivery status and received-site layers, and contact/group selection when creating situation markers. A Wi-Fi and BLE radio were connected together in a local Windows test; longer-term use and complete radio functionality require further testing. Received terrain plans contain sites and settings; calculate coverage locally. Android 0.2.2 includes the marker recipient controls, while terrain planning remains Windows-only.
 
 ## Download for Windows
 
-Download the [version 2.0.21 Windows installer](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.21), then follow the [user manual](docs/USER-MANUAL.md). The release page lists the installer checksum. Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.
+Download the [version 2.0.25 Windows installer](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.25), then follow the [user manual](docs/USER-MANUAL.md). The release page lists the installer checksum. Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.
 
 ## Android test app
 
-The experimental [Android source and setup instructions](Android/README.md) target Android 12 and newer and connect over Bluetooth to standard MeshCore BLE companion firmware. The phone interface includes messaging, Secure Coms, the Secure Situation Map and selected Command tools. Secure message and map compatibility, Bluetooth pairing, and radio operations still require testing on physical devices. Map tiles require internet and receiving while the app is closed is not supported. Download the experimental [Android 0.2.1 APK](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.5) from the test release.
+The experimental [Android source and setup instructions](Android/README.md) target Android 12 and newer and connect over Bluetooth to standard MeshCore BLE companion firmware. The phone interface includes messaging, Secure Coms, the Secure Situation Map and selected Command tools. Secure message and map compatibility, Bluetooth pairing, and radio operations still require testing on physical devices. Map tiles require internet and receiving while the app is closed is not supported. Download the experimental [Android 0.2.2 APK](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.25) from the test release.
 
 These phone previews use simulated conversations and a simulated radio connection:
 

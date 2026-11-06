@@ -33,5 +33,5 @@ export function createSecureGroups({state,secureComs,hex,onChange=()=>{}}){
  function groupMembers(id){load();return (db.groups[id]?.members||[]).filter(idOk)}
  $('situation-group-select').onclick=()=>{const id=$('situation-group').value;if(!id){$('situation-status').textContent='Choose a group first.';return}const ids=new Set(groupMembers(id));$('situation-peer').value='';let matched=0;for(const input of $('situation-recipients').querySelectorAll('input')){input.checked=ids.has(input.value);if(input.checked)matched++}$('situation-status').textContent=`Selected ${matched} verified group member(s). Updates to existing markers also go to their previous recipients.`};
  document.addEventListener('visibilitychange',()=>{if(!document.hidden){refresh();onChange()}});window.addEventListener('focus',()=>{refresh();onChange()});
- return {refresh,reload:()=>{node="";selected="";refresh()},ingest,unread,active,openUnread,groupMembers,showIndividual:()=>{selected="";refresh()}};
+ return {listGroups:()=>{load();return Object.entries(db.groups).map(([id,g])=>({id,name:g.name,members:groupMembers(id)}))},refresh,reload:()=>{node="";selected="";refresh()},ingest,unread,active,openUnread,groupMembers,showIndividual:()=>{selected="";refresh()}};
 }

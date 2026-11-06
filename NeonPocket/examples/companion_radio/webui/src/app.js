@@ -350,7 +350,7 @@ const keywordWatch = createKeywordWatch({toast, targetInfo});
 let situationMap, secureGroups;
 const secureComs = createSecureComs({state,getConnection:()=>connection,exclusive,hex,toast,onObject:(peer,value)=>value.startsWith('IM1:')||value.startsWith('IA1:')?undefined:value.startsWith('TP:')||value.startsWith('TK:')?repeaterTools.ingestTerrainPlan(peer,value):situationMap.ingest(peer,value),getGroupUnread:()=>secureGroups?.unread()||0,isGroupSelected:()=>secureGroups?.active()||false});
 const situationUnread=createSituationUnread({storage:window.localStorage,getOwner:()=>state.self?.publicKey?hex(state.self.publicKey):'',isViewing:()=>state.view==='situation'&&window.__MCC_BOARD_ACTIVE!==false&&!document.hidden&&document.hasFocus(),onChange:count=>{const box=$('situation-unread-indicator'),badge=$('situation-unread');box.hidden=!count;badge.hidden=!count;badge.textContent=String(count);box.textContent=count===1?'New map marker':`${count} map marker updates`;box.setAttribute('aria-label',`${count} new Secure Situation Map marker update${count===1?'':'s'}`)}});
-situationMap = createSituationMap({state,secureComs,hex,onMarkerReceived:()=>{situationUnread.received();toast('New map marker received','warn')}});
+situationMap = createSituationMap({state,secureComs,hex,getGroups:()=>secureGroups?.listGroups()||[],onMarkerReceived:()=>{situationUnread.received();toast('New map marker received','warn')}});
 secureGroups = createSecureGroups({state,secureComs,hex,onChange:()=>secureComs.refresh()});
 $("secure-verified").addEventListener("change",()=>secureGroups.refresh());
 const commandDiscovery = createCommandDiscovery({state,getConnection:()=>connection,exclusive,hex,refreshContacts,secureComs});
@@ -654,6 +654,7 @@ function addMessage(message) {
   persistHistory();
   keywordWatch.check(item, {muted: channelIsMuted(item.key)});
   if (item.direction === "in" && !channelIsMuted(item.key)) {
+    window.__MCC_NOTIFY_BOARD_MESSAGE?.();
     const kind = item.key.startsWith("room:") ? "room" : item.key.startsWith("ch:") ? "channel" : "direct";
     void fetch('/api/notify', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title:'MeshCore Command', body:`New ${kind} message. Open MeshCore Command to read it.`})}).catch(() => {});
   }

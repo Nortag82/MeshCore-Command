@@ -1,6 +1,6 @@
 # MeshCore Command user manual
 
-MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.21. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
+MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.25. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
 
 An experimental Android app is described separately in the [Android instructions](../Android/README.md). Windows 2.0.5 includes Wi-Fi reconnection and startup-crash mitigations.
 
@@ -9,7 +9,7 @@ An experimental Android app is described separately in the [Android instructions
 - You need Windows, the Edge WebView2 runtime, a compatible Wi-Fi radio and an appropriate LoRa antenna. Connect the antenna before powering or transmitting with the radio.
 - The PC and radio need network access to each other. The companion connection uses TCP port 5000; discovery uses UDP port 5010.
 - Use a trusted local network: the companion protocol itself is unauthenticated and unencrypted. The PC bridge listens on loopback.
-- Download the installer from the [version 2.0.21 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.21), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
+- Download the installer from the [version 2.0.25 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.25), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
 
 ### Updating the Windows app
 
@@ -27,7 +27,7 @@ For a new board, open **Set up a new board** or **Flash firmware**, choose the e
 
 The supported choices include Heltec V3, V4 and V4 R8 variants, Heltec Wireless Tracker V2 and LilyGO T-Beam S3 Supreme SX1262. Choose the exact model and display option; other T-Beam models are not interchangeable. After you choose a board, the flasher shows board-specific USB and boot instructions. The app attempts an automatic reset; manually entering boot mode does not disable it. Refresh and reselect the correct COM port if it changes. Keep USB connected during flashing and Wi-Fi setup. The firmware's brief USB provisioning window occurs at boot.
 
-### Multiple boards (2.0.22 development build)
+### Multiple boards (2.0.22 and later)
 
 Connect your saved Wi-Fi radio first. At the top of its window select **+ Board**, choose **Bluetooth**, and scan for a standard MeshCore BLE companion. Select the board and connect; if Windows has not already paired it securely, enter the six-digit PIN shown on the board. Select a board tab to use that radio, and use **Rename** to give the tab a memorable name. Other open boards continue running in the background. The same radio cannot be connected twice. If a Bluetooth connection drops, disconnect its tab and add it again. Board names are saved locally.
 
@@ -141,6 +141,8 @@ Under **Repeater plan**, choose **Save / share plan** to save a `.mccplan` file 
 
 To send a plan over LoRa, both people need this update and a verified Secure Coms connection. Under **Repeater plan**, choose a verified contact and select **Send plan over mesh**. Review the packet count before confirming. The app sends encrypted parts with app-level acknowledgements and retries. Keep both apps connected; large plans use considerable airtime. The receiving app stores completed plans separately, displays a Terrain tools unread badge and in-app alert, and requests a Windows notification when Secure Coms alerts are enabled. Select a plan by sender and time under **Received plans**, then choose **Open selected plan**. Opening asks before replacing the current plan. You can delete received plans individually; up to 100 transfers are retained per connected radio. Both apps must be running and connected to exchange plans. The feature stores incomplete transfers locally and does not automatically resume an interrupted sending job. Known repeaters in a plan show a small telemetry card beside their map marker. Use its refresh button to request a current reading. The seven-day graph shows reported power in watts when available, otherwise device voltage in volts. It uses readings collected on this PC, including Monitoring voltage history; a single reading appears as a dot. The app does not infer watts from voltage.
 
+Received terrain plans appear in the right-hand **Terrain sharing** panel. Tick a plan to show its repeater sites, untick it to hide them, or delete it locally. **Open** replaces the current editable plan after confirmation; recalculate coverage and links locally, as coverage images are not included in a mesh transfer. Delivery status confirms that all packets were acknowledged and the receiving app saved the plan; an unconfirmed transfer is not proof of failure or delivery.
+
 ## 9. Secure Situation Map and offline maps
 
 The floating toolbar provides **Marker**, **Area**, **Out of bounds**, **Share**, **Objects** and **Settings**. Choose Marker and click the map, or right-click it, then enter details and save. Select a marker and choose **Move selected marker** to change its position; markers are not draggable. Civilian and emergency icons are practical symbols, not certified emergency symbology. The newer icons require a compatible updated app at the receiving end.
@@ -152,6 +154,8 @@ Use **Share with** to select verified contacts or apply a local group. With no r
 The sharing queue runs while you use the app, survives restart, and resumes after your radio reconnects. Unconfirmed updates are retried with increasing delays. **Pause queue** stops further attempts; use **Resume queue** to continue. Changes to an object waiting in the queue replace its older queued revision. The object confirmations panel shows each recipient's result and provides an individual retry. A pending deletion can be removed from your local lists without claiming the other person deleted it. Select **Show locally removed** in the confirmations panel to restore it to the list; a later picture send can still retry a pending deletion. App acknowledgements indicate a saved update, not that someone saw it. The experimental protocol is not ATAK compatible.
 
 For an offline background, open **Settings**, select **Select download area**, click two opposite corners on the map, choose a detail level and select **Download area**. The initial download needs internet and obtains a verified Protomaps helper. Larger areas or higher detail take more space and time. You can also import a Protomaps vector PMTiles file or raster MBTiles file. Online maps include light and dark street styles. The downloaded background works offline within its saved area and zoom levels. Terrain coverage calculations require separate online elevation data.
+
+When creating or editing a marker, use the contact and group checkboxes in its editor to choose recipients. Group members receive individual encrypted updates. A marker with no recipients is saved locally. Previously shared markers continue to include their previous recipients when updated, after confirmation.
 
 ## 10. Troubleshooting
 
