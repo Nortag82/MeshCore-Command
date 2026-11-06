@@ -1,6 +1,6 @@
 # MeshCore Command user manual
 
-MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.26. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
+MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.27. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
 
 An experimental Android app is described separately in the [Android instructions](../Android/README.md). Windows 2.0.5 includes Wi-Fi reconnection and startup-crash mitigations.
 
@@ -9,7 +9,7 @@ An experimental Android app is described separately in the [Android instructions
 - You need Windows, the Edge WebView2 runtime, a compatible Wi-Fi radio and an appropriate LoRa antenna. Connect the antenna before powering or transmitting with the radio.
 - The PC and radio need network access to each other. The companion connection uses TCP port 5000; discovery uses UDP port 5010.
 - Use a trusted local network: the companion protocol itself is unauthenticated and unencrypted. The PC bridge listens on loopback.
-- Download the installer from the [version 2.0.26 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.26), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
+- Download the installer from the [version 2.0.27 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.27), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
 
 ### Updating the Windows app
 
@@ -170,3 +170,7 @@ When creating or editing a marker, use the contact and group checkboxes in its e
 - **Unsupported request or old firmware:** a control may be unavailable even if it appears in the interface. Read the response before retrying or changing settings.
 
 For local Scotland guidance, see the [ScotMesh MeshCore FAQ](https://wiki.scotmesh.uk/en/MeshCore/faq). For implementation details and limitations, see the [desktop notes](../MeshCore%20Desktop/README.md).
+
+## Firmware checks in version 2.0.27
+
+Before flashing, Command checks the connected ESP32-S3 flash capacity and refuses an image whose partition layout exceeds it. Select the exact board and display variant; the capacity check cannot identify every hardware difference. The V3 OLED firmware includes a MeshCore Command startup screen and disables Wi-Fi modem sleep. This change was tested on one Heltec V3; other bundled board images retain their previous firmware and have not been physically verified with this change. Save radio settings before flashing.

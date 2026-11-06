@@ -2,6 +2,9 @@
 #include <helpers/TxtDataHelpers.h>
 #include "../MyMesh.h"
 #include "target.h"
+#ifdef PC_WIFI
+  #include "../MeshCoreCommandSplash.h"
+#endif
 #ifdef NEONPOCKET_MONO_UI
   #include "NeonPocketMono.h"
 #endif
@@ -68,7 +71,10 @@ public:
   }
 
   int render(DisplayDriver& display) override {
-#ifdef NEONPOCKET_MONO_UI
+#if defined(PC_WIFI)
+    MeshCoreCommandSplash::draw(display);
+    return 1000;
+#elif defined(NEONPOCKET_MONO_UI)
     NeonPocketMono::drawFrame(display, millis() - started_at,
         NEONPOCKET_DEVICE_LABEL, _version_info);
     return NeonPocketMono::FRAME_MILLIS;

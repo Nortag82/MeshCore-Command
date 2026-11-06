@@ -166,6 +166,13 @@ class API:
     def _flash_worker(self, port, ssid, password, image_dir, flash_size):
         try:
             prefix = [str(ROOT / 'flash-helper.exe')] if getattr(sys,'frozen',False) else [sys.executable, '-m', 'esptool']
+            self._update(message='Checking the board’s flash capacity…',flash_phase='connecting',flash_progress=None)
+            probe=subprocess.run(prefix+['--chip','esp32s3','--port',port,'flash-id'],capture_output=True,text=True,timeout=45,creationflags=CREATE_NO_WINDOW)
+            match=re.search(r'Detected flash size:\s*(\d+)\s*MB',probe.stdout+'\n'+probe.stderr,re.I)
+            if probe.returncode or not match:
+                raise RuntimeError('Could not verify the board’s flash capacity. Check the USB connection and selected COM port; no firmware was written.')
+            if int(match.group(1)) < int(flash_size[:-2]):
+                raise RuntimeError(f'This board has {match.group(1)} MB of flash, but the selected firmware requires {flash_size}. Choose a matching board; no firmware was written.')
             cmd=prefix+['--chip','esp32s3','--port',port,'--baud','921600','write-flash','--flash-mode','dio','--flash-size',flash_size,'0x0',str(image_dir/'bootloader.bin'),'0x8000',str(image_dir/'partitions.bin'),'0xe000',str(image_dir/'boot_app0.bin'),'0x10000',str(image_dir/'firmware.bin')]
             output=self._run_flasher(cmd)
             self._update(message='Firmware verified. Waiting for USB Wi-Fi setup…',log=output[-6000:],flash_phase='provisioning',flash_progress=None)

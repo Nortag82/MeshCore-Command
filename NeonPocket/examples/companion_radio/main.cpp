@@ -2,6 +2,9 @@
 #include <stdlib.h>
 #include <Mesh.h>
 #include "MyMesh.h"
+#if defined(PC_WIFI) && defined(DISPLAY_CLASS)
+  #include "MeshCoreCommandSplash.h"
+#endif
 #ifdef NEONPOCKET_ULTIMATE
   #include "UltimateService.h"
 #endif
@@ -238,7 +241,7 @@ static void provisionUsb() {
 
 void setup() {
   Serial.begin(115200);
-#if defined(ESP32) && (defined(RCC6_WEB_AP) || defined(PC_WIFI))
+#if defined(ESP32) && defined(RCC6_WEB_AP) && !defined(PC_WIFI)
   provisionUsb();
 #endif
   board.begin();
@@ -255,7 +258,9 @@ void setup() {
   #ifdef ST7789
     disp->setTextSize(2);
   #endif
-#ifdef NEONPOCKET_MONO_UI
+#if defined(PC_WIFI)
+    MeshCoreCommandSplash::draw(*disp);
+#elif defined(NEONPOCKET_MONO_UI)
     NeonPocketMono::drawFrame(*disp, 0, NEONPOCKET_DEVICE_LABEL, FIRMWARE_VERSION);
 #else
     disp->drawTextCentered(disp->width() / 2, 28, "Loading...");
@@ -267,6 +272,11 @@ void setup() {
     Serial.println("WARNING: display unavailable; continuing headless");
   }
 #endif
+#endif
+
+#if defined(ESP32) && defined(PC_WIFI)
+  // Show the startup screen while waiting for optional USB Wi-Fi provisioning.
+  provisionUsb();
 #endif
 
   if (!radio_init()) {
@@ -358,6 +368,9 @@ void setup() {
   WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
       if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
           WIFI_DEBUG_PRINTLN("WiFi disconnected. Flagging for reconnect...");
+#ifdef PC_WIFI
+          Serial.printf("PC WiFi: disconnected (reason %u)\n", (unsigned)info.wifi_sta_disconnected.reason);
+#endif
           wifi_needs_reconnect = true;
       } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
           WIFI_DEBUG_PRINTLN("WiFi connected successfully!");
@@ -374,12 +387,16 @@ void setup() {
     station_prefs.end();
   }
   WiFi.mode(WIFI_STA);
+  // A mains/USB-powered companion must respond promptly to incoming TCP and
+  // discovery traffic; modem sleep can make delivery unreliable on some APs.
+  if (!WiFi.setSleep(false)) Serial.println("PC WiFi: could not disable modem sleep");
   WiFi.setHostname("Meshcore-WIFI");
   if (station_ssid.length()) WiFi.begin(station_ssid.c_str(), station_pass.c_str());
   const uint32_t join_started = millis();
   while (station_ssid.length() && WiFi.status() != WL_CONNECTED && millis() - join_started < 20000) delay(50);
   if (WiFi.status() == WL_CONNECTED) {
     Serial.printf("PC WiFi: %s at %s (TCP/%u)\n", station_ssid.c_str(), WiFi.localIP().toString().c_str(), TCP_PORT);
+    Serial.printf("PC WiFi: signal %d dBm\n", WiFi.RSSI());
     discovery_udp.begin(5010);
   } else {
     Serial.println("PC WiFi: no connection; check SSID, password and 2.4 GHz coverage");
