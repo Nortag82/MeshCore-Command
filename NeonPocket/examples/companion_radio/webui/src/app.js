@@ -352,7 +352,7 @@ const keywordWatch = createKeywordWatch({toast, targetInfo});
 let situationMap, secureGroups;
 const secureComs = createSecureComs({state,getConnection:()=>connection,exclusive,hex,toast,onObject:(peer,value)=>value.startsWith('IM1:')||value.startsWith('IA1:')?undefined:value.startsWith('TP:')||value.startsWith('TK:')?repeaterTools.ingestTerrainPlan(peer,value):situationMap.ingest(peer,value),getGroupUnread:()=>secureGroups?.unread()||0,isGroupSelected:()=>secureGroups?.active()||false});
 const situationUnread=createSituationUnread({storage:window.localStorage,getOwner:()=>state.self?.publicKey?hex(state.self.publicKey):'',isViewing:()=>state.view==='situation'&&window.__MCC_BOARD_ACTIVE!==false&&!document.hidden&&document.hasFocus(),onChange:count=>{const box=$('situation-unread-indicator'),badge=$('situation-unread');box.hidden=!count;badge.hidden=!count;badge.textContent=String(count);box.textContent=count===1?'New map marker':`${count} map marker updates`;box.setAttribute('aria-label',`${count} new Secure Situation Map marker update${count===1?'':'s'}`)}});
-situationMap = createSituationMap({state,secureComs,hex,getGroups:()=>secureGroups?.listGroups()||[],onMarkerReceived:()=>{situationUnread.received();toast('New map marker received','warn')}});
+situationMap = createSituationMap({state,secureComs,hex,getGroups:()=>secureGroups?.listGroups()||[],onMarkerReceived:()=>{situationUnread.received();toast('New map marker received','warn')},onNavigate:()=>showView('situation')});
 secureGroups = createSecureGroups({state,secureComs,hex,onChange:()=>secureComs.refresh()});
 $("secure-verified").addEventListener("change",()=>secureGroups.refresh());
 const commandDiscovery = createCommandDiscovery({state,getConnection:()=>connection,exclusive,hex,refreshContacts,secureComs});
@@ -361,7 +361,7 @@ const monitoring = createMonitoring({state,getConnection:()=>connection,exclusiv
 const contactsTools = createContactsTools({state, getConnection: () => connection, exclusive, toast, hex, refreshContacts, selectTarget, showView, addMessage, Constants, favorites});
 favorites.subscribe(() => { repeaterTools.render(); contactsTools.render(); });
 
-function exclusive(task, backupOperation=false) {
+function exclusive(task, backupOperation=false, timeoutMs=COMMAND_TIMEOUT_MS) {
   if(radioBackupActive&&!backupOperation)return Promise.reject(Error('Radio backup or restore is in progress.'));
   const result = commandTail.then(() => {
     let timer;
@@ -370,7 +370,7 @@ function exclusive(task, backupOperation=false) {
         const error = new Error("Companion command timed out");
         error.rcc6CommandTimeout = true;
         reject(error);
-      }, COMMAND_TIMEOUT_MS);
+      }, timeoutMs);
     });
     return Promise.race([Promise.resolve().then(task), timeout]).finally(() => clearTimeout(timer));
   });
