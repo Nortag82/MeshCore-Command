@@ -2,6 +2,7 @@ import {createSituationUnread} from './situation-unread.js';
 import {captureRadioBackup,restoreRadioBackup,validateRadioBackup} from './radio-backup.js';
 import {createSettingsLocationMap} from './settings-location-map.js';
 import {setRadioLocation} from './radio-location.js';
+import {rebootLocalRadio} from './radio-reboot.js';
 import {CLEANUP_SETTING,protectedContacts,oldestContact,contactArguments,replaceContact} from './contact-cleanup.js';
 import {readRepeatEligibility,setCompanionRepeat} from './repeat-mode.js';
 import {createSecureGroups} from './secure-groups.js';
@@ -596,6 +597,8 @@ function setLink(status) {
   txActivity.connected(online);
   if (!online && state.connected) { $("setting-path-hash").value=""; text("path-hash-status", "Radio disconnected; read the current setting after reconnecting."); }
   state.connected = online;
+  $('radio-reboot').disabled = !online || $('radio-reboot').dataset.busy === 'true';
+  if(online&&$('radio-reboot-status').textContent==='Connect a radio first.')text('radio-reboot-status','Ready to reboot the selected radio.');
   state.linkStatus = status;
   const label = online ? "Connected" : status === "reconnecting" ? "Reconnecting" : status === "busy" ? "Another tab active" : "Offline";
   text("link-label", label);
@@ -1530,6 +1533,8 @@ function fillMeshSettings() {
   if(!locationDraftDirty){$("setting-lat").value = self.advLat / 1000000;$("setting-lon").value = self.advLon / 1000000;locationSettingsMap.sync()}
   text("setting-channel-list", state.channels.length ? "Configured slots: " + state.channels.map(c => `${c.channelIdx}: ${c.name}`).join(", ") : "No channels configured.");
 }
+$("radio-reboot").onclick=async()=>{const button=$('radio-reboot'),status=$('radio-reboot-status');if(button.dataset.busy==='true')return;button.dataset.busy='true';button.disabled=true;try{const sent=await rebootLocalRadio({state,getConnection:()=>connection,run:exclusive,confirmAction:message=>confirm(message)});if(sent){status.textContent='Reboot command sent. The radio may disconnect; use the connection status to check when it returns. Reboot is not confirmed.';setTimeout(()=>{button.dataset.busy='false';button.disabled=!state.connected},10000);return}status.textContent='Reboot cancelled.'}catch(error){status.textContent=`Reboot not confirmed: ${error?.message||'Connection error'}. The radio may already be restarting.`}button.dataset.busy='false';button.disabled=!state.connected};
+
 // Protocol v10+ appends the companion's path mode to DEVICE_INFO. The
 // library version in use does not decode this field, so read the frame.
 function pathHashCommand(radio, bytes, responseCode) {

@@ -441,7 +441,7 @@ class API:
                 def board_rename(board_id,name):return call_board(controller.rename,board_id,name)
                 def board_disconnect(board_id):return call_board(controller.disconnect,board_id)
                 radio.expose(board_list,board_connect_wifi,board_scan_ble,board_connect_ble,board_rename,board_disconnect)
-            radio.expose(radio.toggle_fullscreen, radio.minimize, self.exit_app, choose_offline_map, save_terrain_plan, open_terrain_plan, self.check_app_update, self.install_app_update, *self._full_backup_dialogs(radio))
+            radio.expose(radio.toggle_fullscreen, radio.minimize, self.exit_app, choose_offline_map, save_terrain_plan, open_terrain_plan, self.check_app_update, self.install_app_update, self.ports, self.gps_read, *self._full_backup_dialogs(radio))
             def radio_closed():
                 if controller:controller.close()
                 else:active_bridge.close()
