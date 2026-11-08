@@ -1,6 +1,6 @@
 # MeshCore Command user manual
 
-MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.32. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
+MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.33. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
 
 An experimental Android app is described separately in the [Android instructions](../Android/README.md). Windows 2.0.5 includes Wi-Fi reconnection and startup-crash mitigations.
 
@@ -9,7 +9,7 @@ An experimental Android app is described separately in the [Android instructions
 - You need Windows, the Edge WebView2 runtime, a compatible Wi-Fi radio and an appropriate LoRa antenna. Connect the antenna before powering or transmitting with the radio.
 - The PC and radio need network access to each other. The companion connection uses TCP port 5000; discovery uses UDP port 5010.
 - Use a trusted local network: the companion protocol itself is unauthenticated and unencrypted. The PC bridge listens on loopback.
-- Download the installer from the [version 2.0.32 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.32), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
+- Download the installer from the [version 2.0.33 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.33), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
 
 ### Updating the Windows app
 
@@ -187,3 +187,6 @@ To restart the selected local companion, open **Settings → MeshCore settings �
 ## Message routing
 
 Command requests flood routing for outgoing direct messages, room messages, Secure Coms messages, secure map objects and chat pings by clearing each recipient’s saved radio path immediately before sending. This changes the contact’s saved route on the radio; the radio may learn another route after receiving packets. Command warns if the radio reports direct routing or does not report the route; it does not automatically resend a message that was already queued. Channel messages use flood routing. Flooding increases airtime and network congestion, and does not guarantee delivery. A flood-routed direct message remains a direct message; routing does not post it on a public channel. Room history polling and repeater administration have separate routing requirements and are not forced to flood. Resetting a room’s path for a message may temporarily affect history retrieval until a usable path is learned again.
+
+
+On the Secure Situation Map, **My position** displays a local blue GPS dot and centres the map. On Windows select the USB GPS port under **Share → Share my GPS position** first; on Android grant location permission. The dot moves with new fixes and does not itself transmit. Use **Stop local GPS display** in that panel to stop it. The map shows only the latest GPS tracker per station, while keeping older tracker records for acknowledgements. GPS sharing reuses the previous local tracker ID when restarted. GPS timestamps depend on each sending device’s clock.
