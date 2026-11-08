@@ -39,7 +39,7 @@
   };
   window.addEventListener('DOMContentLoaded',()=>{
     const primaryViews=new Set(['messages','contacts','situation','secure']);
-    const secondaryViews=[['home','Overview'],['secure-manage','Manage Secure Coms'],['contactmap','Contact map'],['monitoring','Monitoring'],['repeaters','Repeaters'],['radio','Radio and adverts'],['watch','Word alerts'],['ultimate','Radio settings']];
+    const secondaryViews=[['home','Overview'],['secure','Secure Chat'],['secure-manage','Manage Secure Coms'],['contactmap','Contact map'],['monitoring','Monitoring'],['repeaters','Repeaters'],['radio','Radio and adverts'],['watch','Word alerts'],['ultimate','Radio settings']];
     const nav=document.querySelector('.nav');
     for(const button of nav.querySelectorAll('[data-view]'))if(!primaryViews.has(button.dataset.view))button.hidden=true;
     const more=document.createElement('button');more.type='button';more.className='mobile-more';more.setAttribute('aria-expanded','false');more.innerHTML='<svg aria-hidden="true"><use href="#i-more"></use></svg><span>More</span>';nav.append(more);
@@ -54,7 +54,7 @@
     document.querySelector('#situation-basemap option[value="offline"]')?.remove();
     try{if(localStorage.getItem('meshcore-situation-basemap')==='offline')localStorage.setItem('meshcore-situation-basemap','online')}catch(_){}
     const hint=document.getElementById('situation-status');if(hint&&hint.textContent.includes('Right-click'))hint.textContent='Tap Marker, then tap the map to place it.';
-    const labels={messages:'Messages',contacts:'Contacts',situation:'Map',secure:'Secure', 'secure-manage':'Manage'};
+    const labels={messages:'Messages',contacts:'Contacts',situation:'Map',secure:'Secure Chat', 'secure-manage':'Manage'};
     for(const [view,label] of Object.entries(labels)){const span=document.querySelector(`[data-view="${view}"] span`);if(span)span.textContent=label;}
     const region=document.getElementById('region-select'),regionLabel=document.querySelector('label[for="region-select"]'),regionActions=document.querySelector('.region-actions'),custom=document.getElementById('custom-region');
     if(region&&regionLabel&&regionActions&&custom){const details=document.createElement('details');details.className='mobile-region';const summary=document.createElement('summary');summary.textContent='Flood region and routing';details.append(summary);regionLabel.before(details);details.append(regionLabel,region,regionActions,custom);}
@@ -73,6 +73,10 @@
       menu.addEventListener('click',event=>{if(event.target.closest('button'))menu.open=false});
     }
     const share=document.getElementById('situation-share-panel'),confirmations=document.getElementById('situation-deliveries'),panel=document.getElementById('situation-panel'),layout=document.querySelector('.situation-layout');
+    if(layout){const back=document.createElement('button');back.type='button';back.className='mobile-map-back';back.textContent='← Back';back.setAttribute('aria-label','Leave full-screen map');back.onclick=()=>document.querySelector('[data-view="messages"]')?.click();layout.append(back);
+      const toggle=document.createElement('button');toggle.type='button';toggle.id='mobile-map-contacts';toggle.className='mobile-map-contacts';toggle.setAttribute('aria-label','Show known contact locations');toggle.setAttribute('aria-pressed',localStorage.getItem('mcc-mobile-map-contacts')==='1'?'true':'false');const label=()=>{toggle.textContent=toggle.getAttribute('aria-pressed')==='true'?'Contacts on':'Contacts off'};label();toggle.onclick=()=>{const enabled=toggle.getAttribute('aria-pressed')!=='true';toggle.setAttribute('aria-pressed',String(enabled));try{localStorage.setItem('mcc-mobile-map-contacts',enabled?'1':'0')}catch{}label();window.dispatchEvent(new Event('mcc-map-contacts-change'))};layout.append(toggle);document.querySelector('[data-view="situation"]')?.addEventListener('click',()=>setTimeout(()=>window.dispatchEvent(new Event('mcc-map-contacts-change')),0));}
+    const contactsLayout=document.querySelector('.contacts-layout'),contactsList=document.getElementById('contacts-list'),contactDetail=document.querySelector('.contact-detail');
+    if(contactsLayout&&contactsList&&contactDetail){const back=document.createElement('button');back.type='button';back.className='mobile-contact-back secondary-button';back.textContent='← Contacts';back.onclick=()=>contactsLayout.classList.remove('mobile-contact-open');contactDetail.prepend(back);contactsList.addEventListener('click',e=>{if(e.target.closest('.contact-row'))contactsLayout.classList.add('mobile-contact-open')});document.querySelector('[data-view="contacts"]')?.addEventListener('click',()=>contactsLayout.classList.remove('mobile-contact-open'));}
     if(share&&confirmations&&panel&&layout){share.open=false;confirmations.open=false;document.getElementById('situation-tool-share')?.setAttribute('aria-expanded','false');const sync=()=>{layout.classList.toggle('mobile-panel-open',!panel.hidden);layout.classList.toggle('mobile-sharing',share.open);layout.classList.toggle('mobile-confirmations',confirmations.open)};share.addEventListener('toggle',()=>{if(share.open)confirmations.open=false;sync()});confirmations.addEventListener('toggle',()=>{if(confirmations.open){share.open=false;panel.hidden=true;document.getElementById('situation-tool-share')?.setAttribute('aria-expanded','false')}sync()});new MutationObserver(()=>{if(!panel.hidden){share.open=false;confirmations.open=false}sync()}).observe(panel,{attributes:true,attributeFilter:['hidden']});sync();}
     const home=document.querySelector('[data-view="messages"]');if(home)setTimeout(()=>home.click(),100);
   });

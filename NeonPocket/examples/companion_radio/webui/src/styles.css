@@ -412,6 +412,7 @@ body{font-size:13px}
 /* Unread secure messages remain visible on every page until read. */
 .secure-unread-indicator { min-height:38px; padding:0 13px; border:1px solid #ff7b85; border-radius:10px; background:#a9182b; color:#fff; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap; animation:secure-unread-pulse 1.4s ease-in-out infinite; }
 .secure-unread-indicator[hidden] { display:none; }
+.location-sharing{margin:8px 0;padding:8px;border:1px solid #3a5965;border-radius:8px}.location-sharing [hidden]{display:none!important}.location-sharing summary{cursor:pointer;font-weight:700}.location-sharing label{display:block;margin:6px 0}.location-sharing select,.location-sharing input{width:100%;padding:7px;background:#111e28;color:white;border:1px solid #536773;border-radius:6px}.gps-sharing-badge{position:fixed;z-index:1900;right:12px;bottom:12px;padding:9px 12px;border:1px solid #ffc15c;border-radius:8px;background:#513300;color:#fff;font-weight:700}.gps-sharing-badge[hidden]{display:none}@media(max-width:760px){.gps-sharing-badge{bottom:68px;right:6px;font-size:10px}}
 .secure-unread-indicator:focus-visible { outline:2px solid white; outline-offset:2px; }
 @keyframes secure-unread-pulse { 0%,100% { background:#a9182b; box-shadow:0 0 0 0 rgba(255,75,95,.2); } 50% { background:#ef3850; box-shadow:0 0 12px rgba(255,75,95,.7); } }
 @media (prefers-reduced-motion: reduce) { .secure-unread-indicator { animation:none; } }

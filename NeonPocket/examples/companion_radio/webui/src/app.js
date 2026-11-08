@@ -697,6 +697,7 @@ function refreshNearbyFromContacts() {
 async function refreshContacts() {
   const contacts = await connection.getContacts();
   state.contacts = contacts.sort((a, b) => (b.lastAdvert || 0) - (a.lastAdvert || 0));
+  window.dispatchEvent(new Event('mcc-contacts-updated'));
   let historyChanged = false;
   for (const message of state.messages) {
     if (!message.key.startsWith("dm-prefix:")) continue;

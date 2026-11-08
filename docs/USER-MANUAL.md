@@ -1,6 +1,6 @@
 # MeshCore Command user manual
 
-MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.27. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
+MeshCore Command is a Windows desktop companion for a compatible Wi-Fi MeshCore radio. The PC hosts the interface and connects to the radio on your local network. Screenshots in the [project README](../README.md) use simulated data. This manual describes installer build 2.0.28. Secure groups are local recipient lists; the separate secure group pairing prototype is not integrated.
 
 An experimental Android app is described separately in the [Android instructions](../Android/README.md). Windows 2.0.5 includes Wi-Fi reconnection and startup-crash mitigations.
 
@@ -9,7 +9,7 @@ An experimental Android app is described separately in the [Android instructions
 - You need Windows, the Edge WebView2 runtime, a compatible Wi-Fi radio and an appropriate LoRa antenna. Connect the antenna before powering or transmitting with the radio.
 - The PC and radio need network access to each other. The companion connection uses TCP port 5000; discovery uses UDP port 5010.
 - Use a trusted local network: the companion protocol itself is unauthenticated and unencrypted. The PC bridge listens on loopback.
-- Download the installer from the [version 2.0.27 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.27), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
+- Download the installer from the [version 2.0.28 release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.28), run it and follow the prompts. The installer and bundled firmware are unsigned and experimental. Source-build information is in the [build notes](../README.md#building).
 
 ### Updating the Windows app
 
@@ -176,3 +176,7 @@ For local Scotland guidance, see the [ScotMesh MeshCore FAQ](https://wiki.scotme
 ## Firmware checks in version 2.0.27
 
 Before flashing, Command checks the connected ESP32-S3 flash capacity and refuses an image whose partition layout exceeds it. Select the exact board and display variant; the capacity check cannot identify every hardware difference. The V3 OLED firmware includes a MeshCore Command startup screen and disables Wi-Fi modem sleep. This change was tested on one Heltec V3; other bundled board images retain their previous firmware and have not been physically verified with this change. Save radio settings before flashing.
+
+## Secure GPS position sharing
+
+On the Secure Situation Map, open **Share**, choose verified contacts or apply a local group, and expand **Share my GPS position**. On Windows connect an NMEA USB GPS receiver, refresh the ports, choose its COM port and baud rate. On Android grant precise location permission and enable phone location. Choose an interval from 1 to 360 whole minutes and select **Start GPS sharing**. Confirm the recipients and interval. The first update uses a fresh fix; each selected contact receives a separate encrypted Secure Coms map object. A GPS indicator stays visible with a Stop button. GPS sharing stops when requested, the radio disconnects or changes, or the app closes; it never starts automatically after reopening. A message already handed to the radio may still transmit. Old positions already received remain on recipients' maps. If a fix is unavailable, the app reports the failure and retries at the next interval. Keep the app open and connected: operating-system background restrictions can delay updates. Check Object confirmations for acknowledgements; a sent update is not proof of receipt. A group with a short interval generates separate packets and acknowledgements for every member, so choose a conservative interval for network capacity. Position sharing does not change the radio's advertised position, but normal radio adverts are controlled separately. Secure Coms is experimental and has not received an independent security audit.

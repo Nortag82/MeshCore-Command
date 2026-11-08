@@ -11,6 +11,7 @@ from bridge import CompanionBridge
 from multi_board_controller import MultiBoardController
 import updater
 import full_backup
+import gps_nmea
 from version import VERSION
 
 ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
@@ -92,6 +93,12 @@ class API:
             candidate = p.vid == 0x303A and p.pid == 0x1001
             found.append({'port':p.device, 'name':p.description, 'candidate':candidate or p.vid in (0x10C4,0x1A86,0x303A), 'detail':p.hwid})
         return sorted(found,key=lambda p:(not p['candidate'], p['port']))
+    def gps_read(self, port, baud):
+        try:
+            if not isinstance(port,str) or port not in [p.device for p in list_ports.comports()]: raise ValueError('Select an available GPS COM port.')
+            if int(baud) not in (4800,9600,19200,38400,57600,115200): raise ValueError('Unsupported GPS baud rate.')
+            return gps_nmea.read_position(port,int(baud))
+        except Exception as error: return {'error':str(error)}
     def flash(self, target, port, ssid, password):
         targets={
             'v3-headless':('esp','v3-headless','8MB'),
