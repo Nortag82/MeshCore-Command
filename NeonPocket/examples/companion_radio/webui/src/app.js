@@ -2204,4 +2204,6 @@ setupFullBackup();
 $('situation-unread-indicator').addEventListener('click',()=>showView('situation'));
 window.addEventListener('focus',()=>{if(state.view==='situation'&&window.__MCC_BOARD_ACTIVE!==false&&!document.hidden)situationUnread.clear()});
 document.addEventListener('visibilitychange',()=>{if(state.view==='situation'&&window.__MCC_BOARD_ACTIVE!==false&&!document.hidden&&document.hasFocus())situationUnread.clear()});
-$('secure-unread-indicator').addEventListener('click',()=>{if(!secureGroups.openUnread()){secureGroups.showIndividual();secureComs.selectFirstUnread()}showView('secure')});
+const openUnreadSecure=()=>{if(!secureGroups.openUnread()){secureGroups.showIndividual();secureComs.selectFirstUnread()}showView('secure')};
+$('secure-unread-indicator').addEventListener('click',openUnreadSecure);
+$('situation-secure-unread').addEventListener('click',openUnreadSecure);

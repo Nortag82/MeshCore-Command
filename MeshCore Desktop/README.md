@@ -145,3 +145,5 @@ At startup, the desktop app checks for updates in the background and asks before
 
 
 New or updated Secure Situation Map markers show a blinking top-bar indicator and sidebar count until the map is opened. Counts are stored locally per radio; duplicate packets, acknowledgements and deletions do not create marker alerts.
+
+The development build adds secure waypoint sharing with a live GPS-to-waypoint line, distance and true-north bearing. Both recipients need a version supporting waypoints. The line does not account for terrain, roads, hazards or access. A red indicator over the Situation Map opens unread Secure Coms messages without displaying their text. The map notification and waypoint exchange still need live two-device testing. Monitoring clears the saved contact path before telemetry, including after any repeater login, and displays the route the radio reported. Flood requests can use more airtime and do not guarantee a reply.
