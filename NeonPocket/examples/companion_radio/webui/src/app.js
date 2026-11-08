@@ -3,6 +3,7 @@ import {captureRadioBackup,restoreRadioBackup,validateRadioBackup} from './radio
 import {createSettingsLocationMap} from './settings-location-map.js';
 import {setRadioLocation} from './radio-location.js';
 import {rebootLocalRadio} from './radio-reboot.js';
+import {sendFloodMessage} from './flood-message.js';
 import {CLEANUP_SETTING,protectedContacts,oldestContact,contactArguments,replaceContact} from './contact-cleanup.js';
 import {readRepeatEligibility,setCompanionRepeat} from './repeat-mode.js';
 import {createSecureGroups} from './secure-groups.js';
@@ -1486,14 +1487,17 @@ async function sendMessage(event, quickText = null) {
   const outgoing = addMessage({ key: state.selected, text: messageText, timestamp: Math.floor(Date.now() / 1000), direction: "out", status: "sending", unread: false });
   if (quickText === null) { input.value = ""; updateComposeCount(); }
   const sendStarted = Date.now();
+  const radio=connection, own=hex(state.self?.publicKey);
   try {
     const response = await exclusive(async () => {
+      const canSend=()=>state.connected&&connection===radio&&!!own&&hex(state.self?.publicKey)===own;
+      if(!canSend())throw Error('Radio changed; message was not sent.');
       const override = region !== "default";
-      if (override) { const hash = await crypto.subtle.digest("SHA-256", encoder.encode("#" + region)); await connection.setFloodScope(new Uint8Array(hash.slice(0,16))); }
+      if (override) { const hash = await crypto.subtle.digest("SHA-256", encoder.encode("#" + region)); await radio.setFloodScope(new Uint8Array(hash.slice(0,16))); }
       try {
-        return await (info.channel ? connection.sendChannelTextMessage(info.channel.channelIdx, messageText) : connection.sendTextMessage(info.contact.publicKey, messageText));
+        return await (info.channel ? radio.sendChannelTextMessage(info.channel.channelIdx, messageText) : sendFloodMessage(radio,info.contact.publicKey,messageText,{canSend,onRouteWarning:message=>toast(message,'warn')}));
       } finally {
-        if (override) await connection.clearFloodScope();
+        if (override) await radio.clearFloodScope();
       }
     });
     outgoing.status = "queued";
@@ -1506,10 +1510,10 @@ async function sendMessage(event, quickText = null) {
     }
     persistHistory();
     toast("Message queued");
-  } catch {
+  } catch (error) {
     outgoing.status = "failed";
     persistHistory();
-    toast("Message failed", "error");
+    toast(error?.message || "Message failed", "error");
   }
   renderMessages();
 }

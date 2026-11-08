@@ -1,3 +1,4 @@
+import {sendFloodMessage} from './flood-message.js';
 import {requestTelemetry} from './telemetry-request.js';
 import {decodeTelemetry,renderTelemetry,renderStatus} from './telemetry.js';
 export function formatContactRole(type){return ({1:'Chat',2:'Repeater',3:'Room',4:'Sensor'})[type]||`Node ${type||'?'}`;}
@@ -61,7 +62,7 @@ export function createContactsTools({state,getConnection,exclusive,toast,hex,ref
   const checkAck=ack=>{if(done||expected===null||ack.ackCode!==expected)return;done=true;cleanup();log(`Delivery acknowledgement received after ${Math.round(performance.now()-started)} ms${Number.isFinite(ack.roundTrip)?` (radio reported ${ack.roundTrip} ms)`:''}.`);};
   const onAck=ack=>{if(expected===null){if(early.length<20)early.push(ack);}else checkAck(ack);};
   conn.on(Constants.PushCodes.SendConfirmed,onAck);
-  try{log('Sending “ping” as a direct message…');const r=await exclusive(()=>conn.sendTextMessage(c.publicKey,'ping'));if(!Number.isInteger(r?.expectedAckCrc)){cleanup();log('Ping queued, but no acknowledgement ID was provided.');return;}expected=r.expectedAckCrc;addMessage({key:'dm:'+hex(c.publicKey),text:'ping',timestamp:Math.floor(Date.now()/1000),direction:'out',status:'queued',unread:false,expectedAckCrc:expected});log('Ping queued; waiting for delivery acknowledgement…');for(const ack of early)checkAck(ack);if(!done)timer=setTimeout(()=>{if(done)return;done=true;cleanup();log('No delivery acknowledgement within the wait period. The contact may be unreachable or an acknowledgement may arrive later.');},Math.min(45000,Math.max(5000,(Number(r.estTimeout)||10000)+3000)));}catch(e){cleanup();throw e;}
+  try{log('Sending “ping” as a direct message…');const r=await exclusive(()=>sendFloodMessage(conn,c.publicKey,'ping',{canSend:()=>state.connected&&getConnection()===conn,onRouteWarning:message=>toast(message,'warn')}));if(!Number.isInteger(r?.expectedAckCrc)){cleanup();log('Ping queued, but no acknowledgement ID was provided.');return;}expected=r.expectedAckCrc;addMessage({key:'dm:'+hex(c.publicKey),text:'ping',timestamp:Math.floor(Date.now()/1000),direction:'out',status:'queued',unread:false,expectedAckCrc:expected});log('Ping queued; waiting for delivery acknowledgement…');for(const ack of early)checkAck(ack);if(!done)timer=setTimeout(()=>{if(done)return;done=true;cleanup();log('No delivery acknowledgement within the wait period. The contact may be unreachable or an acknowledgement may arrive later.');},Math.min(45000,Math.max(5000,(Number(r.estTimeout)||10000)+3000)));}catch(e){cleanup();throw e;}
  });
  return {render};
 }
