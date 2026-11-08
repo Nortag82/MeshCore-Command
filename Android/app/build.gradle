@@ -2,5 +2,5 @@ plugins { id 'com.android.application' }
 android {
     namespace 'uk.meshcore.command'
     compileSdk 34
-    defaultConfig { applicationId 'uk.meshcore.command'; minSdk 26; targetSdk 34; versionCode 11; versionName '0.2.8' }
+    defaultConfig { applicationId 'uk.meshcore.command'; minSdk 26; targetSdk 34; versionCode 12; versionName '0.2.9' }
 }
