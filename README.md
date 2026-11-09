@@ -24,7 +24,7 @@ MeshCore Command brings messaging, radio management and mapping together in a de
 
 Features depend on radio firmware, connectivity and node permissions. Terrain visibility is an estimate, and Secure Coms has not been independently audited. Android and some multi-radio features need further hardware testing.
 
-**Source updates:** The current development source identifies itself as Windows 2.0.37 and Android 0.2.14. It includes secure waypoints, a true-north navigation bearing and secure-message alerts on the map. Both installations need waypoint support; the navigation line is straight-line guidance and does not check terrain or access. These changes need live two-device testing. The downloadable release links below still point to the latest published release, Windows 2.0.33 and Android 0.2.11.
+**Source updates:** The current development source identifies itself as Windows 2.0.38 and Android 0.2.15. It includes secure waypoints, a true-north navigation bearing and secure-message alerts on the map. Both installations need waypoint support; the navigation line is straight-line guidance and does not check terrain or access. These changes need live two-device testing. The downloadable release links below still point to the latest published release, Windows 2.0.33 and Android 0.2.11.
 
 ## Download for Windows
 
