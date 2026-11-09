@@ -24,15 +24,15 @@ MeshCore Command brings messaging, radio management and mapping together in a de
 
 Features depend on radio firmware, connectivity and node permissions. Terrain visibility is an estimate, and Secure Coms has not been independently audited. Android and some multi-radio features need further hardware testing.
 
-**Source updates:** The current development source identifies itself as Windows 2.0.38 and Android 0.2.15. It includes secure waypoints, a true-north navigation bearing and secure-message alerts on the map. Both installations need waypoint support; the navigation line is straight-line guidance and does not check terrain or access. These changes need live two-device testing. The downloadable release links below still point to the latest published release, Windows 2.0.33 and Android 0.2.11.
+**Latest update:** Windows 2.0.38 and Android 0.2.15 include secure waypoints, a true-north navigation bearing and secure-message alerts on the map. Both installations need waypoint support; the navigation line is straight-line guidance and does not check terrain or access. These changes need live two-device testing.
 
 ## Download for Windows
 
-Download the [version 2.0.33 Windows installer](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.33), then follow the [user manual](docs/USER-MANUAL.md). The release page lists the installer checksum. Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.
+Download the [version 2.0.38 Windows installer](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.38), then follow the [user manual](docs/USER-MANUAL.md). The release page lists the installer checksum. Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.
 
 ## Android test app
 
-The experimental [Android source and setup instructions](Android/README.md) target Android 12 and newer and connect over Bluetooth to standard MeshCore BLE companion firmware. The phone interface includes messaging, Secure Coms, the Secure Situation Map and selected Command tools. Secure message and map compatibility, Bluetooth pairing, and radio operations still require testing on physical devices. Map tiles require internet and receiving while the app is closed is not supported. Download the experimental [Android 0.2.11 APK](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.33) from the test release.
+The experimental [Android source and setup instructions](Android/README.md) target Android 12 and newer and connect over Bluetooth to standard MeshCore BLE companion firmware. The phone interface includes messaging, Secure Coms, the Secure Situation Map and selected Command tools. Secure message and map compatibility, Bluetooth pairing, and radio operations still require testing on physical devices. Map tiles require internet and receiving while the app is closed is not supported. Download the experimental [Android 0.2.15 APK](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.38) from the test release.
 
 These phone previews use simulated conversations and a simulated radio connection:
 
@@ -100,7 +100,7 @@ Do not commit Wi-Fi credentials, radio identity backups, message histories or pr
 <details>
 <summary>Version history and technical notes</summary>
 
-The current release is **2.0.33** for Windows and **0.2.11** for Android. Secure groups are local recipient lists that send individual encrypted messages; no group key is needed. The separate [secure pairing research prototype](experimental/secure-pairing/) is not integrated. Command discovery still uses Public.
+The current release is **2.0.38** for Windows and **0.2.15** for Android. Secure groups are local recipient lists that send individual encrypted messages; no group key is needed. The separate [secure pairing research prototype](experimental/secure-pairing/) is not integrated. Command discovery still uses Public.
 
 Windows 2.0.6 and newer add a user-initiated update check. Release publishers must name future Windows assets `MeshCore-Command-Windows-X.Y.Z-Setup.exe`, retain the installer's `--update` mode, and publish the asset with GitHub's SHA-256 digest. The app compares that digest before launching the installer; the digest is not an independent signature.
 
