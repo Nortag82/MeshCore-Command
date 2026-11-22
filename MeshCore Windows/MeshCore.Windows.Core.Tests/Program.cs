@@ -13,6 +13,16 @@ static async Task ThrowsAsync<T>(Func<Task> action) where T : Exception
     throw new Exception($"Expected {typeof(T).Name}.");
 }
 
+if (args.Contains("--live-discovery-test"))
+{
+    string value = args.FirstOrDefault(arg => arg.StartsWith("--address=", StringComparison.Ordinal))?[10..] ?? throw new ArgumentException("Specify a test board address.");
+    var expected = IPAddress.Parse(value);
+    var results = await WifiDiscovery.ScanAsync(expected + "/32", responseWait: TimeSpan.FromSeconds(5));
+    Check(results.Contains(expected), "The test board did not answer discovery.");
+    Console.WriteLine("Live Wi-Fi discovery passed.");
+    return;
+}
+
 if (args.Contains("--live-map-test"))
 {
     string liveDirectory = Path.Combine(Path.GetTempPath(), "mcc-map-test-" + Guid.NewGuid().ToString("N"));
@@ -290,6 +300,25 @@ using (var responder = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0)))
     await respond;
     Check(found.Single().Equals(IPAddress.Loopback), "Loopback discovery response");
 }
+using (var responder = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0)))
+using (var replied = new ManualResetEventSlim())
+using (var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+{
+    int port = ((IPEndPoint)responder.Client.LocalEndPoint!).Port;
+    var respond = Task.Run(async () => {
+        var probe = await responder.ReceiveAsync(deadline.Token);
+        await responder.SendAsync("MESHCORE_V4_COMPANION_V1"u8.ToArray(), probe.RemoteEndPoint, deadline.Token);
+        replied.Set();
+    });
+    var progress = new InlineDiscoveryProgress(p => {
+        if (p.Attempted == 1 && !p.Waiting) { Check(replied.Wait(TimeSpan.FromSeconds(2)), "Discovery reply arrived during the scan"); Thread.Sleep(200); }
+    });
+    var found = await WifiDiscovery.ScanAsync("127.0.0.1/32", progress, port, TimeSpan.Zero, deadline.Token);
+    await respond;
+    Check(found.Single().Equals(IPAddress.Loopback), "Discovery receives replies while probes are being sent");
+}
+using (var deadline = new CancellationTokenSource(TimeSpan.FromMilliseconds(100)))
+    await ThrowsAsync<OperationCanceledException>(() => WifiDiscovery.ScanAsync("127.0.0.1/32", responseWait: TimeSpan.FromSeconds(5), cancellationToken: deadline.Token));
 
 var directory = Path.Combine(Path.GetTempPath(), "mcc-native-test-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(directory);
@@ -737,6 +766,11 @@ sealed class TestFlashTool : IFlashTool
         }
         return Task.FromResult("");
     }
+}
+
+sealed class InlineDiscoveryProgress(Action<DiscoveryProgress> report) : IProgress<DiscoveryProgress>
+{
+    public void Report(DiscoveryProgress value) => report(value);
 }
 
 sealed class ProvisionTestStream(string input) : Stream

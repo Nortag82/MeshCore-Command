@@ -48,36 +48,45 @@ public static class WifiDiscovery
     {
         var hosts = Hosts(subnet);
         if (port is < 1 or > 65535) throw new ArgumentOutOfRangeException(nameof(port));
-        using var socket = new UdpClient(AddressFamily.InterNetwork);
+        using var socket = new UdpClient(new IPEndPoint(IPAddress.Any, 0));
         if (OperatingSystem.IsWindows())
             socket.Client.IOControl((IOControlCode)(-1744830452), new byte[4], null); // SIO_UDP_CONNRESET = false
-        int attempted = 0, failed = 0;
-        foreach (var host in hosts)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            try { await socket.SendAsync(Probe, new IPEndPoint(host, port), cancellationToken); }
-            catch (SocketException) { failed++; }
-            attempted++;
-            progress?.Report(new DiscoveryProgress(attempted, hosts.Count, failed, false));
-        }
-        if (attempted > 0 && failed == attempted) throw new IOException("Could not send any discovery probes.");
-        progress?.Report(new DiscoveryProgress(attempted, hosts.Count, failed, true));
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(responseWait ?? TimeSpan.FromSeconds(5));
+        var allowed = hosts.ToHashSet();
         var found = new HashSet<IPAddress>();
+        using var receiveStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        async Task ReceiveRepliesAsync()
+        {
+            try
+            {
+                while (true)
+                {
+                    try
+                    {
+                        var result = await socket.ReceiveAsync(receiveStop.Token);
+                        if (result.Buffer.AsSpan().SequenceEqual(Reply) && allowed.Contains(result.RemoteEndPoint.Address)) found.Add(result.RemoteEndPoint.Address);
+                    }
+                    catch (SocketException e) when (e.SocketErrorCode == SocketError.ConnectionReset) { }
+                }
+            }
+            catch (OperationCanceledException) when (receiveStop.IsCancellationRequested) { }
+        }
+        Task receiver = ReceiveRepliesAsync();
         try
         {
-            while (true)
+            int attempted = 0, failed = 0;
+            foreach (var host in hosts)
             {
-                try
-                {
-                    var result = await socket.ReceiveAsync(timeout.Token);
-                    if (result.Buffer.AsSpan().SequenceEqual(Reply) && hosts.Contains(result.RemoteEndPoint.Address)) found.Add(result.RemoteEndPoint.Address);
-                }
-                catch (SocketException e) when (e.SocketErrorCode == SocketError.ConnectionReset) { }
+                cancellationToken.ThrowIfCancellationRequested();
+                try { await socket.SendAsync(Probe, new IPEndPoint(host, port), cancellationToken); }
+                catch (SocketException) { failed++; }
+                attempted++;
+                progress?.Report(new DiscoveryProgress(attempted, hosts.Count, failed, false));
             }
+            if (attempted > 0 && failed == attempted) throw new IOException("Could not send any discovery probes.");
+            progress?.Report(new DiscoveryProgress(attempted, hosts.Count, failed, true));
+            await Task.Delay(responseWait ?? TimeSpan.FromSeconds(5), cancellationToken);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }
+        finally { receiveStop.Cancel(); await receiver; }
         return found.OrderBy(ip => BinaryPrimitives.ReadUInt32BigEndian(ip.GetAddressBytes())).ToArray();
     }
 }

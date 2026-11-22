@@ -32,7 +32,7 @@ Download the [version 2.0.38 Windows installer](https://github.com/Nortag82/Mesh
 
 ### Native Windows test build
 
-The [native Windows preview](https://github.com/Nortag82/MeshCore-Command/releases/tag/native-preview-0.1.0) is an **early test build**, not an upgrade or a replacement for the existing app. It installs separately and does not implement the legacy automatic upgrade. The default preview uses temporary test data; its separately selected candidate copies the existing profile but shares Windows-stored credentials, and changes made in the old and candidate profiles are not merged. Back up important settings first and use a spare radio: connecting a test app can consume messages waiting on the radio. Secure Coms, migration, firmware flashing, updates, and other hardware combinations require further testing. See the [native preview notes](MeshCore%20Windows/README.md) before trying it.
+The [native Windows preview](https://github.com/Nortag82/MeshCore-Command/releases/tag/v0.1.1) is an **early test build**, not an upgrade or a replacement for the existing app. It installs separately and does not implement the legacy automatic upgrade. The default preview uses temporary test data; its separately selected candidate copies the existing profile but shares Windows-stored credentials, and changes made in the old and candidate profiles are not merged. Back up important settings first and use a spare radio: connecting a test app can consume messages waiting on the radio. Secure Coms, migration, firmware flashing, updates, and other hardware combinations require further testing. See the [native preview notes](MeshCore%20Windows/README.md) before trying it.
 
 ## Android test app
 

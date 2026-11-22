@@ -38,4 +38,6 @@ Run the synthetic and loopback checks with `dotnet run --project "MeshCore Windo
 
 The opt-in `--live-map-test` argument downloads a very small real map area into a temporary directory, validates and selects the resulting PMTiles file, and deletes the temporary files. It does not change the user's map selection. This live test passed on the development PC; service availability and larger downloads can vary.
 
+Wi-Fi discovery listens for replies while sending probes, including early replies from fast devices. Its opt-in `--live-discovery-test --address=<test-board-ip>` check passed against the spare V3; loopback tests also cover replies arriving during the scan.
+
 Before switching users, the replacement must support the current Wi-Fi, Bluetooth and USB transports; every desktop feature; radio flashing and updates; secure credentials and backups; and existing local settings, messages and maps. Validate migrations against copies, preserve rollback, and test with actual hardware. Measure the complete application process tree and compare equivalent workloads: replacing the Python host alone will not necessarily reduce WebView memory.
