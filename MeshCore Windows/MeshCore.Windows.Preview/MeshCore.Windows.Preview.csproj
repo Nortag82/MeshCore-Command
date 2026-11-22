@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../MeshCore.Windows.Core/MeshCore.Windows.Core.csproj" />
+    <ProjectReference Include="../MeshCore.Windows.Bluetooth/MeshCore.Windows.Bluetooth.csproj" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+    <Content Include="../../MeshCore Desktop/multi_board_shell.html" Link="multi_board_shell.html" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../artifacts/radio.html" Link="radio.html" CopyToOutputDirectory="PreserveNewest" Condition="Exists('../artifacts/radio.html')" />
+    <Content Include="../../MeshCore Desktop/radio.html" Link="radio.html" CopyToOutputDirectory="PreserveNewest" Condition="!Exists('../artifacts/radio.html')" />
+    <Content Include="../../MeshCore Desktop/meshcore-command.ico" Link="meshcore-command.ico" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <Content Include="../../MeshCore Desktop/firmware/**/*" Link="firmware/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <Content Include="../artifacts/espflash.exe" Link="espflash.exe" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" Condition="Exists('../artifacts/espflash.exe')" />
+  </ItemGroup>
+  <Target Name="RemoveUnusedWebViewWpf" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup><Reference Remove="@(Reference)" Condition="'%(Reference.Filename)' == 'Microsoft.Web.WebView2.Wpf'" /></ItemGroup>
+  </Target>
+</Project>

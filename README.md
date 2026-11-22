@@ -30,6 +30,10 @@ Features depend on radio firmware, connectivity and node permissions. Terrain vi
 
 Download the [version 2.0.38 Windows installer](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.38), then follow the [user manual](docs/USER-MANUAL.md). The release page lists the installer checksum. Windows Edge WebView2 is required. The installer and bundled firmware are unsigned and experimental; use the exact board option and back up important radio data before flashing.
 
+### Native Windows test build
+
+The [native Windows preview](https://github.com/Nortag82/MeshCore-Command/releases/tag/native-preview-0.1.0) is an **early test build**, not an upgrade or a replacement for the existing app. It installs separately and does not implement the legacy automatic upgrade. The default preview uses temporary test data; its separately selected candidate copies the existing profile but shares Windows-stored credentials, and changes made in the old and candidate profiles are not merged. Back up important settings first and use a spare radio: connecting a test app can consume messages waiting on the radio. Secure Coms, migration, firmware flashing, updates, and other hardware combinations require further testing. See the [native preview notes](MeshCore%20Windows/README.md) before trying it.
+
 ## Android test app
 
 The experimental [Android source and setup instructions](Android/README.md) target Android 12 and newer and connect over Bluetooth to standard MeshCore BLE companion firmware. The phone interface includes messaging, Secure Coms, the Secure Situation Map and selected Command tools. Secure message and map compatibility, Bluetooth pairing, and radio operations still require testing on physical devices. Map tiles require internet and receiving while the app is closed is not supported. Download the experimental [Android 0.2.15 APK](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.38) from the test release.

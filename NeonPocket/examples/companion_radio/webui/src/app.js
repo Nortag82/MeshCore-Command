@@ -1,4 +1,5 @@
 import {createSituationUnread} from './situation-unread.js';
+import {prepareCanvas} from './canvas-context.js';
 import {captureRadioBackup,restoreRadioBackup,validateRadioBackup} from './radio-backup.js';
 import {createSettingsLocationMap} from './settings-location-map.js';
 import {setRadioLocation} from './radio-location.js';
@@ -541,11 +542,8 @@ function canvasContext(canvas, minimumHeight = 120) {
   const width = Math.max(280, canvas.clientWidth || 0);
   const height = Math.max(minimumHeight, canvas.clientHeight || 0);
   const ratio = Math.min(devicePixelRatio || 1, 2);
-  canvas.width = Math.round(width * ratio);
-  canvas.height = Math.round(height * ratio);
-  const context = canvas.getContext("2d");
-  context.scale(ratio, ratio);
-  context.clearRect(0, 0, width, height);
+  const context = prepareCanvas(canvas, width, height, ratio);
+  if (!context) return null;
   return { context, width, height };
 }
 
@@ -831,6 +829,8 @@ async function syncAll() {
     await refreshNetworkStatus();
     try { state.device = await connection.deviceQuery(Constants.SupportedCompanionProtocolVersion); } catch { /* older firmware */ }
     state.self = await connection.getSelfInfo(6000);
+    // Show the radio identity immediately; contacts and channel synchronization can take much longer.
+    renderHome();
     try { await syncRadioClock(); } catch { toast("Radio clock could not be synchronised. Check your PC's date and time.", "error"); }
     loadHistoryForNode();
     await refreshContacts();
@@ -857,6 +857,8 @@ function renderHome() {
   text("home-unread", unread.length);
   text("nav-unread", unread.length);
   $("nav-unread").hidden = !unread.length;
+  // Keep unread badges current, but defer expensive hidden dashboard charts.
+  if (state.view !== "home" || document.hidden || window.__MCC_BOARD_ACTIVE === false) return;
   const latest = unread.at(-1);
   const preview = $("message-preview");
   preview.replaceChildren();
@@ -980,6 +982,9 @@ function renderNearbyBars() {
 let messageTab = "direct";
 const recentAcks = [];
 let renderedMessageKey = null;
+const MESSAGE_PAGE_SIZE = 100;
+let renderedMessageLimit = MESSAGE_PAGE_SIZE;
+let loadingOlderMessages = false;
 function messageRouteDetails(message) {
   let hops = "Hops: not reported";
   if (message.direction === "in" && Number.isInteger(message.pathLen) && message.pathLen >= 0 && message.pathLen <= 255) {
@@ -1005,9 +1010,17 @@ function renderMessages() {
     badge.hidden = count === 0;
     $(`messages-${tab}`).setAttribute("aria-label", `${tab === "direct" ? "Direct messages" : tab === "channels" ? "Channels" : "Rooms"}${count ? `, ${count} unread` : ", no unread"}`);
   }
+  // Rebuilding conversation lists and message bubbles is unnecessary off-screen.
+  if (state.view !== "messages" || document.hidden || window.__MCC_BOARD_ACTIVE === false) return;
+  const messagesByKey = new Map();
+  for (const item of state.messages) {
+    let items = messagesByKey.get(item.key);
+    if (!items) messagesByKey.set(item.key, items = []);
+    items.push(item);
+  }
   const targets = messageTab === "rooms" ? roomTools.targets() : messageTab === "channels"
     ? state.channels.map((channel) => ({ key: channelKey(channel), name: channelDisplayName(channel.name), subtitle: "Channel", avatar: "#" }))
-    : state.contacts.filter(contact => contact.type === 1 && (state.selected === contactKey(contact) || state.messages.some(item => item.key === contactKey(contact)))).map(contact => ({ key: contactKey(contact), name: conversationLabel(contactKey(contact), contact.advName || "Unnamed contact"), subtitle: "Direct", avatar: initials(contact.advName) }));
+    : state.contacts.filter(contact => contact.type === 1 && (state.selected === contactKey(contact) || messagesByKey.has(contactKey(contact)))).map(contact => ({ key: contactKey(contact), name: conversationLabel(contactKey(contact), contact.advName || "Unnamed contact"), subtitle: "Direct", avatar: initials(contact.advName) }));
   $("messages-direct").setAttribute("aria-pressed", String(messageTab === "direct"));
   $("messages-channels").setAttribute("aria-pressed", String(messageTab === "channels"));
   $("messages-rooms").setAttribute("aria-pressed", String(messageTab === "rooms"));
@@ -1016,7 +1029,7 @@ function renderMessages() {
   const query = $("message-search").value.trim().toLocaleLowerCase();
   const visibleTargets = (query ? targets.filter(target => matchesConversation(target, query)) : [...targets]);
   const threadActivity = key => {
-    const messages = state.messages.filter(item => item.key === key);
+    const messages = messagesByKey.get(key) || [];
     return {unread: !channelIsMuted(key) && messages.some(item => item.unread), latest: messages.at(-1)?.timestamp || 0};
   };
   visibleTargets.sort((a,b) => {const x=threadActivity(a.key), y=threadActivity(b.key); return Number(y.unread)-Number(x.unread) || y.latest-x.latest;});
@@ -1025,7 +1038,7 @@ function renderMessages() {
   threadList.replaceChildren();
   if (!visibleTargets.length) threadList.append(element("p", "empty-state", targets.length ? "No contacts or channels match your search." : messageTab === "direct" ? "No direct conversations yet. Start one from Contacts." : messageTab === "rooms" ? "Add a room server from the list above." : "No channels available."));
   for (const target of visibleTargets) {
-    const messages = state.messages.filter((item) => item.key === target.key);
+    const messages = messagesByKey.get(target.key) || [];
     const latest = messages.at(-1);
     const unread = messages.filter((item) => item.unread).length;
     const button = element("button", `thread${state.selected === target.key ? " active" : ""}`);
@@ -1049,7 +1062,7 @@ function renderMessages() {
   }
   if (state.contacts.length) {
     const group = document.createElement("optgroup"); group.label = "Direct contacts";
-    for (const contact of state.contacts.filter(c => c.type === 1 && (state.selected === contactKey(c) || state.messages.some(item => item.key === contactKey(c))))) group.append(new Option(conversationLabel(contactKey(contact), contact.advName || "Unnamed contact"), contactKey(contact)));
+    for (const contact of state.contacts.filter(c => c.type === 1 && (state.selected === contactKey(c) || messagesByKey.has(contactKey(c))))) group.append(new Option(conversationLabel(contactKey(contact), contact.advName || "Unnamed contact"), contactKey(contact)));
     select.append(group);
   }
   const roomTargets = roomTools.targets();
@@ -1071,9 +1084,11 @@ function renderMessages() {
   muteButton.title = "Mute notifications and unread badges; messages and word matches are still saved.";
   text("conversation-avatar", info?.avatar || "#");
   const list = $("message-list");
-  const messages = state.messages.filter((item) => item.key === state.selected);
-  if (state.selected.startsWith("room:")) messages.sort((a, b) => a.timestamp - b.timestamp);
+  const allMessages = [...(messagesByKey.get(state.selected) || [])];
+  if (state.selected.startsWith("room:")) allMessages.sort((a, b) => a.timestamp - b.timestamp);
   const conversationChanged = renderedMessageKey !== state.selected;
+  if (conversationChanged) renderedMessageLimit = MESSAGE_PAGE_SIZE;
+  const messages = allMessages.slice(-renderedMessageLimit);
   const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
   const selection = window.getSelection();
   const selecting = selection && !selection.isCollapsed && list.contains(selection.anchorNode);
@@ -1081,8 +1096,21 @@ function renderMessages() {
   const existing = new Map([...list.querySelectorAll(':scope > .bubble')].map(b => [b.dataset.messageId, b]));
   const wanted = new Set(messages.map(message => String(message.id)));
   for (const child of [...list.children]) if (!child.classList.contains('bubble') || !wanted.has(child.dataset.messageId)) child.remove();
+  let olderButton = null;
+  if (allMessages.length > messages.length) {
+    olderButton = element('button', 'load-older-messages', `Load earlier messages (${allMessages.length - messages.length} remaining)`);
+    olderButton.type = 'button';
+    olderButton.addEventListener('click', () => {
+      const previousHeight = list.scrollHeight, previousTop = list.scrollTop;
+      renderedMessageLimit += MESSAGE_PAGE_SIZE;
+      loadingOlderMessages = true;
+      try { renderMessages(); } finally { loadingOlderMessages = false; }
+      requestAnimationFrame(() => { list.scrollTop = previousTop + list.scrollHeight - previousHeight; });
+    });
+    list.prepend(olderButton);
+  }
   if (!messages.length && !list.children.length) list.append(element("div", "welcome-bubble", info ? `No messages with ${info.name} yet.` : "Select a channel or contact to start talking across the mesh."));
-  let next = list.firstElementChild;
+  let next = olderButton ? olderButton.nextElementSibling : list.firstElementChild;
   for (const message of messages) {
     let bubble = existing.get(String(message.id));
     if (!bubble) {
@@ -1113,7 +1141,7 @@ function renderMessages() {
     if (bubble !== next) list.insertBefore(bubble, next);
     next = bubble.nextElementSibling;
   }
-  if ((conversationChanged || nearBottom) && !selecting) requestAnimationFrame(() => { list.scrollTop = list.scrollHeight; });
+  if (!loadingOlderMessages && (conversationChanged || nearBottom) && !selecting) requestAnimationFrame(() => { list.scrollTop = list.scrollHeight; });
   $("message-input").disabled = !info || !state.connected;
   $("composer").querySelector("button[type=submit]").disabled = !info || !state.connected;
 }
@@ -1164,9 +1192,8 @@ function drawSignalChart() {
   const height = canvas.clientHeight;
   if (width < 20 || height < 20) return;
   const ratio = Math.min(devicePixelRatio || 1, 2);
-  canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio);
-  const context = canvas.getContext("2d"); context.scale(ratio, ratio);
-  context.clearRect(0, 0, width, height);
+  const context = prepareCanvas(canvas, width, height, ratio);
+  if (!context) return;
   context.strokeStyle = "rgba(141,152,167,.12)"; context.lineWidth = 1;
   for (let row = 1; row < 4; row += 1) { context.beginPath(); context.moveTo(0, row * height / 4); context.lineTo(width, row * height / 4); context.stroke(); }
   const samples = state.rfSamples.length > 1 ? state.rfSamples : [-120, -120];
@@ -1261,7 +1288,7 @@ function renderMore() {
   text("more-firmware", device?.firmwareVer != null ? `Protocol ${device.firmwareVer}` : "—");
   text("more-build", device?.firmware_build_date || "—");
   text("more-key", self?.publicKey ? `${hex(self.publicKey, 8)}…` : "—");
-  text("app-version", __APP_VERSION__);
+  text("app-version", window.__MCC_NATIVE_VERSION || __APP_VERSION__);
   text("library-version", __MESHCORE_JS_VERSION__);
   $("advert-button").disabled = !state.connected;
   $("clear-history-button").disabled = !state.messages.length;
@@ -1269,12 +1296,11 @@ function renderMore() {
 
 function drawUltimateChart(canvas, rows, keys, colors) {
   if (!canvas) return;
-  const ratio = devicePixelRatio || 1;
+  const ratio = Math.min(devicePixelRatio || 1, 2);
   const width = Math.max(canvas.clientWidth, 280);
   const height = Math.max(canvas.clientHeight, 160);
-  canvas.width = width * ratio; canvas.height = height * ratio;
-  const ctx = canvas.getContext("2d");
-  ctx.scale(ratio, ratio); ctx.clearRect(0, 0, width, height);
+  const ctx = prepareCanvas(canvas, width, height, ratio);
+  if (!ctx) return;
   ctx.strokeStyle = "rgba(255,255,255,.055)"; ctx.lineWidth = 1;
   for (let y = 18; y < height; y += 35) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke(); }
   const ordered = [...(rows || [])].reverse();
@@ -1404,11 +1430,12 @@ function showView(view) {
   text("screen-title", labels[view]?.[0] || "Ultimate");
   text("screen-kicker", labels[view]?.[1] || "NEONPOCKETMC");
   if (view === "contacts") contactsTools.render();
+  if (view === "home") renderHome();
   if (view === "monitoring") monitoring.render();
   if (view === "secure" || view === "secure-manage") { secureGroups.refresh(); secureComs.refresh(); }
   if (view === "situation") { situationUnread.clear(); situationMap.visible(); }
   if (view === "contactmap") contactMap.visible();
-  if (view === "messages" && state.selected) selectTarget(state.selected);
+  if (view === "messages") { if (state.selected) selectTarget(state.selected); else renderMessages(); }
   if (view === "repeaters") repeaterTools.repeaterVisible();
   if (view === "terrain") repeaterTools.visible();
   if (view === "radio") renderRadio();
@@ -1983,11 +2010,17 @@ window.addEventListener("resize", () => {
   if (state.view === "ultimate") renderUltimate();
 });
 document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && state.view === "home") renderHome();
+  if (!document.hidden && state.view === "messages") renderMessages();
   if (!document.hidden && state.connected) exclusive(async () => {
     await syncMessages();
     await refreshStats();
     await refreshNetworkStatus();
   }).catch(() => toast("Foreground sync failed", "error"));
+});
+window.addEventListener("mcc-board-active-change", () => {
+  if (window.__MCC_BOARD_ACTIVE !== false && !document.hidden && state.view === "home") renderHome();
+  if (window.__MCC_BOARD_ACTIVE !== false && !document.hidden && state.view === "messages") renderMessages();
 });
 window.addEventListener("pagehide", () => connection.leavePage());
 window.addEventListener("pageshow", (event) => {
@@ -2016,11 +2049,24 @@ function initDesktopUpdate(){
   const title=document.createElement('h3');title.textContent='MeshCore Command updates';
   const description=document.createElement('p');description.textContent='Check GitHub for a newer Windows version. Updating closes and restarts Command; radio firmware and saved settings are not changed.';
   const button=document.createElement('button');button.type='button';button.className='secondary-button';button.textContent='Check for updates';
-  const status=document.createElement('p');status.setAttribute('aria-live','polite');status.textContent='Updates are checked only when you choose this button.';
+  const status=document.createElement('p');status.setAttribute('aria-live','polite');status.textContent=window.__MCC_NATIVE_UPDATE?'Updates are checked at startup and when you choose this button.':'Updates are checked only when you choose this button.';
   button.onclick=async()=>{button.disabled=true;status.textContent='Checking GitHub for updates...';try{const info=await api.check_app_update();if(info.error)throw Error(info.error);if(!info.available){status.textContent=`Version ${info.current} is up to date.`;return}const preview=info.prerelease?' (test release)':'';status.textContent=`Version ${info.version}${preview} is available.`;if(!confirm(`Install MeshCore Command ${info.version}${preview}? The app will close and restart after the download. Finish any messages or flashing first.`))return;status.textContent='Downloading and checking the installer...';const result=await api.install_app_update(info.version);if(result.error)throw Error(result.error);status.textContent='Installer verified. Closing and restarting...'}catch(error){status.textContent=error.message||'Update failed.'}finally{button.disabled=false}};
   card.append(title,description,button,status);host.prepend(card);
 }
 window.addEventListener('pywebviewready',initDesktopUpdate);if(window.pywebview?.api)initDesktopUpdate();
+
+function initLocalCredentialRecovery(){
+  const api=window.pywebview?.api,host=document.getElementById('mesh-settings');
+  if(!api?.restore_local_credentials||!host||document.getElementById('native-credential-recovery'))return;
+  const card=document.createElement('section');card.className='card';card.id='native-credential-recovery';
+  const title=document.createElement('h3');title.textContent='Local credential recovery';
+  const description=document.createElement('p');description.textContent='Restore a credential recovery copy saved on this Windows account. It can affect both Command installations and cannot be used on another PC.';
+  const button=document.createElement('button');button.type='button';button.className='secondary-button';button.textContent='Restore local credentials';
+  const status=document.createElement('p');status.setAttribute('aria-live','polite');
+  button.onclick=async()=>{if(!confirm('Restore saved Secure Coms and repeater credentials? Matching credentials are replaced. Command will close after restoring; reopen it to use them.'))return;button.disabled=true;try{const result=await api.restore_local_credentials();if(result.error)throw Error(result.error);if(result.cancelled){status.textContent='Restore cancelled.';return}status.textContent='Credentials restored. Command is closing; a recovery copy of the previous credentials was saved.'}catch(error){status.textContent=error.message||'Credential restore failed.'}finally{button.disabled=false}};
+  card.append(title,description,button,status);host.prepend(card);
+}
+window.addEventListener('pywebviewready',initLocalCredentialRecovery);if(window.pywebview?.api)initLocalCredentialRecovery();
 
 
 function createRoomTools() {

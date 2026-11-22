@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\NativeVersion.props" />
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>MeshCore.Command.Native.Preview.Setup</AssemblyName>
+    <Version>$(MccVersion)</Version>
+    <AssemblyVersion>$(MccVersion).0</AssemblyVersion>
+    <FileVersion>$(MccVersion).0</FileVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MeshCore.Windows.Core\MeshCore.Windows.Core.csproj" />
+    <EmbeddedResource Include="..\artifacts\installer-payload.zip" LogicalName="InstallerPayload" />
+    <EmbeddedResource Include="..\artifacts\installer-launcher.exe" LogicalName="InstallerLauncher" />
+  </ItemGroup>
+</Project>
