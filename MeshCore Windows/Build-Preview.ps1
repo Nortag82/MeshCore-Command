@@ -34,6 +34,8 @@ try {
     if ($listenerRetry.ExitCode -ne 0) { throw 'Listener retry test failed.' }
     $firmware = Start-Process -FilePath (Join-Path $output 'MeshCore.Windows.Preview.exe') -ArgumentList '--verify-firmware' -WindowStyle Hidden -Wait -PassThru
     if ($firmware.ExitCode -ne 0) { throw 'Packaged firmware verification failed.' }
+    $serial = Start-Process -FilePath (Join-Path $output 'MeshCore.Windows.Preview.exe') -ArgumentList '--serial-ports-test' -WindowStyle Hidden -Wait -PassThru
+    if ($serial.ExitCode -ne 0) { throw 'Serial port enumeration test failed.' }
     $receiptDir = Join-Path ([IO.Path]::GetTempPath()) ('mcc-startup-test-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $receiptDir | Out-Null
     $receiptFile = Join-Path $receiptDir 'ready'

@@ -267,7 +267,7 @@ internal static class Program
         await LegacyUpgradeAsync(new[] { "--update", int.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture) }, testPaths: paths,
             testCandidate: async (executable, token) => {
                 var start = new System.Diagnostics.ProcessStartInfo(executable) { WorkingDirectory = Path.GetDirectoryName(executable)!, UseShellExecute = false, CreateNoWindow = true };
-                start.ArgumentList.Add("--audit-copied-profile"); start.ArgumentList.Add("--audit-root=" + auditRoot);
+                start.ArgumentList.Add("--audit-migrate-copied-profile"); start.ArgumentList.Add("--audit-root=" + auditRoot);
                 using var process = System.Diagnostics.Process.Start(start) ?? throw new IOException("Copied-profile candidate could not start.");
                 await process.WaitForExitAsync(token).WaitAsync(TimeSpan.FromSeconds(120), token);
                 if (process.ExitCode != 0) throw new IOException("Copied-profile candidate verification failed.");

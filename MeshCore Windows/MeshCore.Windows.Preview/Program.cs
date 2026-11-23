@@ -14,6 +14,19 @@ internal static class Program
     private static void Main()
     {
         var args = Environment.GetCommandLineArgs();
+        if (args.Contains("--serial-ports-test"))
+        {
+            try
+            {
+                string[] raw = UsbGps.Ports();
+                var described = SerialPortDescriptions.ListAsync().GetAwaiter().GetResult();
+                if (raw.Length != described.Length || raw.Any(port => !described.Any(item => item.port.Equals(port, StringComparison.OrdinalIgnoreCase))))
+                    throw new InvalidDataException("Serial port descriptions omitted an available port.");
+                Console.WriteLine($"Serial port enumeration succeeded ({described.Length} ports).");
+            }
+            catch { Environment.ExitCode = 1; }
+            return;
+        }
         if (args.Contains("--wifi-reconnect-test"))
         {
             try
@@ -167,6 +180,31 @@ internal static class Program
                 NativeProfile profile = NativeProfileRegistry.Open(root);
                 byte[] recordsDigest = CaptureProfileDigest(profile);
                 Application.Run(new PreviewWindow(false, false, true, false, null, 0, profile.WebView, profile.Data, seedHistory: false, port: profile.Port, candidate: true, expectedRecords: recordsDigest));
+            }
+            catch { Environment.ExitCode = 1; }
+            return;
+        }
+        if (args.Contains("--audit-migrate-copied-profile"))
+        {
+            try
+            {
+                string root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(args.FirstOrDefault(a => a.StartsWith("--audit-root=", StringComparison.Ordinal))?[13..] ?? throw new ArgumentException("Missing audit root.")));
+                string temp = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.GetTempPath()));
+                if (!string.Equals(Path.GetDirectoryName(root), temp, StringComparison.OrdinalIgnoreCase) || !Path.GetFileName(root).StartsWith("mcc-real-profile-audit-", StringComparison.Ordinal)) throw new ArgumentException("Invalid audit root.");
+                NativeProfile source = NativeProfileRegistry.Open(root);
+                string sourceWebView = Path.Combine(source.WebView, "EBWebView");
+                string registry = Path.Combine(root, "candidate-copy-registry");
+                using var lease = NativeInstanceLease.Acquire(registry);
+                var sourceCredentials = new PreviewCredentials();
+                string key = new('a', 64); sourceCredentials.Put("secure", key, "synthetic-audit-secret");
+                using var startup = new NativeCandidateStartup(registry, sourceWebView, source.Data, port: source.Port, hidden: true, credentials: sourceCredentials);
+                Application.Run(startup);
+                NativeProfile migrated = startup.Profile ?? throw new InvalidDataException("Copied profile migration failed.");
+                var credentials = new PreviewCredentials();
+                Task.Run(() => NativeCredentialIsolation.EnsureWithLegacyLockAsync(registry, sourceWebView, sourceCredentials, credentials)).GetAwaiter().GetResult();
+                if (credentials.Get("secure", key) != "synthetic-audit-secret") throw new InvalidDataException("Copied credential migration failed.");
+                byte[] digest = CaptureProfileDigest(migrated);
+                Application.Run(new PreviewWindow(false, false, true, false, null, 0, migrated.WebView, migrated.Data, seedHistory: false, port: migrated.Port, credentials: credentials, candidate: true, expectedRecords: digest));
             }
             catch { Environment.ExitCode = 1; }
             return;
@@ -763,7 +801,7 @@ internal sealed class PreviewWindow : Form
                         result = new { contents = await File.ReadAllTextAsync(dialog.FileName) };
                     }
                     break;
-                case "ports": result = UsbGps.Ports().Select(port => new { port, name = port, candidate = false, detail = "" }).ToArray(); break;
+                case "ports": result = await SerialPortDescriptions.ListAsync(); break;
                 case "gps_read":
                     var fix = await UsbGps.ReadAsync(Arg(0), args[1].GetInt32(), TimeSpan.FromSeconds(8));
                     result = new { latitude = fix.Latitude, longitude = fix.Longitude }; break;

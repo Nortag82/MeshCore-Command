@@ -14,13 +14,14 @@ internal sealed class FirmwareDialog : Form
     private readonly Button _refresh = new() { Text = "Refresh ports", AutoSize = true };
     private readonly ProgressBar _progress = new() { Minimum = 0, Maximum = 100, Width = 310 };
     private readonly Label _status = new() { Text = "Experimental: use a dedicated test board.", AutoSize = true, MaximumSize = new Size(420, 0) };
+    private readonly Label _guide = new() { AutoSize = true, MaximumSize = new Size(410, 0), Margin = new Padding(0, 8, 0, 8) };
     private readonly Func<string, bool> _portInUse;
     private bool _busy;
     public bool IsBusy => _busy;
 
     public FirmwareDialog(Func<string, bool> portInUse)
     {
-        _portInUse = portInUse; Text = "Firmware — development preview"; Width = 480; Height = 430;
+        _portInUse = portInUse; Text = "Firmware — development preview"; Width = 480; Height = 560;
         StartPosition = FormStartPosition.CenterParent; FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false; MinimizeBox = false;
         var choices = new[] { new Choice("Heltec V3 — no screen", "v3-headless"), new Choice("Heltec V3 — OLED", "v3-oled"),
             new Choice("Heltec V4 — automatic display", "v4-auto"), new Choice("Heltec V4 — TFT", "v4-tft"),
@@ -30,14 +31,29 @@ internal sealed class FirmwareDialog : Form
         _board.Items.AddRange(choices); _board.SelectedIndex = 0;
         var layout = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(18), AutoScroll = true };
         layout.Controls.Add(new Label { Text = "Board and display", AutoSize = true }); layout.Controls.Add(_board);
+        layout.Controls.Add(_guide);
         layout.Controls.Add(new Label { Text = "USB serial port", AutoSize = true });
         var ports = new FlowLayoutPanel { AutoSize = true }; ports.Controls.Add(_port); ports.Controls.Add(_refresh); layout.Controls.Add(ports);
         layout.Controls.Add(new Label { Text = "Wi-Fi network (2.4 GHz)", AutoSize = true }); layout.Controls.Add(_ssid);
         layout.Controls.Add(new Label { Text = "Wi-Fi password", AutoSize = true }); layout.Controls.Add(_password);
         layout.Controls.Add(_progress); layout.Controls.Add(_status); layout.Controls.Add(_flash); Controls.Add(layout);
+        _board.SelectedIndexChanged += (_, _) => UpdateGuide();
         _refresh.Click += (_, _) => RefreshPorts(); _flash.Click += async (_, _) => await FlashAsync();
         FormClosing += (_, e) => { if (_busy) { e.Cancel = true; _status.Text = "Wait until the firmware operation finishes."; } };
-        RefreshPorts();
+        UpdateGuide(); RefreshPorts();
+    }
+
+    private void UpdateGuide()
+    {
+        if (_board.SelectedItem is not Choice choice) { _guide.Text = ""; return; }
+        string recovery = choice.Id switch {
+            var id when id.StartsWith("v3-", StringComparison.Ordinal) => "If the port is missing, check the CP210x driver in Device Manager. If flashing cannot connect, try holding PRG as flashing starts.",
+            var id when id.StartsWith("v4-", StringComparison.Ordinal) || id.StartsWith("r8-", StringComparison.Ordinal) => "If the port is missing, hold PRG while connecting USB, release it, then refresh the ports.",
+            var id when id.StartsWith("tracker-", StringComparison.Ordinal) => "If the port is missing, hold USER while connecting USB, release it, then refresh the ports.",
+            _ => "If the port is missing, check the cable and Device Manager. If the board has a BOOT button, hold it while connecting USB, then release and refresh."
+        };
+        _guide.Text = "Connect an antenna and a USB data cable, then close other apps using the port. " + recovery +
+            " The board resets automatically during setup; keep USB connected until Wi-Fi setup finishes. If the port changes, refresh and select it again.";
     }
 
     private void RefreshPorts()

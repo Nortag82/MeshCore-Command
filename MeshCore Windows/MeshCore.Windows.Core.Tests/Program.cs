@@ -83,8 +83,17 @@ if (OperatingSystem.IsWindows())
 {
     string childExecutable = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
     var start = new System.Diagnostics.ProcessStartInfo(childExecutable) { UseShellExecute = false, CreateNoWindow = true };
-    start.ArgumentList.Add("-NoProfile"); start.ArgumentList.Add("-NonInteractive"); start.ArgumentList.Add("-Command"); start.ArgumentList.Add("Start-Sleep -Seconds 4");
+    start.ArgumentList.Add("-NoProfile"); start.ArgumentList.Add("-NonInteractive"); start.ArgumentList.Add("-Command"); start.ArgumentList.Add("Start-Sleep -Seconds 6");
     using var child = System.Diagnostics.Process.Start(start) ?? throw new Exception("Could not start update wait test process.");
+    bool childReady = false;
+    for (int attempt = 0; attempt < 100 && !child.HasExited; attempt++)
+    {
+        using var observed = System.Diagnostics.Process.GetProcessById(child.Id);
+        string? actual = observed.MainModule?.FileName;
+        if (string.Equals(actual, childExecutable, StringComparison.OrdinalIgnoreCase)) { childReady = true; break; }
+        await Task.Delay(20);
+    }
+    Check(childReady, "Update wait test process reached its expected executable");
     await Task.WhenAll(UpdateParentGate.WaitAsync(child.Id, child.StartTime.ToUniversalTime().Ticks, TimeSpan.FromSeconds(10)),
         LegacyUpdateParentGate.WaitAsync(child.Id, childExecutable, TimeSpan.FromSeconds(10)));
     Check(child.HasExited && child.ExitCode == 0, "Updater waits for the matching process to exit normally");
