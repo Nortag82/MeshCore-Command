@@ -63,6 +63,20 @@ public static class VersionedInstall
         await WritePointerAsync(root, "previous.json", current, cancellationToken);
     }
 
+    /// <summary>Restores a failed update only if no other update changed either pointer.</summary>
+    public static async Task<bool> RollbackIfUnchangedAsync(string installRoot, string expectedCurrent, string expectedPrevious, CancellationToken cancellationToken = default)
+    {
+        string root = Root(installRoot); EnsureDirectory(root);
+        using var installLock = AcquireLock(root);
+        if (!string.Equals(ResolvePointer(root, "current.json"), Path.GetFullPath(expectedCurrent), StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(ResolvePointer(root, "previous.json"), Path.GetFullPath(expectedPrevious), StringComparison.OrdinalIgnoreCase)) return false;
+        byte[] current = await File.ReadAllBytesAsync(Path.Combine(root, "current.json"), cancellationToken);
+        byte[] previous = await File.ReadAllBytesAsync(Path.Combine(root, "previous.json"), cancellationToken);
+        await WritePointerAsync(root, "current.json", previous, cancellationToken);
+        await WritePointerAsync(root, "previous.json", current, cancellationToken);
+        return true;
+    }
+
     private static async Task WritePointerAsync(string root, string name, byte[] contents, CancellationToken cancellationToken)
     {
         string pointer = Path.Combine(root, name);

@@ -36,16 +36,17 @@ public static class WindowsCredentials
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "CredEnumerateW")]
     private static extern bool CredEnumerate(string filter, int flags, out int count, out IntPtr credentials);
 
-    private static string Target(string scope, string key)
+    private static string Prefix(bool native) => native ? "MeshCore Command Native" : "MeshCore Command";
+    private static string Target(string scope, string key, bool native = false)
     {
         if (scope is not ("secure" or "repeater") || key is null || !Regex.IsMatch(key, "^[0-9a-f]{64}$"))
             throw new ArgumentException("Invalid credential scope or key.");
-        return $"MeshCore Command/{scope}/{key}";
+        return $"{Prefix(native)}/{scope}/{key}";
     }
 
-    public static string? Get(string scope, string key)
+    public static string? Get(string scope, string key, bool native = false)
     {
-        if (!CredRead(Target(scope, key), Generic, 0, out var pointer))
+        if (!CredRead(Target(scope, key, native), Generic, 0, out var pointer))
         {
             int error = Marshal.GetLastWin32Error();
             if (error == NotFound) return null;
@@ -75,9 +76,9 @@ public static class WindowsCredentials
         return true;
     }
 
-    public static void Put(string scope, string key, string value)
+    public static void Put(string scope, string key, string value, bool native = false)
     {
-        string target = Target(scope, key);
+        string target = Target(scope, key, native);
         byte[] bytes = Encoding.UTF8.GetBytes(value);
         if (bytes.Length is < 1 or > 512) throw new ArgumentOutOfRangeException(nameof(value));
         IntPtr blob = Marshal.AllocHGlobal(bytes.Length);
@@ -96,18 +97,19 @@ public static class WindowsCredentials
         }
     }
 
-    public static void Delete(string scope, string key)
+    public static void Delete(string scope, string key, bool native = false)
     {
-        if (CredDelete(Target(scope, key), Generic, 0)) return;
+        if (CredDelete(Target(scope, key, native), Generic, 0)) return;
         int error = Marshal.GetLastWin32Error();
         if (error != NotFound) throw new Win32Exception(error);
     }
 
-    public static IReadOnlyDictionary<string, string> ListSaved(string? scope = null, string? key = null)
+    public static IReadOnlyDictionary<string, string> ListSaved(string? scope = null, string? key = null, bool native = false)
     {
         if ((scope is null) != (key is null)) throw new ArgumentException("Supply both credential scope and key, or neither.");
         var result = new Dictionary<string, string>(StringComparer.Ordinal);
-        string filter = scope is null && key is null ? "MeshCore Command/*" : Target(scope!, key!) + "*";
+        string prefix = Prefix(native);
+        string filter = scope is null && key is null ? prefix + "/*" : Target(scope!, key!, native) + "*";
         if (!CredEnumerate(filter, 0, out int count, out IntPtr pointers))
         {
             int error = Marshal.GetLastWin32Error();
@@ -120,7 +122,7 @@ public static class WindowsCredentials
             {
                 var pointer = Marshal.ReadIntPtr(pointers, i * IntPtr.Size);
                 var credential = Marshal.PtrToStructure<Credential>(pointer);
-                var match = Regex.Match(credential.TargetName ?? "", "^MeshCore Command/(secure|repeater)/([0-9a-f]{64})$");
+                var match = Regex.Match(credential.TargetName ?? "", "^" + Regex.Escape(prefix) + "/(secure|repeater)/([0-9a-f]{64})$");
                 if (!match.Success || credential.Type != Generic) continue;
                 byte[] bytes = new byte[checked((int)credential.CredentialBlobSize)];
                 Marshal.Copy(credential.CredentialBlob, bytes, 0, bytes.Length);

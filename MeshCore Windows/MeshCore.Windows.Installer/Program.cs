@@ -79,6 +79,21 @@ internal static class Program
                 InstallAsync(root, new Progress<string>()).GetAwaiter().GetResult();
                 string executable = VersionedInstall.ResolveCurrent(root);
                 if (!File.Exists(executable) || !File.Exists(Path.Combine(root, LauncherName))) throw new IOException("Installer test did not create both executables.");
+                string shortcuts = Path.Combine(root, "test-programs"); Directory.CreateDirectory(shortcuts);
+                string link = PreviewShortcut.Create(shortcuts, Path.Combine(root, LauncherName));
+                object shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!;
+                object resolved = ((dynamic)shell).CreateShortcut(link);
+                try
+                {
+                    if (!string.Equals((string)((dynamic)resolved).TargetPath, Path.Combine(root, LauncherName), StringComparison.OrdinalIgnoreCase) ||
+                        (string)((dynamic)resolved).Arguments != PreviewShortcut.Arguments)
+                        throw new IOException("Shortcut does not open the native candidate.");
+                }
+                finally { System.Runtime.InteropServices.Marshal.FinalReleaseComObject(resolved); System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shell); }
+                byte[] original = File.ReadAllBytes(link);
+                try { PreviewShortcut.Create(shortcuts, Path.Combine(root, LauncherName)); throw new InvalidOperationException("Existing shortcut was replaced."); }
+                catch (IOException) { }
+                if (!File.ReadAllBytes(link).SequenceEqual(original)) throw new IOException("Existing shortcut was modified.");
                 using var app = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.Combine(root, LauncherName)) {
                     WorkingDirectory = root, UseShellExecute = false,
                     CreateNoWindow = true, Arguments = "--installer-test --integration-test" }) ?? throw new IOException("Installed test app did not start.");
@@ -106,7 +121,7 @@ internal static class Program
             }
             catch (Exception error)
             {
-                MessageBox.Show("The native update could not finish. The previous version remains available.\n\n" + error.Message, "MeshCore Command update", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("The native update could not finish.\n\n" + error.Message, "MeshCore Command update", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 Environment.ExitCode = 1;
             }
             return;
@@ -155,18 +170,33 @@ internal static class Program
     {
         await UpdateParentGate.WaitAsync(parentPid, parentStart, TimeSpan.FromSeconds(60), cancellationToken);
         string profileRoot = testLaunch || !launch ? Path.Combine(root, "test-profile") : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MeshCore Command Native Candidate Data");
+        string previous = VersionedInstall.ResolveCurrent(root);
         using (await NativeInstanceLease.WaitAsync(profileRoot, TimeSpan.FromSeconds(60), cancellationToken))
             await InstallAsync(root, new Progress<string>(), cancellationToken);
+        string activated = Path.Combine(Path.GetFullPath(root), "versions", Version, ApplicationName);
         if (launch)
         {
-            var start = new System.Diagnostics.ProcessStartInfo(Path.Combine(root, LauncherName)) { WorkingDirectory = root, UseShellExecute = false };
-            if (testLaunch) { start.ArgumentList.Add("--installer-test"); start.ArgumentList.Add("--integration-test"); }
-            else start.ArgumentList.Add("--native-candidate");
-            using var launched = System.Diagnostics.Process.Start(start) ?? throw new IOException("The updated app could not start; open it from its launcher.");
-            if (testLaunch)
+            try
             {
-                await launched.WaitForExitAsync(cancellationToken).WaitAsync(TimeSpan.FromSeconds(90), cancellationToken);
-                if (launched.ExitCode != 0) throw new IOException("The updated test app did not pass its integration test.");
+                var start = new System.Diagnostics.ProcessStartInfo(Path.Combine(root, LauncherName)) { WorkingDirectory = root, UseShellExecute = false };
+                if (testLaunch) { start.ArgumentList.Add("--installer-test"); start.ArgumentList.Add("--integration-test"); }
+                else start.ArgumentList.Add("--native-candidate");
+                using var launched = System.Diagnostics.Process.Start(start) ?? throw new IOException("The updated app could not start.");
+                if (testLaunch)
+                {
+                    await launched.WaitForExitAsync(cancellationToken).WaitAsync(TimeSpan.FromSeconds(90), cancellationToken);
+                    if (launched.ExitCode != 0) throw new IOException("The updated test app did not pass its integration test.");
+                }
+            }
+            catch (Exception error)
+            {
+                try
+                {
+                    if (!await VersionedInstall.RollbackIfUnchangedAsync(root, activated, previous, CancellationToken.None))
+                        throw new IOException("Installation changed during the failed update; automatic rollback was not attempted.");
+                }
+                catch (Exception rollback) { throw new AggregateException("Update launch failed and automatic rollback could not finish.", error, rollback); }
+                throw new IOException("Update launch failed; the previous version was restored.", error);
             }
         }
     }
@@ -208,13 +238,14 @@ internal sealed class InstallerWindow : Form
     private readonly Button _install = new() { Text = "Install preview", AutoSize = true };
     private readonly Button _launch = new() { Text = "Open preview", AutoSize = true, Visible = false };
     private readonly Button _candidate = new() { Text = "Open native candidate", AutoSize = true, Visible = false };
+    private readonly Button _shortcut = new() { Text = "Create Start menu shortcut", AutoSize = true, Visible = false };
     private bool _busy;
     public InstallerWindow()
     {
-        Text = "MeshCore Command — native preview setup"; Width = 520; Height = 260; StartPosition = FormStartPosition.CenterScreen;
+        Text = "MeshCore Command — native preview setup"; Width = 520; Height = 320; StartPosition = FormStartPosition.CenterScreen;
         var layout = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(18), WrapContents = false };
         layout.Controls.Add(new Label { Text = "MeshCore Command native preview", AutoSize = true, Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold) });
-        layout.Controls.Add(_status); layout.Controls.Add(_install); layout.Controls.Add(_launch); layout.Controls.Add(_candidate); Controls.Add(layout);
+        layout.Controls.Add(_status); layout.Controls.Add(_install); layout.Controls.Add(_launch); layout.Controls.Add(_candidate); layout.Controls.Add(_shortcut); Controls.Add(layout);
         _install.Click += async (_, _) => {
             if (_busy) return;
             _busy = true; _install.Enabled = false;
@@ -222,7 +253,7 @@ internal sealed class InstallerWindow : Form
             {
                 string root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MeshCore Command Native Preview");
                 await Program.InstallAsync(root, new Progress<string>(message => _status.Text = message));
-                _launch.Visible = true; _candidate.Visible = true;
+                _launch.Visible = true; _candidate.Visible = true; _shortcut.Visible = true;
             }
             catch (Exception error) { _status.Text = error.Message; }
             finally { _busy = false; _install.Enabled = !_launch.Visible; }
@@ -236,13 +267,23 @@ internal sealed class InstallerWindow : Form
             catch (Exception error) { _status.Text = error.Message; }
         };
         _candidate.Click += (_, _) => {
-            if (MessageBox.Show(this, "The development candidate uses a separate copy of your existing settings and messages, but shares Windows-stored credentials with your current app. Changes to the two copies are not merged. Close the current app before continuing. Open the candidate?", "Native candidate", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+            if (MessageBox.Show(this, "The development candidate uses separate copies of your existing settings, messages and credentials. Later changes are not merged with the current app. Close the current app before continuing. Open the candidate?", "Native candidate", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
             try
             {
                 string root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MeshCore Command Native Preview");
                 var start = new System.Diagnostics.ProcessStartInfo(Path.Combine(root, "MeshCore Command Native Preview.exe")) { WorkingDirectory = root, UseShellExecute = false };
                 start.ArgumentList.Add("--native-candidate");
                 using var process = System.Diagnostics.Process.Start(start) ?? throw new IOException("The candidate could not be started.");
+            }
+            catch (Exception error) { _status.Text = error.Message; }
+        };
+        _shortcut.Click += (_, _) => {
+            if (MessageBox.Show(this, "This shortcut opens the experimental native candidate. It may copy your existing profile and credentials; later changes are not merged with the old app. Close the current app before using it. Create the shortcut?", "Native candidate shortcut", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+            try
+            {
+                string root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MeshCore Command Native Preview");
+                _ = PreviewShortcut.Create(Environment.GetFolderPath(Environment.SpecialFolder.Programs), Path.Combine(root, "MeshCore Command Native Preview.exe"));
+                _status.Text = "Start menu shortcut created for the native candidate.";
             }
             catch (Exception error) { _status.Text = error.Message; }
         };
@@ -254,7 +295,7 @@ internal sealed class InstallerWindow : Form
             if (string.Equals(Path.GetFileName(Path.GetDirectoryName(current)), Program.Version, StringComparison.Ordinal) &&
                 string.Equals(Path.GetFileName(current), "MeshCore.Windows.Preview.exe", StringComparison.OrdinalIgnoreCase) &&
                 File.Exists(Path.Combine(root, "MeshCore Command Native Preview.exe")))
-            { _status.Text = "A native preview is already installed. Open it, or install a newer preview when available."; _install.Enabled = false; _launch.Visible = true; _candidate.Visible = true; }
+            { _status.Text = "A native preview is already installed. Open it, or install a newer preview when available."; _install.Enabled = false; _launch.Visible = true; _candidate.Visible = true; _shortcut.Visible = true; }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException or ArgumentException) { }
     }

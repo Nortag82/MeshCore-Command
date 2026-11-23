@@ -29,7 +29,9 @@ internal sealed class ProfileMigrationTest : Form
         {
             Directory.CreateDirectory(_root);
             // The app and the copied profile must use the same origin for localStorage.
-            _url = "http://127.0.0.1:19484/"; _server.Prefixes.Add(_url); _server.Start(); _loop = ServeAsync();
+            _url = "http://127.0.0.1:19484/"; _server.Prefixes.Add(_url);
+            await StartListenerAsync(_server.Start);
+            _loop = ServeAsync();
             string original = Path.Combine(_root, "original"), registry = Path.Combine(_root, "native-registry");
             string data = Path.Combine(_root, "data"); Directory.CreateDirectory(data);
             File.WriteAllText(Path.Combine(data, "boards.json"), "{\"version\":1,\"boards\":[]}");
@@ -68,6 +70,53 @@ internal sealed class ProfileMigrationTest : Form
             var restoredCredentials = new PreviewCredentials();
             CredentialRecovery.Restore(recovery, restoredCredentials);
             if (restoredCredentials.Get("secure", syntheticCredential) != "synthetic-secret") throw new InvalidDataException("Credential recovery did not restore the saved secret.");
+            var isolatedCredentials = new PreviewCredentials();
+            await NativeCredentialIsolation.EnsureWithLegacyLockAsync(registry, Path.Combine(original, "EBWebView"), sourceCredentials, isolatedCredentials);
+            if (isolatedCredentials.Get("secure", syntheticCredential) != "synthetic-secret") throw new InvalidDataException("Credential isolation did not copy the secret.");
+            isolatedCredentials.Put("secure", syntheticCredential, "native-changed");
+            await NativeCredentialIsolation.EnsureWithLegacyLockAsync(registry, Path.Combine(original, "EBWebView"), sourceCredentials, isolatedCredentials);
+            if (isolatedCredentials.Get("secure", syntheticCredential) != "native-changed" || sourceCredentials.Get("secure", syntheticCredential) != "synthetic-secret")
+                throw new InvalidDataException("Credential isolation did not preserve later independent changes.");
+            string conflictRoot = Path.Combine(_root, "credential-conflict"); Directory.CreateDirectory(conflictRoot);
+            var conflictCredentials = new PreviewCredentials(); conflictCredentials.Put("secure", syntheticCredential, "existing-other-secret");
+            try { await NativeCredentialIsolation.EnsureWithLegacyLockAsync(conflictRoot, Path.Combine(original, "EBWebView"), sourceCredentials, conflictCredentials); throw new InvalidDataException("Credential conflict was accepted."); }
+            catch (IOException) { }
+            if (File.Exists(Path.Combine(conflictRoot, "credentials-isolated-v1")) || conflictCredentials.Get("secure", syntheticCredential) != "existing-other-secret")
+                throw new InvalidDataException("Credential conflict changed data or committed the selection.");
+            string lockedRoot = Path.Combine(_root, "credential-locked"); Directory.CreateDirectory(lockedRoot);
+            string legacyLock = Path.Combine(original, "EBWebView", "Default", "Local Storage", "leveldb", "LOCK");
+            using (var held = new FileStream(legacyLock, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                var lockedCredentials = new PreviewCredentials();
+                try { await NativeCredentialIsolation.EnsureWithLegacyLockAsync(lockedRoot, Path.Combine(original, "EBWebView"), sourceCredentials, lockedCredentials); throw new InvalidDataException("Locked credential source was accepted."); }
+                catch (IOException) { }
+                if (File.Exists(Path.Combine(lockedRoot, "credentials-isolated-v1")) || lockedCredentials.Get("secure", syntheticCredential) is not null)
+                    throw new InvalidDataException("Locked credential source changed the destination.");
+            }
+            string freshCredentialsRoot = Path.Combine(_root, "credential-fresh"); Directory.CreateDirectory(freshCredentialsRoot);
+            var emptyLegacy = new PreviewCredentials(); var emptyNative = new PreviewCredentials();
+            await NativeCredentialIsolation.EnsureWithLegacyLockAsync(freshCredentialsRoot, Path.Combine(_root, "missing-legacy"), emptyLegacy, emptyNative);
+            if (!File.Exists(Path.Combine(freshCredentialsRoot, "credentials-isolated-v1"))) throw new InvalidDataException("Fresh credentials were not selected.");
+            string resumedRoot = Path.Combine(_root, "credential-resume"); Directory.CreateDirectory(resumedRoot);
+            var resumedCredentials = new PreviewCredentials(); resumedCredentials.Put("secure", syntheticCredential, "synthetic-secret");
+            await NativeCredentialIsolation.EnsureWithLegacyLockAsync(resumedRoot, Path.Combine(original, "EBWebView"), sourceCredentials, resumedCredentials);
+            if (!File.Exists(Path.Combine(resumedRoot, "credentials-isolated-v1")) || resumedCredentials.Get("secure", syntheticCredential) != "synthetic-secret")
+                throw new InvalidDataException("Partial credential copy did not resume safely.");
+            string windowsKey = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+            var windowsLegacy = new RestrictedCredentialStore(new WindowsBackupCredentials(), windowsKey);
+            var windowsNative = new RestrictedCredentialStore(new WindowsBackupCredentials(native: true), windowsKey);
+            bool safeToClean = false;
+            try
+            {
+                if (windowsLegacy.Get("secure", windowsKey) is not null || windowsNative.Get("secure", windowsKey) is not null) throw new InvalidDataException("Test credential unexpectedly exists.");
+                safeToClean = true;
+                windowsLegacy.Put("secure", windowsKey, "synthetic-windows-secret");
+                string windowsRoot = Path.Combine(_root, "credential-windows"); Directory.CreateDirectory(windowsRoot);
+                await NativeCredentialIsolation.EnsureWithLegacyLockAsync(windowsRoot, Path.Combine(original, "EBWebView"), windowsLegacy, windowsNative);
+                windowsNative.Put("secure", windowsKey, "native-changed");
+                if (windowsLegacy.Get("secure", windowsKey) != "synthetic-windows-secret") throw new InvalidDataException("Native changes affected the old Windows credential.");
+            }
+            finally { if (safeToClean) { windowsNative.Delete("secure", windowsKey); windowsLegacy.Delete("secure", windowsKey); } }
             byte[] damaged = await File.ReadAllBytesAsync(recovery); damaged[^1] ^= 1;
             string damagedPath = Path.Combine(_root, "damaged.mcccred"); await File.WriteAllBytesAsync(damagedPath, damaged);
             restoredCredentials.Put("secure", syntheticCredential, "unchanged");
@@ -183,6 +232,30 @@ internal sealed class ProfileMigrationTest : Form
         }
     }
 
+    internal static async Task StartListenerAsync(Action start, Func<int, Task>? delay = null)
+    {
+        delay ??= milliseconds => Task.Delay(milliseconds);
+        for (int attempt = 0; ; attempt++)
+        {
+            try { start(); return; }
+            catch (HttpListenerException error) when (attempt < 20 && error.ErrorCode is 32 or 183)
+            { await delay(250); }
+        }
+    }
+
     [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("SingleFile", "IL3000", Justification = "Only used when the current process is the dotnet host, not a single-file executable.")]
     private static string FrameworkDependentEntryPoint() => System.Reflection.Assembly.GetEntryAssembly()!.Location;
+
+    private sealed class RestrictedCredentialStore(ICredentialStore inner, string allowedKey) : ICredentialStore
+    {
+        private void Check(string scope, string key) { if (scope != "secure" || key != allowedKey) throw new InvalidOperationException("Test credential is outside its scope."); }
+        public string? Get(string scope, string key) { Check(scope, key); return inner.Get(scope, key); }
+        public void Put(string scope, string key, string value) { Check(scope, key); inner.Put(scope, key, value); }
+        public void Delete(string scope, string key) { Check(scope, key); inner.Delete(scope, key); }
+        public IReadOnlyDictionary<string, string> ListSaved(string? scope = null, string? key = null)
+        {
+            if (scope is not null || key is not null) Check(scope ?? "", key ?? "");
+            return inner.ListSaved("secure", allowedKey);
+        }
+    }
 }

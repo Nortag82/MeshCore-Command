@@ -52,13 +52,19 @@ using (var self = System.Diagnostics.Process.GetCurrentProcess())
     await ThrowsAsync<InvalidOperationException>(() => UpdateParentGate.WaitAsync(self.Id, start + 1, TimeSpan.FromMilliseconds(100)));
     await ThrowsAsync<TimeoutException>(() => UpdateParentGate.WaitAsync(self.Id, start, TimeSpan.FromMilliseconds(100)));
     await UpdateParentGate.WaitAsync(int.MaxValue, start, TimeSpan.FromMilliseconds(100));
+    string ownExecutable = self.MainModule!.FileName;
+    await ThrowsAsync<InvalidOperationException>(() => LegacyUpdateParentGate.WaitAsync(self.Id, ownExecutable + ".different", TimeSpan.FromMilliseconds(100)));
+    await ThrowsAsync<TimeoutException>(() => LegacyUpdateParentGate.WaitAsync(self.Id, ownExecutable, TimeSpan.FromMilliseconds(100)));
+    await LegacyUpdateParentGate.WaitAsync(int.MaxValue, ownExecutable, TimeSpan.FromMilliseconds(100));
 }
 if (OperatingSystem.IsWindows())
 {
     var start = new System.Diagnostics.ProcessStartInfo("powershell.exe") { UseShellExecute = false, CreateNoWindow = true };
-    start.ArgumentList.Add("-NoProfile"); start.ArgumentList.Add("-NonInteractive"); start.ArgumentList.Add("-Command"); start.ArgumentList.Add("Start-Sleep -Milliseconds 700");
+    start.ArgumentList.Add("-NoProfile"); start.ArgumentList.Add("-NonInteractive"); start.ArgumentList.Add("-Command"); start.ArgumentList.Add("Start-Sleep -Seconds 4");
     using var child = System.Diagnostics.Process.Start(start) ?? throw new Exception("Could not start update wait test process.");
-    await UpdateParentGate.WaitAsync(child.Id, child.StartTime.ToUniversalTime().Ticks, TimeSpan.FromSeconds(10));
+    string childExecutable = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
+    await Task.WhenAll(UpdateParentGate.WaitAsync(child.Id, child.StartTime.ToUniversalTime().Ticks, TimeSpan.FromSeconds(10)),
+        LegacyUpdateParentGate.WaitAsync(child.Id, childExecutable, TimeSpan.FromSeconds(10)));
     Check(child.HasExited && child.ExitCode == 0, "Updater waits for the matching process to exit normally");
 }
 Check(output.SequenceEqual(new byte[] { (byte)'<', 3, 0, 1, 2, 3 }), "Outgoing frame encoding");
@@ -324,6 +330,29 @@ var directory = Path.Combine(Path.GetTempPath(), "mcc-native-test-" + Guid.NewGu
 Directory.CreateDirectory(directory);
 try
 {
+    string receipt = Path.Combine(directory, "startup-receipt");
+    string nonce = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+    var receiptWriter = Task.Run(async () => { await Task.Delay(150); await StartupHealthGate.WriteAsync(receipt, nonce); });
+    await StartupHealthGate.WaitAsync(receipt, nonce, TimeSpan.FromSeconds(3));
+    await receiptWriter;
+    await ThrowsAsync<InvalidDataException>(() => StartupHealthGate.WaitAsync(receipt, new string(nonce[0] == 'a' ? 'b' : 'a', 64), TimeSpan.FromSeconds(1)));
+    await ThrowsAsync<IOException>(() => StartupHealthGate.WriteAsync(receipt, nonce));
+    await ThrowsAsync<TimeoutException>(() => StartupHealthGate.WaitAsync(Path.Combine(directory, "missing-receipt"), nonce, TimeSpan.FromMilliseconds(150)));
+    string processReceipt = Path.Combine(directory, "process-startup-receipt");
+    using (var self = System.Diagnostics.Process.GetCurrentProcess())
+    {
+        var processWriter = Task.Run(async () => { await Task.Delay(150); await StartupHealthGate.WriteAsync(processReceipt, nonce); });
+        await StartupHealthGate.WaitForProcessAsync(self, processReceipt, nonce, TimeSpan.FromSeconds(3));
+        await processWriter;
+        await ThrowsAsync<TimeoutException>(() => StartupHealthGate.WaitForProcessAsync(self, Path.Combine(directory, "process-timeout"), nonce, TimeSpan.FromMilliseconds(150)));
+    }
+    if (OperatingSystem.IsWindows())
+    {
+        var command = new System.Diagnostics.ProcessStartInfo("cmd.exe") { UseShellExecute = false, CreateNoWindow = true };
+        command.ArgumentList.Add("/c"); command.ArgumentList.Add("exit 0");
+        using var exited = System.Diagnostics.Process.Start(command) ?? throw new IOException("Could not start startup-exit test.");
+        await ThrowsAsync<IOException>(() => StartupHealthGate.WaitForProcessAsync(exited, Path.Combine(directory, "process-exited"), nonce, TimeSpan.FromSeconds(5)));
+    }
     string crashPath = Path.Combine(directory, "logs", "crashes.log");
     new CrashLog(crashPath).Record("unhandled", new InvalidOperationException("synthetic-private-message"));
     string crashEntry = await File.ReadAllTextAsync(crashPath);
@@ -404,6 +433,8 @@ finally { Directory.Delete(directory, true); }
 if (OperatingSystem.IsWindows())
 {
     string key = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+    if (WindowsCredentials.Get("secure", key) is not null || WindowsCredentials.Get("secure", key, native: true) is not null)
+        throw new IOException("Generated test credential already exists; no credentials were changed.");
     try
     {
         WindowsCredentials.Put("secure", key, "temporary-test-ø");
@@ -412,12 +443,21 @@ if (OperatingSystem.IsWindows())
         Check(WindowsCredentials.ListSaved("secure", key).TryGetValue("secure/" + key, out var foundCredential) && foundCredential == "temporary-test-ø", "Credential enumeration");
         var credentialStore = new WindowsBackupCredentials();
         Check(credentialStore.Get("secure", key) == "temporary-test-ø" && credentialStore.ListSaved("secure", key).ContainsKey("secure/" + key), "Native credential store reads the compatible Windows entry");
+        var isolated = new WindowsBackupCredentials(native: true);
+        Check(isolated.Get("secure", key) is null, "Native credentials do not expose the legacy entry");
+        isolated.Put("secure", key, "isolated-test-secret");
+        Check(isolated.Get("secure", key) == "isolated-test-secret" && credentialStore.Get("secure", key) == "temporary-test-ø", "Credential namespaces remain independent");
+        Check(isolated.ListSaved("secure", key).TryGetValue("secure/" + key, out var nativeValue) && nativeValue == "isolated-test-secret", "Native credential enumeration uses portable names");
+        isolated.Delete("secure", key);
+        Check(isolated.Get("secure", key) is null && credentialStore.Get("secure", key) == "temporary-test-ø", "Deleting native credentials preserves legacy credentials");
         Check(WindowsCredentials.Get("repeater", key) is null, "Credential scope separation");
         string restoreRoot = Path.Combine(Path.GetTempPath(), "mcc-credential-restore-test-" + Guid.NewGuid().ToString("N"));
         try
         {
             Directory.CreateDirectory(restoreRoot);
             byte[] backup = BackupArchive.Create(new Dictionary<string, string>(), new Dictionary<string, string> { ["secure/" + key] = "synthetic-restored-secret" }, new Dictionary<string, byte[]>());
+            BackupRestore.Apply(backup, restoreRoot, isolated);
+            Check(isolated.Get("secure", key) == "synthetic-restored-secret" && credentialStore.Get("secure", key) == "temporary-test-ø", "Restoring into native credentials preserves legacy credentials");
             BackupRestore.Apply(BackupEnvelope.Decrypt(BackupEnvelope.Encrypt(backup, "test password 123"), "test password 123"), restoreRoot, credentialStore);
             Check(WindowsCredentials.Get("secure", key) == "synthetic-restored-secret", "Full-backup restore writes the compatible Windows credential");
         }
@@ -427,8 +467,26 @@ if (OperatingSystem.IsWindows())
             if (string.Equals(Path.GetDirectoryName(target), temp, StringComparison.OrdinalIgnoreCase) && Path.GetFileName(target).StartsWith("mcc-credential-restore-test-", StringComparison.Ordinal) && Directory.Exists(target)) Directory.Delete(target, true);
         }
     }
-    finally { WindowsCredentials.Delete("secure", key); }
+    finally { WindowsCredentials.Delete("secure", key, native: true); WindowsCredentials.Delete("secure", key); }
     Check(WindowsCredentials.Get("secure", key) is null, "Credential deletion");
+}
+{
+    string keyA = new('a', 64), keyB = new('b', 64);
+    var source = new MigrationCredentials(); source.Put("secure", keyA, "source-a"); source.Put("repeater", keyB, "source-b");
+    var destination = new MigrationCredentials();
+    CredentialNamespaceMigration.Copy(source, destination);
+    Check(destination.Get("secure", keyA) == "source-a" && destination.Get("repeater", keyB) == "source-b", "Credential copy preserves both scopes");
+    destination.Delete("repeater", keyB);
+    CredentialNamespaceMigration.Copy(source, destination);
+    Check(destination.Get("secure", keyA) == "source-a" && destination.Get("repeater", keyB) == "source-b", "Credential copy resumes matching partial results");
+    destination.Put("secure", keyA, "existing");
+    try { CredentialNamespaceMigration.Copy(source, destination); throw new Exception("Credential conflict was not rejected."); }
+    catch (IOException) { }
+    Check(destination.Get("secure", keyA) == "existing" && source.Get("secure", keyA) == "source-a", "Credential conflict leaves both stores unchanged");
+    var failing = new MigrationCredentials { FailOnPut = 2 };
+    try { CredentialNamespaceMigration.Copy(source, failing); throw new Exception("Credential failure was not propagated."); }
+    catch (IOException) { }
+    Check(failing.ListSaved().Count == 0 && source.ListSaved().Count == 2, "Partial credential writes roll back without touching the source");
 }
 var legacyEnvelope = Convert.FromBase64String("TUNDRlVMTDEAAQIDBAUGBwgJCgsMDQ4PAAECAwQFBgcICQoLh8OlCc6SiBe8FtFwd9DUWI7MHj4zXdyEVl+z+AhaDSlc");
 Check(System.Text.Encoding.UTF8.GetString(BackupEnvelope.Decrypt(legacyEnvelope, "test password 123")) == "synthetic archive", "Decrypt Python-compatible backup envelope");
@@ -574,6 +632,12 @@ try
     Check(VersionedInstall.ResolveCurrent(isolatedInstall) == currentPath && Directory.Exists(secondVersion), "Rejected activation preserves current version");
     await VersionedInstall.ActivateAsync(isolatedInstall, secondVersion, "1.0.1", "app.exe");
     Check(File.Exists(currentPath) && VersionedInstall.ResolveCurrent(isolatedInstall).Contains("1.0.1"), "Updating keeps the previous version intact");
+    string updatedPath = VersionedInstall.ResolveCurrent(isolatedInstall);
+    Check(!await VersionedInstall.RollbackIfUnchangedAsync(isolatedInstall, currentPath, updatedPath), "Conditional rollback rejects changed pointers");
+    Check(VersionedInstall.ResolveCurrent(isolatedInstall) == updatedPath, "Rejected rollback preserves the active version");
+    Check(await VersionedInstall.RollbackIfUnchangedAsync(isolatedInstall, updatedPath, currentPath), "Conditional rollback restores the previous version");
+    Check(VersionedInstall.ResolveCurrent(isolatedInstall) == currentPath, "Conditional rollback restores the correct pointer");
+    await VersionedInstall.RollbackAsync(isolatedInstall);
     await VersionedInstall.RollbackAsync(isolatedInstall);
     Check(VersionedInstall.ResolveCurrent(isolatedInstall) == currentPath, "Rollback restores the previous version pointer");
     await VersionedInstall.RollbackAsync(isolatedInstall);
@@ -665,6 +729,18 @@ using (var fakeHttp = new HttpClient(new BogusHelperHandler()))
 }
 if (Directory.Exists(downloadsDir)) Directory.Delete(downloadsDir, true);
 Console.WriteLine("All native core compatibility checks passed.");
+
+sealed class MigrationCredentials : ICredentialStore
+{
+    private readonly Dictionary<string, string> _values = new();
+    private int _puts;
+    public int FailOnPut { get; init; }
+    public string? Get(string scope, string key) => _values.GetValueOrDefault(scope + "/" + key);
+    public void Put(string scope, string key, string value) { _values[scope + "/" + key] = value; if (++_puts == FailOnPut) throw new IOException("Synthetic failure after writing."); }
+    public void Delete(string scope, string key) => _values.Remove(scope + "/" + key);
+    public IReadOnlyDictionary<string, string> ListSaved(string? scope = null, string? key = null) =>
+        _values.Where(item => scope is null || item.Key == scope + "/" + key).ToDictionary(item => item.Key, item => item.Value);
+}
 
 sealed class TestCredentials : IBackupCredentials
 {

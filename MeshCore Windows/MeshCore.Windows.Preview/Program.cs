@@ -142,6 +142,20 @@ internal static class Program
         AppDomain.CurrentDomain.UnhandledException += (_, eventArgs) => { if (eventArgs.ExceptionObject is Exception error) Record("unhandled", error); };
         TaskScheduler.UnobservedTaskException += (_, eventArgs) => Record("task", eventArgs.Exception);
         if (args.Contains("--notification-test")) { Application.Run(new NotificationTest()); return; }
+        if (args.Contains("--listener-retry-test"))
+        {
+            try
+            {
+                int attempts = 0;
+                ProfileMigrationTest.StartListenerAsync(() => { if (++attempts < 3) throw new HttpListenerException(183); }, _ => Task.CompletedTask).GetAwaiter().GetResult();
+                if (attempts != 3) throw new InvalidOperationException("Transient listener retry failed.");
+                attempts = 0;
+                try { ProfileMigrationTest.StartListenerAsync(() => { attempts++; throw new HttpListenerException(5); }, _ => Task.CompletedTask).GetAwaiter().GetResult(); throw new InvalidOperationException("Unexpected listener error was ignored."); }
+                catch (HttpListenerException) { if (attempts != 1) throw new InvalidOperationException("Unexpected listener error was retried."); }
+            }
+            catch { Environment.ExitCode = 1; }
+            return;
+        }
         if (args.Contains("--audit-legacy-profile")) { Application.Run(new LegacyProfileAudit()); return; }
         if (args.Contains("--candidate-sequence-test"))
         {
@@ -153,10 +167,16 @@ internal static class Program
                 if (!string.Equals(Path.GetDirectoryName(root), temp, StringComparison.OrdinalIgnoreCase) || !Path.GetFileName(root).StartsWith("mcc-profile-integration-", StringComparison.Ordinal)) throw new ArgumentException("Invalid test root.");
                 string registry = Path.Combine(root, "sequence-registry");
                 using var lease = NativeInstanceLease.Acquire(registry);
-                using var startup = new NativeCandidateStartup(registry, Path.Combine(root, "original", "EBWebView"), Path.Combine(root, "data"), port: 19484, hidden: true);
+                string legacyProfile = Path.Combine(root, "original", "EBWebView");
+                var sourceCredentials = new PreviewCredentials();
+                string testKey = new('a', 64); sourceCredentials.Put("secure", testKey, "synthetic-sequence-secret");
+                using var startup = new NativeCandidateStartup(registry, legacyProfile, Path.Combine(root, "data"), port: 19484, hidden: true, credentials: sourceCredentials);
                 Application.Run(startup);
                 NativeProfile profile = startup.Profile ?? throw new InvalidDataException("Candidate startup did not select a profile.");
-                Application.Run(new PreviewWindow(false, false, false, true, null, 0, profile.WebView, profile.Data, seedHistory: false, port: profile.Port));
+                var isolatedCredentials = new PreviewCredentials();
+                Task.Run(() => NativeCredentialIsolation.EnsureWithLegacyLockAsync(registry, legacyProfile, sourceCredentials, isolatedCredentials)).GetAwaiter().GetResult();
+                if (isolatedCredentials.Get("secure", testKey) != "synthetic-sequence-secret") throw new InvalidDataException("Candidate did not isolate credentials.");
+                Application.Run(new PreviewWindow(false, false, false, true, null, 0, profile.WebView, profile.Data, seedHistory: false, port: profile.Port, credentials: isolatedCredentials));
             }
             catch { Environment.ExitCode = 1; }
             return;
@@ -168,12 +188,17 @@ internal static class Program
             try
             {
                 using var lease = NativeInstanceLease.Acquire(registry);
-                var credentials = new WindowsBackupCredentials();
-                using var startup = new NativeCandidateStartup(registry: registry, credentials: credentials);
+                var legacyCredentials = new WindowsBackupCredentials();
+                using var startup = new NativeCandidateStartup(registry: registry, credentials: legacyCredentials);
                 Application.Run(startup);
                 if (startup.Profile is NativeProfile profile)
+                {
+                    var credentials = new WindowsBackupCredentials(native: true);
+                    string legacyProfile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MeshCore WiFi Data", "WebView", "EBWebView");
+                    Task.Run(() => NativeCredentialIsolation.EnsureWithLegacyLockAsync(registry, legacyProfile, legacyCredentials, credentials)).GetAwaiter().GetResult();
                     Application.Run(new PreviewWindow(true, true, false, false, null, 0, profile.WebView, profile.Data,
                         seedHistory: false, port: profile.Port, credentials: credentials, candidate: true));
+                }
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
             { MessageBox.Show("The native candidate cannot open this profile. Another native instance may be running.\n\n" + error.Message, "MeshCore Command", MessageBoxButtons.OK, MessageBoxIcon.Error); Environment.ExitCode = 1; }
@@ -275,7 +300,7 @@ internal sealed class PreviewWindow : Form
         _profiles = new BoardProfiles(Path.Combine(_dataDirectory, "boards.json"));
         _serialProfiles = new BoardProfiles(Path.Combine(_dataDirectory, "serial-boards.json"), allowSerial: true);
         if (experimentalRadio) _warning.Text = "DEVELOPMENT PREVIEW — experimental radio access enabled; your production data is not loaded";
-        if (candidate) _warning.Text = "EARLY NATIVE CANDIDATE — copied profile, shared Windows credentials; not a production release";
+        if (candidate) _warning.Text = "EARLY NATIVE CANDIDATE — separate profile and credentials; changes are not merged";
         Text = "MeshCore Command — native development preview";
         Width = 1280; Height = 800; MinimumSize = new Size(800, 500);
         if (_smokeTest) { Opacity = 0; ShowInTaskbar = false; }

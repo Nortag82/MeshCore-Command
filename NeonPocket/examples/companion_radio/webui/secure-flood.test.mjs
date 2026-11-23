@@ -21,3 +21,18 @@ test('an authenticated incoming secure message requests a generic alert once',as
   assert.equal(notifications.length,1,'replayed messages do not create duplicate alerts');
  }finally{globalThis.fetch=previousFetch}
 });
+
+test('missing secure key disables sending without deleting contact verification',async()=>{
+ const previousFetch=globalThis.fetch, storageKey='meshcore-secure-v1:'+own, previous=storage.get(storageKey);
+ storage.set(storageKey,JSON.stringify({contacts:{[peer]:{verified:true,fingerprint:'old-fingerprint'}},history:{},seen:{}}));
+ let storedPassword='';globalThis.fetch=async(url,options)=>{const request=JSON.parse(options.body);if(request.action==='save')storedPassword=request.password;return {ok:true,json:async()=>({password:storedPassword})}};
+ try{
+  const state={self:{publicKey:new Uint8Array(32).fill(17)},contacts:[{type:1,publicKey:new Uint8Array(32).fill(34),advName:'Peer'}],connected:true,view:'home'};
+  const secure=createSecureComs({state,getConnection:()=>({}),exclusive:fn=>fn(),hex,toast:()=>{}});secure.refresh();secure.selectContact(peer);
+  for(let i=0;i<100&&!element('secure-fingerprint').textContent.includes('shared secret missing');i++)await new Promise(resolve=>setTimeout(resolve,10));
+  assert.match(element('secure-fingerprint').textContent,/shared secret missing/);assert.equal(element('secure-send').disabled,true);assert.equal(element('secure-verified').checked,false);assert.equal(JSON.parse(storage.get(storageKey)).contacts[peer].verified,true);
+  element('secure-secret').value=password;await element('secure-save').onclick();
+  assert.doesNotMatch(element('secure-fingerprint').textContent,/shared secret missing/);assert.equal(element('secure-verified').disabled,false);assert.equal(element('secure-verified').checked,false,'a different fingerprint requires verification');
+  element('secure-verified').checked=true;element('secure-verified').onchange();assert.equal(element('secure-send').disabled,false);
+ }finally{globalThis.fetch=previousFetch;storage.set(storageKey,previous)}
+});

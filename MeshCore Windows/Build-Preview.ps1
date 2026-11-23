@@ -18,6 +18,8 @@ try {
     & $dotnet publish (Join-Path $PSScriptRoot 'MeshCore.Windows.Preview') --configuration Release --runtime win-x64 --self-contained true `
         -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output $output
     if ($LASTEXITCODE -ne 0) { throw 'Preview publish failed.' }
+    $listenerRetry = Start-Process -FilePath (Join-Path $output 'MeshCore.Windows.Preview.exe') -ArgumentList '--listener-retry-test' -WindowStyle Hidden -Wait -PassThru
+    if ($listenerRetry.ExitCode -ne 0) { throw 'Listener retry test failed.' }
     $firmware = Start-Process -FilePath (Join-Path $output 'MeshCore.Windows.Preview.exe') -ArgumentList '--verify-firmware' -WindowStyle Hidden -Wait -PassThru
     if ($firmware.ExitCode -ne 0) { throw 'Packaged firmware verification failed.' }
     $test = Start-Process -FilePath (Join-Path $output 'MeshCore.Windows.Preview.exe') -ArgumentList '--integration-test' -WindowStyle Hidden -Wait -PassThru
