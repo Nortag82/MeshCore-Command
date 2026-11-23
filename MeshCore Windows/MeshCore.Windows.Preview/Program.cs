@@ -165,7 +165,7 @@ internal static class Program
                 string temp = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.GetTempPath()));
                 if (!string.Equals(Path.GetDirectoryName(root), temp, StringComparison.OrdinalIgnoreCase) || !Path.GetFileName(root).StartsWith("mcc-real-profile-audit-", StringComparison.Ordinal)) throw new ArgumentException("Invalid audit root.");
                 NativeProfile profile = NativeProfileRegistry.Open(root);
-                Application.Run(new PreviewWindow(false, false, true, false, null, 0, profile.WebView, profile.Data, seedHistory: false, port: profile.Port));
+                Application.Run(new PreviewWindow(false, false, true, false, null, 0, profile.WebView, profile.Data, seedHistory: false, port: profile.Port, candidate: true));
             }
             catch { Environment.ExitCode = 1; }
             return;
