@@ -658,6 +658,11 @@ try
     Check(VersionedInstall.ResolveCurrent(isolatedInstall) == currentPath && Directory.Exists(secondVersion), "Rejected activation preserves current version");
     await VersionedInstall.ActivateAsync(isolatedInstall, secondVersion, "1.0.1", "app.exe");
     Check(File.Exists(currentPath) && VersionedInstall.ResolveCurrent(isolatedInstall).Contains("1.0.1"), "Updating keeps the previous version intact");
+    string resumeStage = await InstallPackage.StageAsync(packagePath, Path.Combine(isolatedInstall, "staging"));
+    await VersionedInstall.VerifyResumeAsync(isolatedInstall, resumeStage, "1.0.1", "app.exe");
+    await ThrowsAsync<IOException>(() => VersionedInstall.VerifyResumeAsync(isolatedInstall, resumeStage, "1.0.0", "app.exe"));
+    await File.WriteAllTextAsync(Path.Combine(resumeStage, "app.exe"), "tampered");
+    await ThrowsAsync<IOException>(() => VersionedInstall.VerifyResumeAsync(isolatedInstall, resumeStage, "1.0.1", "app.exe"));
     string updatedPath = VersionedInstall.ResolveCurrent(isolatedInstall);
     Check(!await VersionedInstall.RollbackIfUnchangedAsync(isolatedInstall, currentPath, updatedPath), "Conditional rollback rejects changed pointers");
     Check(VersionedInstall.ResolveCurrent(isolatedInstall) == updatedPath, "Rejected rollback preserves the active version");

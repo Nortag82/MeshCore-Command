@@ -52,6 +52,7 @@ internal sealed class LegacyProfileAudit : Form
                   }catch{out.unreadable++}}out.records.sort((a,b)=>a[0].localeCompare(b[0]));return out})()
                 """;
             string counts = await _web.CoreWebView2.ExecuteScriptAsync(countScript);
+            byte[] recordsDigest = CandidateProfileAudit.Hash(await _web.CoreWebView2.ExecuteScriptAsync(CandidateProfileAudit.CaptureScript));
             using var result = System.Text.Json.JsonDocument.Parse(counts);
             var n = result.RootElement;
             int found = 0, missing = 0;
@@ -69,6 +70,11 @@ internal sealed class LegacyProfileAudit : Form
             try { await exited.Task.WaitAsync(TimeSpan.FromSeconds(20)); _browserClosed = true; }
             finally { environment.BrowserProcessExited -= OnExit; }
             _stop.Cancel(); _server.Close(); await _serverTask;
+
+            // Exercise the real credential-copy logic with an in-memory destination.
+            // The original Windows credentials are read but never changed or printed.
+            await NativeCredentialIsolation.EnsureWithLegacyLockAsync(_root, source, new WindowsBackupCredentials(), new PreviewCredentials());
+            Console.WriteLine("Credential-copy verification succeeded using an in-memory destination.");
 
             // Open only the copied profile in the actual native shell, with radio access disabled.
             string executable = Environment.ProcessPath ?? throw new IOException("Audit executable is unavailable.");
@@ -99,6 +105,8 @@ internal sealed class LegacyProfileAudit : Form
             if (!await afterLoaded.Task.WaitAsync(timeout.Token)) throw new IOException("Copied profile could not be reopened.");
             await response;
             string afterCounts = await _web.CoreWebView2.ExecuteScriptAsync(countScript);
+            byte[] afterDigest = CandidateProfileAudit.Hash(await _web.CoreWebView2.ExecuteScriptAsync(CandidateProfileAudit.CaptureScript));
+            if (!System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(recordsDigest, afterDigest)) throw new InvalidDataException("Copied profile verification digest changed after startup.");
             using var after = System.Text.Json.JsonDocument.Parse(afterCounts);
             foreach (string key in new[] { "histories", "messages", "secureContacts", "monitored", "mapObjects", "unreadable" })
                 if (n.GetProperty(key).GetInt32() != after.RootElement.GetProperty(key).GetInt32()) throw new InvalidDataException("Copied profile counts changed after opening the native shell.");
@@ -115,6 +123,20 @@ internal sealed class LegacyProfileAudit : Form
             try { await afterExited.Task.WaitAsync(TimeSpan.FromSeconds(20)); _browserClosed = true; }
             finally { afterEnvironment.BrowserProcessExited -= OnAfterExit; }
             Console.WriteLine("Native shell opened the copied profile; selected saved records and boards remained unchanged.");
+            listener.Close();
+            string? installer = Environment.GetCommandLineArgs().FirstOrDefault(a => a.StartsWith("--audit-installer=", StringComparison.Ordinal))?[18..];
+            if (installer is not null)
+            {
+                string path = Path.GetFullPath(installer);
+                if (!File.Exists(path) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) throw new IOException("Audit installer is missing or is a link.");
+                var installTest = new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = false, CreateNoWindow = true };
+                installTest.ArgumentList.Add("--test-copied-legacy-upgrade"); installTest.ArgumentList.Add("--audit-root=" + _root);
+                using var process = System.Diagnostics.Process.Start(installTest) ?? throw new IOException("Copied-profile installer test could not start.");
+                try { await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(240)); }
+                catch (TimeoutException) { process.Kill(entireProcessTree: true); throw; }
+                if (process.ExitCode != 0) throw new IOException("Copied-profile installer upgrade failed.");
+                Console.WriteLine("Disposable installer upgrade opened the copied profile and preserved its old test shortcut and executable.");
+            }
         }
         catch (Exception error) { Console.Error.WriteLine("Profile audit failed: " + error.GetType().Name); Environment.ExitCode = 1; }
         finally

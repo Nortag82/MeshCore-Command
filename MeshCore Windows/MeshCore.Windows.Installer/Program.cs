@@ -13,6 +13,12 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.Contains("--test-copied-legacy-upgrade"))
+        {
+            try { TestCopiedLegacyUpgradeAsync(args).GetAwaiter().GetResult(); }
+            catch { Environment.ExitCode = 1; }
+            return;
+        }
         if (args.Contains("--test-update"))
         {
             string root = Path.Combine(Path.GetTempPath(), "mcc-native-update-test-" + Guid.NewGuid().ToString("N"));
@@ -170,6 +176,11 @@ internal static class Program
                 catch (IOException) { }
                 if (!File.Exists(failedOld) || !File.ReadAllBytes(failedLink).SequenceEqual(failedOriginal) || File.Exists(failedLink + ".legacy-backup"))
                     throw new IOException("A failed candidate changed the old app or shortcut.");
+                bool retried = false;
+                LegacyUpgradeAsync(new[] { "--update", int.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture) }, testPaths: failedPaths,
+                    testCandidate: (_, _) => { retried = true; return Task.CompletedTask; }).GetAwaiter().GetResult();
+                if (!retried || !File.ReadAllBytes(failedLink + ".legacy-backup").SequenceEqual(failedOriginal))
+                    throw new IOException("Verified legacy upgrade retry did not retain the previous shortcut.");
                 string existingScenario = Path.Combine(root, "existing-native-profile"), existingRegistry = Path.Combine(existingScenario, "profile");
                 string existingPrograms = Path.Combine(existingScenario, "programs"), existingDesktop = Path.Combine(existingScenario, "desktop");
                 Directory.CreateDirectory(existingRegistry); Directory.CreateDirectory(existingPrograms); Directory.CreateDirectory(existingDesktop);
@@ -237,6 +248,35 @@ internal static class Program
         Application.Run(new InstallerWindow());
     }
 
+    private static async Task TestCopiedLegacyUpgradeAsync(string[] args)
+    {
+        string auditRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(args.FirstOrDefault(a => a.StartsWith("--audit-root=", StringComparison.Ordinal))?[13..] ?? throw new ArgumentException("Missing audit root.")));
+        string temp = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.GetTempPath()));
+        if (!string.Equals(Path.GetDirectoryName(auditRoot), temp, StringComparison.OrdinalIgnoreCase) ||
+            !Path.GetFileName(auditRoot).StartsWith("mcc-real-profile-audit-", StringComparison.Ordinal)) throw new ArgumentException("Invalid audit root.");
+        _ = NativeProfileRegistry.Open(auditRoot);
+        string scenario = Path.Combine(auditRoot, "installer-test"), programs = Path.Combine(scenario, "programs"), desktop = Path.Combine(scenario, "desktop");
+        Directory.CreateDirectory(programs); Directory.CreateDirectory(desktop);
+        string old = Path.Combine(scenario, "mcc-audit-old-" + Guid.NewGuid().ToString("N") + ".exe");
+        await File.WriteAllTextAsync(old, "synthetic old app");
+        string shortcut = Path.Combine(programs, "MeshCore Command.lnk");
+        File.Move(PreviewShortcut.Create(programs, old), shortcut);
+        byte[] previous = await File.ReadAllBytesAsync(shortcut);
+        var paths = new LegacyTestPaths(old, Path.Combine(scenario, "native"), Path.Combine(scenario, "profile"), programs, desktop);
+        bool opened = false;
+        await LegacyUpgradeAsync(new[] { "--update", int.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture) }, testPaths: paths,
+            testCandidate: async (executable, token) => {
+                var start = new System.Diagnostics.ProcessStartInfo(executable) { WorkingDirectory = Path.GetDirectoryName(executable)!, UseShellExecute = false, CreateNoWindow = true };
+                start.ArgumentList.Add("--audit-copied-profile"); start.ArgumentList.Add("--audit-root=" + auditRoot);
+                using var process = System.Diagnostics.Process.Start(start) ?? throw new IOException("Copied-profile candidate could not start.");
+                await process.WaitForExitAsync(token).WaitAsync(TimeSpan.FromSeconds(120), token);
+                if (process.ExitCode != 0) throw new IOException("Copied-profile candidate verification failed.");
+                opened = true;
+            });
+        if (!opened || !File.Exists(old) || !File.ReadAllBytes(shortcut + ".legacy-backup").SequenceEqual(previous))
+            throw new IOException("Copied-profile upgrade did not preserve the old app and shortcut.");
+    }
+
     // This path is not published as a legacy-compatible release until it has been
     // exercised against disposable legacy installations and real profile copies.
     internal sealed record LegacyTestPaths(string OldExecutable, string Root, string Registry, string Programs, string Desktop);
@@ -255,7 +295,7 @@ internal static class Program
             {
                 using var lease = await NativeInstanceLease.WaitAsync(registry, TimeSpan.FromSeconds(60), token);
                 NativeProfileRegistry.RequireUnselected(registry);
-                await InstallAsync(root, new Progress<string>(), token);
+                await InstallAsync(root, new Progress<string>(), token, allowVerifiedResume: true);
             },
             async token =>
             {
@@ -295,7 +335,7 @@ internal static class Program
             }, TimeSpan.FromSeconds(60), cancellationToken);
     }
 
-    internal static async Task InstallAsync(string root, IProgress<string> progress, CancellationToken cancellationToken = default, string? version = null)
+    internal static async Task InstallAsync(string root, IProgress<string> progress, CancellationToken cancellationToken = default, string? version = null, bool allowVerifiedResume = false)
     {
         string target = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
         if (target.Equals(Path.GetPathRoot(target), StringComparison.OrdinalIgnoreCase)) throw new ArgumentException("Invalid install directory.");
@@ -325,7 +365,15 @@ internal static class Program
             }
             else if ((File.GetAttributes(launcher) & FileAttributes.ReparsePoint) != 0) throw new IOException("The existing launcher cannot be a link.");
             progress.Report("Activating the preview…");
-            await VersionedInstall.ActivateAsync(target, staged, version ?? Version, ApplicationName, cancellationToken);
+            string targetVersion = version ?? Version;
+            if (allowVerifiedResume && Directory.Exists(Path.Combine(target, "versions", targetVersion)))
+            {
+                await VersionedInstall.VerifyResumeAsync(target, staged, targetVersion, ApplicationName, cancellationToken);
+                // The verified staging directory was created by this invocation as a direct
+                // child of the installation's staging directory; it contains no links.
+                Directory.Delete(staged, recursive: true);
+            }
+            else await VersionedInstall.ActivateAsync(target, staged, targetVersion, ApplicationName, cancellationToken);
             progress.Report("Preview installed. The existing MeshCore Command installation was not changed.");
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }

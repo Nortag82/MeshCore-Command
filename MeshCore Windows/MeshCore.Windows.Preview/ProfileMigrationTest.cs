@@ -27,6 +27,13 @@ internal sealed class ProfileMigrationTest : Form
     {
         try
         {
+            string validCapture = System.Text.Json.JsonSerializer.Serialize("[[\"rcc6-history-" + new string('a', 64) + "\",\"[]\"]]");
+            _ = CandidateProfileAudit.Hash(validCapture);
+            foreach (string invalid in new[] { "null", System.Text.Json.JsonSerializer.Serialize("{}"), System.Text.Json.JsonSerializer.Serialize("[[\"meshcore-secure-v1:" + new string('a', 64) + "\",\"{}\"]]") })
+            {
+                try { _ = CandidateProfileAudit.Hash(invalid); throw new InvalidOperationException("Invalid profile capture was accepted."); }
+                catch (InvalidDataException) { }
+            }
             Directory.CreateDirectory(_root);
             // The app and the copied profile must use the same origin for localStorage.
             _url = "http://127.0.0.1:19484/"; _server.Prefixes.Add(_url);
@@ -183,6 +190,12 @@ internal sealed class ProfileMigrationTest : Form
                 }
                 catch (TimeoutException) { sequence.Kill(entireProcessTree: true); throw; }
                 if (sequence.ExitCode != 0) throw new InvalidDataException("Candidate startup and app sequence failed.");
+                File.Delete(receipt);
+                sequenceStart.ArgumentList.Add("--test-alter-record-digest");
+                using var mismatch = System.Diagnostics.Process.Start(sequenceStart) ?? throw new IOException("Candidate mismatch test could not start.");
+                try { await mismatch.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(90)); }
+                catch (TimeoutException) { mismatch.Kill(entireProcessTree: true); throw; }
+                if (mismatch.ExitCode == 0 || File.Exists(receipt)) throw new InvalidDataException("Candidate accepted a changed profile digest.");
             }
             finally
             {

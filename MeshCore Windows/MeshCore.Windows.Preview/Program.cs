@@ -165,7 +165,8 @@ internal static class Program
                 string temp = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.GetTempPath()));
                 if (!string.Equals(Path.GetDirectoryName(root), temp, StringComparison.OrdinalIgnoreCase) || !Path.GetFileName(root).StartsWith("mcc-real-profile-audit-", StringComparison.Ordinal)) throw new ArgumentException("Invalid audit root.");
                 NativeProfile profile = NativeProfileRegistry.Open(root);
-                Application.Run(new PreviewWindow(false, false, true, false, null, 0, profile.WebView, profile.Data, seedHistory: false, port: profile.Port, candidate: true));
+                byte[] recordsDigest = CaptureProfileDigest(profile);
+                Application.Run(new PreviewWindow(false, false, true, false, null, 0, profile.WebView, profile.Data, seedHistory: false, port: profile.Port, candidate: true, expectedRecords: recordsDigest));
             }
             catch { Environment.ExitCode = 1; }
             return;
@@ -178,7 +179,7 @@ internal static class Program
                 string root = Path.GetFullPath(rootArg?[12..] ?? throw new ArgumentException("Missing test root."));
                 string temp = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.GetTempPath()));
                 if (!string.Equals(Path.GetDirectoryName(root), temp, StringComparison.OrdinalIgnoreCase) || !Path.GetFileName(root).StartsWith("mcc-profile-integration-", StringComparison.Ordinal)) throw new ArgumentException("Invalid test root.");
-                string registry = Path.Combine(root, "sequence-registry");
+                string registry = Path.Combine(root, args.Contains("--test-alter-record-digest") ? "sequence-mismatch-registry" : "sequence-registry");
                 using var lease = NativeInstanceLease.Acquire(registry);
                 string legacyProfile = Path.Combine(root, "original", "EBWebView");
                 var sourceCredentials = new PreviewCredentials();
@@ -189,7 +190,9 @@ internal static class Program
                 var isolatedCredentials = new PreviewCredentials();
                 Task.Run(() => NativeCredentialIsolation.EnsureWithLegacyLockAsync(registry, legacyProfile, sourceCredentials, isolatedCredentials)).GetAwaiter().GetResult();
                 if (isolatedCredentials.Get("secure", testKey) != "synthetic-sequence-secret") throw new InvalidDataException("Candidate did not isolate credentials.");
-                Application.Run(new PreviewWindow(false, false, false, true, null, 0, profile.WebView, profile.Data, seedHistory: false, port: profile.Port, credentials: isolatedCredentials, candidate: true));
+                byte[] recordsDigest = CaptureProfileDigest(profile);
+                if (args.Contains("--test-alter-record-digest")) recordsDigest[0] ^= 1;
+                Application.Run(new PreviewWindow(false, false, false, true, null, 0, profile.WebView, profile.Data, seedHistory: false, port: profile.Port, credentials: isolatedCredentials, candidate: true, expectedRecords: recordsDigest));
             }
             catch { Environment.ExitCode = 1; }
             return;
@@ -210,8 +213,9 @@ internal static class Program
                     var credentials = new WindowsBackupCredentials(native: true);
                     string legacyProfile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MeshCore WiFi Data", "WebView", "EBWebView");
                     Task.Run(() => NativeCredentialIsolation.EnsureWithLegacyLockAsync(registry, legacyProfile, legacyCredentials, credentials)).GetAwaiter().GetResult();
+                    byte[]? recordsDigest = args.Any(a => a.StartsWith("--startup-receipt=", StringComparison.Ordinal)) ? CaptureProfileDigest(profile) : null;
                     Application.Run(new PreviewWindow(true, true, false, false, null, 0, profile.WebView, profile.Data,
-                        seedHistory: false, port: profile.Port, credentials: credentials, candidate: true));
+                        seedHistory: false, port: profile.Port, credentials: credentials, candidate: true, expectedRecords: recordsDigest));
                 }
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
@@ -225,6 +229,13 @@ internal static class Program
                 try { File.Delete(Path.Combine(Path.GetTempPath(), name)); } catch (IOException) { } catch (UnauthorizedAccessException) { }
         int memorySeconds = int.TryParse(args.FirstOrDefault(value => value.StartsWith("--memory-sample-seconds=", StringComparison.Ordinal))?[24..], out int sample) ? Math.Clamp(sample, 0, 600) : 0;
         Application.Run(new PreviewWindow(args.Contains("--enable-experimental-radio"), args.Contains("--enable-experimental-flash"), args.Contains("--smoke-test"), args.Contains("--integration-test"), integrationIp, memorySeconds));
+    }
+
+    private static byte[] CaptureProfileDigest(NativeProfile profile)
+    {
+        using var audit = new CandidateProfileAudit(profile.WebView, profile.Port);
+        Application.Run(audit);
+        return audit.Digest ?? throw new IOException("The copied profile could not be verified before startup.", audit.Error);
     }
 
     private static async Task RunFlashHardwareTest(string[] args)
@@ -293,16 +304,18 @@ internal sealed class PreviewWindow : Form
     private byte[]? _pendingRestore;
     private FirmwareDialog? _firmwareDialog;
     private readonly string? _testReceipt, _testNonce;
+    private readonly byte[]? _expectedRecords;
     private bool _startupReady;
 
     public PreviewWindow(bool experimentalRadio, bool experimentalFlash, bool smokeTest, bool integrationTest, string? integrationIp, int memorySeconds,
         string? profileDirectory = null, string? dataDirectory = null, bool seedHistory = true, int port = 19484,
-        ICredentialStore? credentials = null, bool candidate = false)
+        ICredentialStore? credentials = null, bool candidate = false, byte[]? expectedRecords = null)
     {
         _profile = profileDirectory ?? Path.Combine(Path.GetTempPath(), "MeshCoreCommandNativePreview", "WebView");
         _dataDirectory = dataDirectory ?? Path.Combine(Path.GetTempPath(), "MeshCoreCommandNativePreview", "Data");
         _seedHistory = seedHistory;
         _candidate = candidate;
+        _expectedRecords = expectedRecords;
         _port = port;
         _credentials = credentials ?? new PreviewCredentials();
         _notifications = new DesktopNotifications(this, () => { if (!IsDisposed) { Show(); WindowState = FormWindowState.Normal; Activate(); } });
@@ -325,6 +338,7 @@ internal sealed class PreviewWindow : Form
                 if (!string.Equals(Path.GetDirectoryName(parent), temp, StringComparison.OrdinalIgnoreCase) || !Path.GetFileName(parent).StartsWith("mcc-startup-test-", StringComparison.Ordinal))
                     throw new ArgumentException("Invalid test startup receipt path.");
                 _testReceipt = path; _testNonce = nonce;
+                if (candidate && expectedRecords is null) throw new ArgumentException("A candidate startup receipt requires a profile verification digest.");
             }
         }
         _integrationIp = integrationIp;
@@ -391,7 +405,7 @@ internal sealed class PreviewWindow : Form
             else if (_integrationTest)
             {
                 var synthetic = _profiles.List().FirstOrDefault(p => p.Kind == "wifi" && p.Address == "127.0.0.1") ?? _profiles.Add("wifi", "127.0.0.1", "Synthetic test radio");
-                var board = new SyntheticBoard(_testMessage); _boards.Add(synthetic.Id, board); _connectedProfiles.Add(synthetic.Id, synthetic); _server.AddBoard(synthetic.Id, board);
+                var board = new SyntheticBoard(_testMessage, _expectedRecords is null ? null : () => _startupReady); _boards.Add(synthetic.Id, board); _connectedProfiles.Add(synthetic.Id, synthetic); _server.AddBoard(synthetic.Id, board);
             }
             var environment = await CoreWebView2Environment.CreateAsync(userDataFolder: _profile);
             await _web.EnsureCoreWebView2Async(environment);
@@ -466,6 +480,12 @@ internal sealed class PreviewWindow : Form
                         string ready = await _web.CoreWebView2.ExecuteScriptAsync("document.getElementById('add') !== null && !!window.pywebview?.api?.board_list");
                         if (ready == "true")
                         {
+                            if (_expectedRecords is not null)
+                            {
+                                byte[] actual = CandidateProfileAudit.Hash(await _web.CoreWebView2.ExecuteScriptAsync(CandidateProfileAudit.CaptureScript));
+                                if (!System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(_expectedRecords, actual))
+                                    throw new IOException("Copied profile records changed while starting the candidate.");
+                            }
                             _startupReady = true;
                             if (_candidate && _testReceipt is not null) await StartupHealthGate.WriteAsync(_testReceipt, _testNonce!);
                             break;
@@ -473,7 +493,7 @@ internal sealed class PreviewWindow : Form
                         await Task.Delay(100);
                     }
                 }
-                catch (Exception error) when (error is InvalidOperationException or ObjectDisposedException or System.Runtime.InteropServices.COMException or IOException or UnauthorizedAccessException or ArgumentException)
+                catch (Exception error) when (error is InvalidOperationException or ObjectDisposedException or System.Runtime.InteropServices.COMException or IOException or UnauthorizedAccessException or ArgumentException or System.Text.Json.JsonException)
                 { System.Diagnostics.Debug.WriteLine("Startup readiness check failed: " + error.GetType().Name); }
             };
             if (_smokeTest)
@@ -552,6 +572,11 @@ internal sealed class PreviewWindow : Form
                             string result = await _web.CoreWebView2.ExecuteScriptAsync("document.getElementById('add') !== null && !!window.pywebview?.api?.board_list");
                             Environment.ExitCode = result == "true" ? 0 : 1;
                         }
+                    }
+                    if (Environment.ExitCode == 0 && _expectedRecords is not null && _testReceipt is null)
+                    {
+                        for (int attempt = 0; attempt < 100 && !_startupReady; attempt++) await Task.Delay(100);
+                        if (!_startupReady) Environment.ExitCode = 1;
                     }
                     if (Environment.ExitCode == 0 && _testReceipt is not null && !_candidate)
                     {
@@ -870,14 +895,19 @@ internal sealed class PreviewWindow : Form
     }
 }
 
-internal sealed class SyntheticBoard(string message) : ICompanionBoard
+internal sealed class SyntheticBoard(string message, Func<bool>? canDeliver = null) : ICompanionBoard
 {
     public FrameQueue Received { get; } = new();
     public bool Connected => true;
     private bool _messageSent;
-    public Task SendAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default)
+    public async Task SendAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default)
     {
         byte[] request = payload.ToArray();
+        if (request[0] == 10 && canDeliver is not null)
+        {
+            for (int attempt = 0; attempt < 100 && !canDeliver(); attempt++) await Task.Delay(100, cancellationToken);
+            if (!canDeliver()) throw new TimeoutException("Synthetic startup did not become ready.");
+        }
         using var output = new MemoryStream(); using var writer = new BinaryWriter(output);
         switch (request[0])
         {
@@ -898,7 +928,7 @@ internal sealed class SyntheticBoard(string message) : ICompanionBoard
             case 10: writer.Write((byte)10); break;
             default: writer.Write((byte)1); writer.Write((byte)1); break;
         }
-        Received.Enqueue(output.ToArray()); return Task.CompletedTask;
+        Received.Enqueue(output.ToArray());
     }
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

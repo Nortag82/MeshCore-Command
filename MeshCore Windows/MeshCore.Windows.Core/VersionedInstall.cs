@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Security.Cryptography;
 
 namespace MeshCore.Windows.Core;
 
@@ -93,6 +94,51 @@ public static class VersionedInstall
     }
 
     public static string ResolveCurrent(string installRoot) => ResolvePointer(Root(installRoot), "current.json");
+
+    /// <summary>Checks a previously activated version against a newly verified package before a retry.</summary>
+    public static async Task VerifyResumeAsync(string installRoot, string stagedDirectory, string version, string executable, CancellationToken cancellationToken = default)
+    {
+        string root = Root(installRoot), staging = Path.Combine(root, "staging");
+        ValidateVersion(version);
+        string staged = Path.TrimEndingDirectorySeparator(Path.GetFullPath(stagedDirectory));
+        if (!string.Equals(Path.GetDirectoryName(staged), staging, StringComparison.OrdinalIgnoreCase) || !Path.GetFileName(staged).StartsWith("mcc-stage-", StringComparison.Ordinal))
+            throw new InvalidDataException("Invalid staged package for retry.");
+        EnsureDirectory(root); EnsureDirectory(staging); EnsureDirectory(staged);
+        using var installLock = AcquireLock(root);
+        string current = ResolvePointer(root, "current.json");
+        string installed = Path.Combine(root, "versions", version);
+        string expected = Path.Combine(installed, executable);
+        if (!string.Equals(current, expected, StringComparison.OrdinalIgnoreCase)) throw new IOException("The selected native version changed; automatic retry stopped.");
+        static Dictionary<string, string> Files(string baseDirectory)
+        {
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var pending = new Stack<string>(); pending.Push(baseDirectory);
+            while (pending.TryPop(out string? directory))
+            {
+                EnsureDirectory(directory);
+                foreach (string item in Directory.EnumerateFileSystemEntries(directory))
+                {
+                    FileAttributes attributes = File.GetAttributes(item);
+                    if ((attributes & FileAttributes.ReparsePoint) != 0) throw new IOException("Installed package contains a link; automatic retry stopped.");
+                    if ((attributes & FileAttributes.Directory) != 0) pending.Push(item);
+                    else if (!result.TryAdd(Path.GetRelativePath(baseDirectory, item), item)) throw new InvalidDataException("Package contains duplicate paths.");
+                }
+            }
+            return result;
+        }
+        var source = Files(staged); var destination = Files(installed);
+        if (source.Count != destination.Count || source.Keys.Any(key => !destination.ContainsKey(key))) throw new IOException("The installed package differs from the verified package; automatic retry stopped.");
+        foreach (var pair in source)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await using var first = File.OpenRead(pair.Value);
+            await using var second = File.OpenRead(destination[pair.Key]);
+            byte[] firstHash = await SHA256.HashDataAsync(first, cancellationToken);
+            byte[] secondHash = await SHA256.HashDataAsync(second, cancellationToken);
+            if (!CryptographicOperations.FixedTimeEquals(firstHash, secondHash))
+                throw new IOException("The installed package differs from the verified package; automatic retry stopped.");
+        }
+    }
 
     public static bool CanRecoverPrevious(string installRoot)
     {
