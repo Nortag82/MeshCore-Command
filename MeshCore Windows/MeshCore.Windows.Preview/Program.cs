@@ -513,6 +513,12 @@ internal sealed class PreviewWindow : Form
                                 string state = await _web.CoreWebView2.ExecuteScriptAsync(expression);
                                 if (state == "true") { Environment.ExitCode = 0; break; }
                             }
+                            if (Environment.ExitCode == 0)
+                            {
+                                string version = JsonSerializer.Serialize(typeof(PreviewWindow).Assembly.GetName().Version?.ToString(3));
+                                string branding = await _web.CoreWebView2.ExecuteScriptAsync("(()=>{const d=document.querySelector('iframe')?.contentDocument;return !!d?.querySelector('.brand')?.textContent.includes('MeshCore Command') && !!d?.getElementById('desktop-build')?.textContent.includes(" + version + ")})()");
+                                if (branding != "true") Environment.ExitCode = 1;
+                            }
                             if (Environment.ExitCode != 0 && _integrationIp is not null)
                             {
                                 string checks = await _web.CoreWebView2.ExecuteScriptAsync("(()=>{const f=document.querySelector('iframe'),d=f?.contentDocument;return JSON.stringify({usb:!!document.getElementById('native-usb-connect'),frame:!!d,message:!!d?.getElementById('message-input'),map:!!d?.getElementById('situation-map'),connected:d?.getElementById('link-label')?.textContent === 'Connected',identity:!!d?.getElementById('node-id')?.textContent?.startsWith('ID '),waiting:d?.getElementById('node-id')?.textContent?.startsWith('Waiting'),hidden:d?.hidden,active:f?.contentWindow?.__MCC_BOARD_ACTIVE,home:!!d?.querySelector('[data-view=home].active')})})()");

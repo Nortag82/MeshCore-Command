@@ -27,6 +27,9 @@ try {
     & $dotnet publish (Join-Path $PSScriptRoot 'MeshCore.Windows.Preview') --configuration Release --runtime win-x64 --self-contained true `
         -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output $output
     if ($LASTEXITCODE -ne 0) { throw 'Preview publish failed.' }
+    $versionXml = [xml](Get-Content -LiteralPath (Join-Path $PSScriptRoot 'NativeVersion.props') -Raw)
+    $expectedVersion = [string]$versionXml.Project.PropertyGroup.MccVersion
+    if ((Get-Item -LiteralPath (Join-Path $output 'MeshCore.Windows.Preview.exe')).VersionInfo.FileVersion -ne "$expectedVersion.0") { throw 'Native app version does not match the installer version.' }
     $listenerRetry = Start-Process -FilePath (Join-Path $output 'MeshCore.Windows.Preview.exe') -ArgumentList '--listener-retry-test' -WindowStyle Hidden -Wait -PassThru
     if ($listenerRetry.ExitCode -ne 0) { throw 'Listener retry test failed.' }
     $firmware = Start-Process -FilePath (Join-Path $output 'MeshCore.Windows.Preview.exe') -ArgumentList '--verify-firmware' -WindowStyle Hidden -Wait -PassThru

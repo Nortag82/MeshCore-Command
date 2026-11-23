@@ -29,7 +29,7 @@ internal sealed class ProfileMigrationTest : Form
         {
             string validCapture = System.Text.Json.JsonSerializer.Serialize("[[\"rcc6-history-" + new string('a', 64) + "\",\"[]\"]]");
             _ = CandidateProfileAudit.Hash(validCapture);
-            foreach (string invalid in new[] { "null", System.Text.Json.JsonSerializer.Serialize("{}"), System.Text.Json.JsonSerializer.Serialize("[[\"meshcore-secure-v1:" + new string('a', 64) + "\",\"{}\"]]") })
+            foreach (string invalid in new[] { "null", System.Text.Json.JsonSerializer.Serialize("{}"), System.Text.Json.JsonSerializer.Serialize("[[\"meshcore-secure-v1:" + new string('a', 64) + "\",\"{}\"]]"), System.Text.Json.JsonSerializer.Serialize("[[\"meshcore-secure-groups-v1:" + new string('a', 64) + "\",\"{}\"]]") })
             {
                 try { _ = CandidateProfileAudit.Hash(invalid); throw new InvalidOperationException("Invalid profile capture was accepted."); }
                 catch (InvalidDataException) { }

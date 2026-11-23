@@ -9,7 +9,7 @@ namespace MeshCore.Windows.Preview;
 /// <summary>Captures a digest of selected copied records without displaying their contents.</summary>
 internal sealed class CandidateProfileAudit : Form
 {
-    internal const string CaptureScript = "JSON.stringify(Object.keys(localStorage).filter(k => /^(?:rcc6-history-|meshcore-secure-v1:|meshcore-monitor-v1:|meshcore-situation-(?:v1|areas-v1):)[0-9a-f]{64}$/.test(k)).sort().map(k => [k,localStorage.getItem(k)]))";
+    internal const string CaptureScript = "JSON.stringify(Object.keys(localStorage).filter(k => !/^rcc6-(?:radio-owner|session)(?::|$)/.test(k)).sort().map(k => [k,localStorage.getItem(k)]))";
     private readonly string _profile;
     private readonly int _port;
     internal byte[]? Digest { get; private set; }
@@ -31,14 +31,26 @@ internal sealed class CandidateProfileAudit : Form
             if (item.ValueKind != System.Text.Json.JsonValueKind.Array || item.GetArrayLength() != 2) throw new InvalidDataException("A copied profile record is invalid.");
             string key = item[0].GetString() ?? throw new InvalidDataException("A copied profile key is invalid.");
             string value = item[1].GetString() ?? throw new InvalidDataException("A copied profile record is missing.");
+            bool secure = key.StartsWith("meshcore-secure-v1:", StringComparison.Ordinal);
+            bool groups = key.StartsWith("meshcore-secure-groups-v1:", StringComparison.Ordinal);
+            bool array = key.StartsWith("rcc6-history-", StringComparison.Ordinal) || key.StartsWith("meshcore-monitor-v1:", StringComparison.Ordinal) ||
+                key.StartsWith("meshcore-situation-v1:", StringComparison.Ordinal) || key.StartsWith("meshcore-situation-areas-v1:", StringComparison.Ordinal);
+            if (!secure && !groups && !array) continue;
             using var record = System.Text.Json.JsonDocument.Parse(value);
-            if (key.StartsWith("meshcore-secure-v1:", StringComparison.Ordinal))
+            if (secure)
             {
                 if (record.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object ||
                     !record.RootElement.TryGetProperty("contacts", out var contacts) || contacts.ValueKind != System.Text.Json.JsonValueKind.Object ||
                     !record.RootElement.TryGetProperty("history", out var history) || history.ValueKind != System.Text.Json.JsonValueKind.Object ||
                     !record.RootElement.TryGetProperty("seen", out var seen) || seen.ValueKind != System.Text.Json.JsonValueKind.Object)
                     throw new InvalidDataException("A copied Secure Coms record is invalid.");
+            }
+            else if (groups)
+            {
+                if (record.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object ||
+                    !record.RootElement.TryGetProperty("groups", out var savedGroups) || savedGroups.ValueKind != System.Text.Json.JsonValueKind.Object ||
+                    !record.RootElement.TryGetProperty("history", out var groupHistory) || groupHistory.ValueKind != System.Text.Json.JsonValueKind.Object)
+                    throw new InvalidDataException("A copied Secure Coms group record is invalid.");
             }
             else if (record.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array)
                 throw new InvalidDataException("A copied profile record is invalid.");
