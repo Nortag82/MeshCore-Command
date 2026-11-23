@@ -157,6 +157,19 @@ internal static class Program
             return;
         }
         if (args.Contains("--audit-legacy-profile")) { Application.Run(new LegacyProfileAudit()); return; }
+        if (args.Contains("--audit-copied-profile"))
+        {
+            try
+            {
+                string root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(args.FirstOrDefault(a => a.StartsWith("--audit-root=", StringComparison.Ordinal))?[13..] ?? throw new ArgumentException("Missing audit root.")));
+                string temp = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.GetTempPath()));
+                if (!string.Equals(Path.GetDirectoryName(root), temp, StringComparison.OrdinalIgnoreCase) || !Path.GetFileName(root).StartsWith("mcc-real-profile-audit-", StringComparison.Ordinal)) throw new ArgumentException("Invalid audit root.");
+                NativeProfile profile = NativeProfileRegistry.Open(root);
+                Application.Run(new PreviewWindow(false, false, true, false, null, 0, profile.WebView, profile.Data, seedHistory: false, port: profile.Port));
+            }
+            catch { Environment.ExitCode = 1; }
+            return;
+        }
         if (args.Contains("--candidate-sequence-test"))
         {
             try
@@ -176,7 +189,7 @@ internal static class Program
                 var isolatedCredentials = new PreviewCredentials();
                 Task.Run(() => NativeCredentialIsolation.EnsureWithLegacyLockAsync(registry, legacyProfile, sourceCredentials, isolatedCredentials)).GetAwaiter().GetResult();
                 if (isolatedCredentials.Get("secure", testKey) != "synthetic-sequence-secret") throw new InvalidDataException("Candidate did not isolate credentials.");
-                Application.Run(new PreviewWindow(false, false, false, true, null, 0, profile.WebView, profile.Data, seedHistory: false, port: profile.Port, credentials: isolatedCredentials));
+                Application.Run(new PreviewWindow(false, false, false, true, null, 0, profile.WebView, profile.Data, seedHistory: false, port: profile.Port, credentials: isolatedCredentials, candidate: true));
             }
             catch { Environment.ExitCode = 1; }
             return;
@@ -188,6 +201,7 @@ internal static class Program
             try
             {
                 using var lease = NativeInstanceLease.Acquire(registry);
+                if (args.Contains("--upgrade-require-fresh")) NativeProfileRegistry.RequireUnselected(registry);
                 var legacyCredentials = new WindowsBackupCredentials();
                 using var startup = new NativeCandidateStartup(registry: registry, credentials: legacyCredentials);
                 Application.Run(startup);
@@ -278,6 +292,8 @@ internal sealed class PreviewWindow : Form
     private bool _updatePrompted;
     private byte[]? _pendingRestore;
     private FirmwareDialog? _firmwareDialog;
+    private readonly string? _testReceipt, _testNonce;
+    private bool _startupReady;
 
     public PreviewWindow(bool experimentalRadio, bool experimentalFlash, bool smokeTest, bool integrationTest, string? integrationIp, int memorySeconds,
         string? profileDirectory = null, string? dataDirectory = null, bool seedHistory = true, int port = 19484,
@@ -294,6 +310,23 @@ internal sealed class PreviewWindow : Form
         _experimentalRadio = experimentalRadio;
         _experimentalFlash = experimentalFlash;
         _integrationTest = integrationTest || integrationIp is not null;
+        if (candidate || (integrationTest && integrationIp is null))
+        {
+            string[] args = Environment.GetCommandLineArgs();
+            string prefix = candidate ? "--startup-receipt=" : "--test-startup-receipt=";
+            string noncePrefix = candidate ? "--startup-nonce=" : "--test-startup-nonce=";
+            string? path = args.FirstOrDefault(a => a.StartsWith(prefix, StringComparison.Ordinal))?[prefix.Length..];
+            string? nonce = args.FirstOrDefault(a => a.StartsWith(noncePrefix, StringComparison.Ordinal))?[noncePrefix.Length..];
+            if ((path is null) != (nonce is null)) throw new ArgumentException("Startup receipt and nonce are both required.");
+            if (path is not null)
+            {
+                string parent = Path.GetDirectoryName(Path.GetFullPath(path))!;
+                string temp = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.GetTempPath()));
+                if (!string.Equals(Path.GetDirectoryName(parent), temp, StringComparison.OrdinalIgnoreCase) || !Path.GetFileName(parent).StartsWith("mcc-startup-test-", StringComparison.Ordinal))
+                    throw new ArgumentException("Invalid test startup receipt path.");
+                _testReceipt = path; _testNonce = nonce;
+            }
+        }
         _integrationIp = integrationIp;
         _memorySeconds = memorySeconds;
         _smokeTest = smokeTest || _integrationTest;
@@ -424,6 +457,25 @@ internal sealed class PreviewWindow : Form
                 if (e.Source != _server.Origin + "/") return;
                 await HandleRequestAsync(e.WebMessageAsJson);
             };
+            _web.CoreWebView2.NavigationCompleted += async (_, e) => {
+                if (!e.IsSuccess || _startupReady) return;
+                try
+                {
+                    for (int attempt = 0; attempt < 100 && !_closing && !IsDisposed; attempt++)
+                    {
+                        string ready = await _web.CoreWebView2.ExecuteScriptAsync("document.getElementById('add') !== null && !!window.pywebview?.api?.board_list");
+                        if (ready == "true")
+                        {
+                            _startupReady = true;
+                            if (_candidate && _testReceipt is not null) await StartupHealthGate.WriteAsync(_testReceipt, _testNonce!);
+                            break;
+                        }
+                        await Task.Delay(100);
+                    }
+                }
+                catch (Exception error) when (error is InvalidOperationException or ObjectDisposedException or System.Runtime.InteropServices.COMException or IOException or UnauthorizedAccessException or ArgumentException)
+                { System.Diagnostics.Debug.WriteLine("Startup readiness check failed: " + error.GetType().Name); }
+            };
             if (_smokeTest)
                 _web.CoreWebView2.NavigationCompleted += async (_, e) => {
                     if (!e.IsSuccess) Environment.ExitCode = 1;
@@ -500,6 +552,16 @@ internal sealed class PreviewWindow : Form
                             string result = await _web.CoreWebView2.ExecuteScriptAsync("document.getElementById('add') !== null && !!window.pywebview?.api?.board_list");
                             Environment.ExitCode = result == "true" ? 0 : 1;
                         }
+                    }
+                    if (Environment.ExitCode == 0 && _testReceipt is not null && !_candidate)
+                    {
+                        try
+                        {
+                            for (int attempt = 0; attempt < 100 && !_startupReady; attempt++) await Task.Delay(100);
+                            if (!_startupReady) throw new IOException("Native shell did not confirm readiness.");
+                            await StartupHealthGate.WriteAsync(_testReceipt, _testNonce!);
+                        }
+                        catch { Environment.ExitCode = 1; }
                     }
                     if (Environment.ExitCode == 0 && _memorySeconds > 0)
                     {

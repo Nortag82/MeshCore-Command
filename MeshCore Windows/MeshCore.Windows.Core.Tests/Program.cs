@@ -46,6 +46,28 @@ if (args.Contains("--live-map-test"))
 }
 
 var output = CompanionFrames.EncodeOutgoing(new byte[] { 1, 2, 3 });
+Check(LegacyUpdateHandoff.Parse(new[] { "--update", "42" }) == 42, "Legacy updater handoff accepts a process ID");
+foreach (string[] invalid in new[] { Array.Empty<string>(), new[] { "--update" }, new[] { "--update", "0" }, new[] { "--update", "-1" }, new[] { "--update", " 42" }, new[] { "--update", "42", "extra" }, new[] { "--native-update", "42" } })
+    await ThrowsAsync<ArgumentException>(() => Task.Run(() => LegacyUpdateHandoff.Parse(invalid)));
+{
+    var steps = new List<string>();
+    string[] handoff = { "--update", int.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture) };
+    string executable = Path.Combine(Path.GetTempPath(), "mcc-no-such-legacy-" + Guid.NewGuid().ToString("N") + ".exe");
+    Task Record(string value) { steps.Add(value); return Task.CompletedTask; }
+    await LegacyUpgradeTransaction.RunAsync(handoff, executable, _ => Record("prepare"), _ => Record("ready"), _ => Record("shortcuts"), TimeSpan.FromSeconds(1));
+    Check(steps.SequenceEqual(new[] { "prepare", "ready", "shortcuts" }), "Legacy upgrade switches shortcuts only after readiness");
+    steps.Clear();
+    await ThrowsAsync<IOException>(() => LegacyUpgradeTransaction.RunAsync(handoff, executable, _ => Record("prepare"), _ => Task.FromException(new IOException("Synthetic startup failure")), _ => Record("shortcuts"), TimeSpan.FromSeconds(1)));
+    Check(steps.SequenceEqual(new[] { "prepare" }), "Failed startup leaves legacy shortcuts unchanged");
+    steps.Clear();
+    await ThrowsAsync<ArgumentException>(() => LegacyUpgradeTransaction.RunAsync(new[] { "--update", "bad" }, executable, _ => Record("prepare"), _ => Record("ready"), _ => Record("shortcuts"), TimeSpan.FromSeconds(1)));
+    Check(steps.Count == 0, "Invalid legacy handoff does not prepare or change installation");
+    string runningExecutable = Environment.ProcessPath ?? throw new IOException("Test executable is unavailable.");
+    await ThrowsAsync<IOException>(() => Task.Run(() => LegacyProcessGuard.EnsureStopped(runningExecutable)));
+    steps.Clear();
+    await ThrowsAsync<IOException>(() => LegacyUpgradeTransaction.RunAsync(handoff, runningExecutable, _ => Record("prepare"), _ => Record("ready"), _ => Record("shortcuts"), TimeSpan.FromSeconds(1)));
+    Check(steps.Count == 0, "Another legacy process prevents migration and shortcut changes");
+}
 using (var self = System.Diagnostics.Process.GetCurrentProcess())
 {
     long start = self.StartTime.ToUniversalTime().Ticks;
@@ -59,10 +81,10 @@ using (var self = System.Diagnostics.Process.GetCurrentProcess())
 }
 if (OperatingSystem.IsWindows())
 {
-    var start = new System.Diagnostics.ProcessStartInfo("powershell.exe") { UseShellExecute = false, CreateNoWindow = true };
+    string childExecutable = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
+    var start = new System.Diagnostics.ProcessStartInfo(childExecutable) { UseShellExecute = false, CreateNoWindow = true };
     start.ArgumentList.Add("-NoProfile"); start.ArgumentList.Add("-NonInteractive"); start.ArgumentList.Add("-Command"); start.ArgumentList.Add("Start-Sleep -Seconds 4");
     using var child = System.Diagnostics.Process.Start(start) ?? throw new Exception("Could not start update wait test process.");
-    string childExecutable = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
     await Task.WhenAll(UpdateParentGate.WaitAsync(child.Id, child.StartTime.ToUniversalTime().Ticks, TimeSpan.FromSeconds(10)),
         LegacyUpdateParentGate.WaitAsync(child.Id, childExecutable, TimeSpan.FromSeconds(10)));
     Check(child.HasExited && child.ExitCode == 0, "Updater waits for the matching process to exit normally");
@@ -352,6 +374,8 @@ try
         command.ArgumentList.Add("/c"); command.ArgumentList.Add("exit 0");
         using var exited = System.Diagnostics.Process.Start(command) ?? throw new IOException("Could not start startup-exit test.");
         await ThrowsAsync<IOException>(() => StartupHealthGate.WaitForProcessAsync(exited, Path.Combine(directory, "process-exited"), nonce, TimeSpan.FromSeconds(5)));
+        await exited.WaitForExitAsync();
+        await ThrowsAsync<IOException>(() => StartupHealthGate.WaitForProcessAsync(exited, processReceipt, nonce, TimeSpan.FromSeconds(5), requireRunning: true));
     }
     string crashPath = Path.Combine(directory, "logs", "crashes.log");
     new CrashLog(crashPath).Record("unhandled", new InvalidOperationException("synthetic-private-message"));
@@ -402,7 +426,9 @@ try
         using (var mapConfig = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(staged, "Data", "offline-map.json"))))
             Check(mapConfig.RootElement.GetProperty("path").GetString() == Path.Combine(staged, "Data", "offline-maps", "test.pmtiles"), "Selected local offline map points to staged copy");
         string registry = Path.Combine(directory, "native-registry");
+        NativeProfileRegistry.RequireUnselected(registry);
         NativeProfile migrated = await NativeProfileRegistry.PrepareAsync(registry, oldProfile, oldData);
+        await ThrowsAsync<IOException>(() => Task.Run(() => { if (OperatingSystem.IsWindows()) NativeProfileRegistry.RequireUnselected(registry); }));
         Check(File.Exists(Path.Combine(migrated.Data, "boards.json")) && NativeProfileRegistry.Open(registry) == migrated, "Native startup selects the staged profile");
         NativeProfile reopened = await NativeProfileRegistry.PrepareAsync(registry, oldProfile, oldData);
         Check(reopened == migrated, "Subsequent starts reuse the existing native profile");

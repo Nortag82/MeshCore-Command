@@ -168,11 +168,26 @@ internal sealed class ProfileMigrationTest : Form
             if (string.Equals(Path.GetFileNameWithoutExtension(executable), "dotnet", StringComparison.OrdinalIgnoreCase))
                 sequenceStart.ArgumentList.Add(FrameworkDependentEntryPoint());
             sequenceStart.ArgumentList.Add("--candidate-sequence-test"); sequenceStart.ArgumentList.Add("--test-root=" + _root);
-            using (var sequence = System.Diagnostics.Process.Start(sequenceStart) ?? throw new IOException("Candidate sequence test could not start."))
+            string receiptDir = Path.Combine(Path.GetTempPath(), "mcc-startup-test-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(receiptDir);
+            string receipt = Path.Combine(receiptDir, "ready");
+            string nonce = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+            sequenceStart.ArgumentList.Add("--startup-receipt=" + receipt); sequenceStart.ArgumentList.Add("--startup-nonce=" + nonce);
+            try
             {
-                try { await sequence.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(90)); }
+                using var sequence = System.Diagnostics.Process.Start(sequenceStart) ?? throw new IOException("Candidate sequence test could not start.");
+                try
+                {
+                    await StartupHealthGate.WaitForProcessAsync(sequence, receipt, nonce, TimeSpan.FromSeconds(90));
+                    await sequence.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(90));
+                }
                 catch (TimeoutException) { sequence.Kill(entireProcessTree: true); throw; }
                 if (sequence.ExitCode != 0) throw new InvalidDataException("Candidate startup and app sequence failed.");
+            }
+            finally
+            {
+                if (File.Exists(receipt)) File.Delete(receipt);
+                if (Directory.Exists(receiptDir)) Directory.Delete(receiptDir);
             }
             Console.WriteLine("Synthetic WebView2 migration preserved localStorage, and the app displayed migrated history with a new message.");
         }

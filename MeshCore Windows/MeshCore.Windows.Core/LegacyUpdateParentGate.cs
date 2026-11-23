@@ -15,15 +15,22 @@ public static class LegacyUpdateParentGate
         catch (ArgumentException) { return; }
         using (process)
         {
-            string actual;
-            try { actual = process.MainModule?.FileName ?? throw new IOException("Cannot verify the old app process."); }
-            catch (InvalidOperationException) when (process.HasExited) { return; }
-            catch (Win32Exception error) { throw new IOException("Cannot verify the old app process; update stopped.", error); }
-            if (!string.Equals(Path.GetFullPath(actual), expected, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("The update PID belongs to a different program; update stopped.");
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             deadline.CancelAfter(timeout);
-            try { await process.WaitForExitAsync(deadline.Token); }
+            try
+            {
+                string? actual = null;
+                while (actual is null)
+                {
+                    try { process.Refresh(); if (process.HasExited) return; actual = process.MainModule?.FileName; }
+                    catch (InvalidOperationException) when (process.HasExited) { return; }
+                    catch (Win32Exception error) { throw new IOException("Cannot verify the old app process; update stopped.", error); }
+                    if (actual is null) await Task.Delay(25, deadline.Token);
+                }
+                if (!string.Equals(Path.GetFullPath(actual), expected, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("The update PID belongs to a different program; update stopped.");
+                await process.WaitForExitAsync(deadline.Token);
+            }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             { throw new TimeoutException("The old app did not close; update stopped."); }
         }

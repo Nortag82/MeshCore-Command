@@ -18,9 +18,21 @@ class Response(io.BytesIO):
 
 
 class UpdaterTests(unittest.TestCase):
+    def setUp(self):
+        # Keep the release fixtures independent of the application version under test.
+        select = updater.select_release
+        self.selector = patch.object(updater, 'select_release', side_effect=lambda releases, current='2.0.21': select(releases, current=current))
+        self.selector.start()
+        self.addCleanup(self.selector.stop)
+
     def test_highest_release_and_no_downgrade(self):
         self.assertEqual(updater.select_release([release('2.0.22'),release('2.1.0')])['version'],'2.1.0')
         self.assertIsNone(updater.select_release([release('2.0.20'),release('2.0.21')]))
+
+    def test_legacy_updater_selects_a_newer_compatible_asset(self):
+        selected=updater.select_release([release('2.0.39')], current='2.0.38')
+        self.assertEqual(selected['name'], 'MeshCore-Command-Windows-2.0.39-Setup.exe')
+        self.assertEqual(selected['version'], '2.0.39')
 
     def test_untrusted_url_missing_digest_and_duplicate_are_rejected(self):
         for mutate in ('url','digest','duplicate'):

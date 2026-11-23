@@ -12,6 +12,15 @@ public static class NativeProfileRegistry
 {
     private sealed record Pointer(int Format, string Id, int Port);
 
+    /// <summary>Rejects an upgrade if another candidate profile has already been selected.</summary>
+    public static void RequireUnselected(string registryDirectory)
+    {
+        string root = Root(registryDirectory);
+        string pointer = Path.Combine(root, "current.json");
+        if (File.Exists(pointer) || Directory.Exists(pointer))
+            throw new IOException("A separate native profile already exists. It cannot be merged automatically with the old app's data.");
+    }
+
     public static async Task<NativeProfile> PrepareAsync(string registryDirectory, string legacyWebView, string legacyData, int port = 19483, CancellationToken cancellationToken = default, Func<CancellationToken, Task>? beforeCommit = null)
     {
         string root = Root(registryDirectory);

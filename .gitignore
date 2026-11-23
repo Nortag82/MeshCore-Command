@@ -13,6 +13,7 @@
 .env
 .env.*
 MeshCore Desktop/firmware/
+MeshCore Windows/firmware/
 MeshCore Desktop/radio.html
 
 # Distributable installer

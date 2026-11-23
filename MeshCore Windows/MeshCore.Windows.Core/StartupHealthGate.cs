@@ -54,7 +54,7 @@ public static class StartupHealthGate
     }
 
     /// <summary>Waits for a receipt while detecting an application that exits during startup.</summary>
-    public static async Task WaitForProcessAsync(Process process, string receiptPath, string nonce, TimeSpan timeout, CancellationToken cancellationToken = default)
+    public static async Task WaitForProcessAsync(Process process, string receiptPath, string nonce, TimeSpan timeout, CancellationToken cancellationToken = default, bool requireRunning = false)
     {
         ArgumentNullException.ThrowIfNull(process);
         using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -63,10 +63,15 @@ public static class StartupHealthGate
         try
         {
             Task completed = await Task.WhenAny(receipt, exited);
-            if (completed == receipt) { await receipt; return; }
+            if (completed == receipt)
+            {
+                await receipt;
+                if (requireRunning && process.HasExited) throw new IOException("The updated app exited after confirming startup.");
+                return;
+            }
             await exited;
             // Check the file again to handle the app exiting immediately after writing it.
-            if (File.Exists(receiptPath)) { await receipt; return; }
+            if (File.Exists(receiptPath) && !requireRunning) { await receipt; return; }
             throw new IOException("The updated app exited before confirming startup; the previous installation must be retained.");
         }
         finally { await wait.CancelAsync(); }

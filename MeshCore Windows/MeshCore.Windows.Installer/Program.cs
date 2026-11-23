@@ -94,6 +94,102 @@ internal static class Program
                 try { PreviewShortcut.Create(shortcuts, Path.Combine(root, LauncherName)); throw new InvalidOperationException("Existing shortcut was replaced."); }
                 catch (IOException) { }
                 if (!File.ReadAllBytes(link).SequenceEqual(original)) throw new IOException("Existing shortcut was modified.");
+                string oldPrograms = Path.Combine(root, "legacy-programs"), oldDesktop = Path.Combine(root, "legacy-desktop");
+                Directory.CreateDirectory(oldPrograms); Directory.CreateDirectory(oldDesktop);
+                string firstLegacy = PreviewShortcut.Create(oldPrograms, executable), secondLegacy = PreviewShortcut.Create(oldDesktop, executable);
+                byte[] firstOld = File.ReadAllBytes(firstLegacy), secondOld = File.ReadAllBytes(secondLegacy);
+                LegacyShortcutSwitch.Apply(new[] { firstLegacy, secondLegacy }, executable, Path.Combine(root, LauncherName));
+                if (!File.ReadAllBytes(firstLegacy + ".legacy-backup").SequenceEqual(firstOld) || !File.ReadAllBytes(secondLegacy + ".legacy-backup").SequenceEqual(secondOld))
+                    throw new IOException("Legacy shortcut backups were not preserved.");
+                object shortcutShell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!;
+                object switched = ((dynamic)shortcutShell).CreateShortcut(firstLegacy);
+                try
+                {
+                    if (!string.Equals((string)((dynamic)switched).TargetPath, Path.Combine(root, LauncherName), StringComparison.OrdinalIgnoreCase) ||
+                        (string)((dynamic)switched).Arguments != "--native-candidate") throw new IOException("Legacy shortcut did not switch to the native app.");
+                }
+                finally { System.Runtime.InteropServices.Marshal.FinalReleaseComObject(switched); System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shortcutShell); }
+                try { LegacyShortcutSwitch.Apply(new[] { firstLegacy }, executable, Path.Combine(root, LauncherName)); throw new InvalidOperationException("Unexpected shortcut switch succeeded."); }
+                catch (IOException) { }
+                string rollbackPrograms = Path.Combine(root, "rollback-programs"), rollbackDesktop = Path.Combine(root, "rollback-desktop");
+                Directory.CreateDirectory(rollbackPrograms); Directory.CreateDirectory(rollbackDesktop);
+                string rollback1 = PreviewShortcut.Create(rollbackPrograms, executable), rollback2 = PreviewShortcut.Create(rollbackDesktop, executable);
+                byte[] rollbackOld1 = File.ReadAllBytes(rollback1), rollbackOld2 = File.ReadAllBytes(rollback2);
+                try
+                {
+                    LegacyShortcutSwitch.Apply(new[] { rollback1, rollback2 }, executable, Path.Combine(root, LauncherName), _ => throw new IOException("Synthetic shortcut failure."));
+                    throw new InvalidOperationException("A failed shortcut switch succeeded.");
+                }
+                catch (IOException) { }
+                if (!File.ReadAllBytes(rollback1).SequenceEqual(rollbackOld1) || !File.ReadAllBytes(rollback2).SequenceEqual(rollbackOld2) ||
+                    File.Exists(rollback1 + ".legacy-backup") || File.Exists(rollback2 + ".legacy-backup"))
+                    throw new IOException("Shortcut rollback did not restore the original files.");
+                string scenario = Path.Combine(root, "legacy-upgrade"), scenarioPrograms = Path.Combine(scenario, "programs"), scenarioDesktop = Path.Combine(scenario, "desktop");
+                Directory.CreateDirectory(scenarioPrograms); Directory.CreateDirectory(scenarioDesktop);
+                string oldApp = Path.Combine(scenario, "mcc-test-old-" + Guid.NewGuid().ToString("N") + ".exe");
+                File.WriteAllText(oldApp, "synthetic old app");
+                string oldLink1 = Path.Combine(scenarioPrograms, "MeshCore Command.lnk"), oldLink2 = Path.Combine(scenarioDesktop, "MeshCore Command.lnk");
+                File.Move(PreviewShortcut.Create(scenarioPrograms, oldApp), oldLink1);
+                File.Move(PreviewShortcut.Create(scenarioDesktop, oldApp), oldLink2);
+                byte[] oldShortcut = File.ReadAllBytes(oldLink1);
+                var legacyPaths = new LegacyTestPaths(oldApp, Path.Combine(scenario, "native"), Path.Combine(scenario, "profile"), scenarioPrograms, scenarioDesktop);
+                bool candidateReady = false;
+                LegacyUpgradeAsync(new[] { "--update", int.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture) }, testPaths: legacyPaths,
+                    testCandidate: async (path, token) => {
+                        string receiptDir = Path.Combine(Path.GetTempPath(), "mcc-startup-test-" + Guid.NewGuid().ToString("N"));
+                        Directory.CreateDirectory(receiptDir);
+                        string receipt = Path.Combine(receiptDir, "ready"), nonce = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+                        try
+                        {
+                            var start = new System.Diagnostics.ProcessStartInfo(path) { WorkingDirectory = Path.GetDirectoryName(path)!, UseShellExecute = false, CreateNoWindow = true };
+                            start.ArgumentList.Add("--integration-test"); start.ArgumentList.Add("--test-startup-receipt=" + receipt); start.ArgumentList.Add("--test-startup-nonce=" + nonce);
+                            using var process = System.Diagnostics.Process.Start(start) ?? throw new IOException("Test candidate could not start.");
+                            await StartupHealthGate.WaitForProcessAsync(process, receipt, nonce, TimeSpan.FromSeconds(90), token);
+                            await process.WaitForExitAsync(token).WaitAsync(TimeSpan.FromSeconds(90), token);
+                            if (process.ExitCode != 0) throw new IOException("Test candidate failed.");
+                            candidateReady = true;
+                        }
+                        finally { if (File.Exists(receipt)) File.Delete(receipt); if (Directory.Exists(receiptDir)) Directory.Delete(receiptDir); }
+                    }).GetAwaiter().GetResult();
+                if (!candidateReady || !File.ReadAllBytes(oldLink1 + ".legacy-backup").SequenceEqual(oldShortcut) || !File.Exists(oldApp))
+                    throw new IOException("Legacy update did not retain its previous app and shortcut.");
+                string failedScenario = Path.Combine(root, "failed-legacy-upgrade"), failedPrograms = Path.Combine(failedScenario, "programs"), failedDesktop = Path.Combine(failedScenario, "desktop");
+                Directory.CreateDirectory(failedPrograms); Directory.CreateDirectory(failedDesktop);
+                string failedOld = Path.Combine(failedScenario, "mcc-failed-old-" + Guid.NewGuid().ToString("N") + ".exe");
+                File.WriteAllText(failedOld, "synthetic old app");
+                string failedLink = Path.Combine(failedPrograms, "MeshCore Command.lnk");
+                File.Move(PreviewShortcut.Create(failedPrograms, failedOld), failedLink);
+                byte[] failedOriginal = File.ReadAllBytes(failedLink);
+                var failedPaths = new LegacyTestPaths(failedOld, Path.Combine(failedScenario, "native"), Path.Combine(failedScenario, "profile"), failedPrograms, failedDesktop);
+                try
+                {
+                    LegacyUpgradeAsync(new[] { "--update", int.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture) }, testPaths: failedPaths,
+                        testCandidate: (_, _) => Task.FromException(new IOException("Synthetic candidate startup failure."))).GetAwaiter().GetResult();
+                    throw new InvalidOperationException("A failed candidate was accepted.");
+                }
+                catch (IOException) { }
+                if (!File.Exists(failedOld) || !File.ReadAllBytes(failedLink).SequenceEqual(failedOriginal) || File.Exists(failedLink + ".legacy-backup"))
+                    throw new IOException("A failed candidate changed the old app or shortcut.");
+                string existingScenario = Path.Combine(root, "existing-native-profile"), existingRegistry = Path.Combine(existingScenario, "profile");
+                string existingPrograms = Path.Combine(existingScenario, "programs"), existingDesktop = Path.Combine(existingScenario, "desktop");
+                Directory.CreateDirectory(existingRegistry); Directory.CreateDirectory(existingPrograms); Directory.CreateDirectory(existingDesktop);
+                File.WriteAllText(Path.Combine(existingRegistry, "current.json"), "synthetic existing profile");
+                string existingOld = Path.Combine(existingScenario, "mcc-existing-old-" + Guid.NewGuid().ToString("N") + ".exe");
+                File.WriteAllText(existingOld, "synthetic old app");
+                string existingLink = Path.Combine(existingPrograms, "MeshCore Command.lnk");
+                File.Move(PreviewShortcut.Create(existingPrograms, existingOld), existingLink);
+                byte[] existingOriginal = File.ReadAllBytes(existingLink);
+                var existingPaths = new LegacyTestPaths(existingOld, Path.Combine(existingScenario, "native"), existingRegistry, existingPrograms, existingDesktop);
+                bool unexpectedCandidate = false;
+                try
+                {
+                    LegacyUpgradeAsync(new[] { "--update", int.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture) }, testPaths: existingPaths,
+                        testCandidate: (_, _) => { unexpectedCandidate = true; return Task.CompletedTask; }).GetAwaiter().GetResult();
+                    throw new InvalidOperationException("An existing native profile was accepted for automatic migration.");
+                }
+                catch (IOException) { }
+                if (unexpectedCandidate || !File.ReadAllBytes(existingLink).SequenceEqual(existingOriginal) || Directory.Exists(existingPaths.Root))
+                    throw new IOException("An existing native profile did not stop the automatic upgrade safely.");
                 using var app = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.Combine(root, LauncherName)) {
                     WorkingDirectory = root, UseShellExecute = false,
                     CreateNoWindow = true, Arguments = "--installer-test --integration-test" }) ?? throw new IOException("Installed test app did not start.");
@@ -108,6 +204,17 @@ internal static class Program
                 if (string.Equals(Path.GetDirectoryName(absolute), temp, StringComparison.OrdinalIgnoreCase) &&
                     Path.GetFileName(absolute).StartsWith("mcc-native-installer-test-", StringComparison.Ordinal) && Directory.Exists(absolute))
                     try { Directory.Delete(absolute, recursive: true); } catch (IOException) { }
+            }
+            return;
+        }
+        if (args.Contains("--update"))
+        {
+            try { LegacyUpgradeAsync(args).GetAwaiter().GetResult(); }
+            catch (Exception error)
+            {
+                MessageBox.Show("The native upgrade could not finish. Your previous app and data were retained.\n\n" + error.Message,
+                    "MeshCore Command upgrade", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Environment.ExitCode = 1;
             }
             return;
         }
@@ -128,6 +235,64 @@ internal static class Program
         }
         ApplicationConfiguration.Initialize();
         Application.Run(new InstallerWindow());
+    }
+
+    // This path is not published as a legacy-compatible release until it has been
+    // exercised against disposable legacy installations and real profile copies.
+    internal sealed record LegacyTestPaths(string OldExecutable, string Root, string Registry, string Programs, string Desktop);
+
+    internal static async Task LegacyUpgradeAsync(string[] args, CancellationToken cancellationToken = default,
+        LegacyTestPaths? testPaths = null, Func<string, CancellationToken, Task>? testCandidate = null)
+    {
+        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string oldExecutable = testPaths?.OldExecutable ?? Path.Combine(local, "MeshCore Command", "MeshCore Command.exe");
+        string root = testPaths?.Root ?? Path.Combine(local, "MeshCore Command Native Preview");
+        string registry = testPaths?.Registry ?? Path.Combine(local, "MeshCore Command Native Candidate Data");
+        if ((testPaths is null) != (testCandidate is null)) throw new ArgumentException("Test paths and candidate must be supplied together.");
+        string activated = Path.Combine(root, "versions", Version, ApplicationName);
+        await LegacyUpgradeTransaction.RunAsync(args, oldExecutable,
+            async token =>
+            {
+                using var lease = await NativeInstanceLease.WaitAsync(registry, TimeSpan.FromSeconds(60), token);
+                NativeProfileRegistry.RequireUnselected(registry);
+                await InstallAsync(root, new Progress<string>(), token);
+            },
+            async token =>
+            {
+                if (testCandidate is not null) { await testCandidate(activated, token); return; }
+                string receiptDir = Path.Combine(Path.GetTempPath(), "mcc-startup-test-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(receiptDir);
+                string receipt = Path.Combine(receiptDir, "ready");
+                string nonce = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+                try
+                {
+                    var start = new System.Diagnostics.ProcessStartInfo(activated) { WorkingDirectory = Path.GetDirectoryName(activated)!, UseShellExecute = false };
+                    start.ArgumentList.Add("--native-candidate");
+                    start.ArgumentList.Add("--upgrade-require-fresh");
+                    start.ArgumentList.Add("--startup-receipt=" + receipt); start.ArgumentList.Add("--startup-nonce=" + nonce);
+                    using var process = System.Diagnostics.Process.Start(start) ?? throw new IOException("The native app could not start.");
+                    try { await StartupHealthGate.WaitForProcessAsync(process, receipt, nonce, TimeSpan.FromMinutes(3), token, requireRunning: true); }
+                    catch (Exception error) when (!process.HasExited)
+                    { throw new CandidateMayStillBeRunningException("The native app did not confirm startup and may still be running. Close it before retrying.", error); }
+                }
+                finally
+                {
+                    try { if (File.Exists(receipt)) File.Delete(receipt); if (Directory.Exists(receiptDir)) Directory.Delete(receiptDir); }
+                    catch (IOException) { } catch (UnauthorizedAccessException) { }
+                }
+            },
+            token =>
+            {
+                token.ThrowIfCancellationRequested();
+                string programs = testPaths?.Programs ?? Environment.GetFolderPath(Environment.SpecialFolder.Programs);
+                string desktop = testPaths?.Desktop ?? Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+                try { LegacyShortcutSwitch.Apply(new[] { Path.Combine(programs, "MeshCore Command.lnk"), Path.Combine(desktop, "MeshCore Command.lnk") }, oldExecutable, Path.Combine(root, LauncherName)); }
+                catch (Exception error)
+                {
+                    throw new CandidateMayStillBeRunningException("The native app may be open, but the shortcuts could not be switched. Its data is separate from the old app; close it before retrying and do not use both profiles interchangeably.", error);
+                }
+                return Task.CompletedTask;
+            }, TimeSpan.FromSeconds(60), cancellationToken);
     }
 
     internal static async Task InstallAsync(string root, IProgress<string> progress, CancellationToken cancellationToken = default, string? version = null)
@@ -179,15 +344,54 @@ internal static class Program
             try
             {
                 var start = new System.Diagnostics.ProcessStartInfo(Path.Combine(root, LauncherName)) { WorkingDirectory = root, UseShellExecute = false };
-                if (testLaunch) { start.ArgumentList.Add("--installer-test"); start.ArgumentList.Add("--integration-test"); }
-                else start.ArgumentList.Add("--native-candidate");
-                using var launched = System.Diagnostics.Process.Start(start) ?? throw new IOException("The updated app could not start.");
                 if (testLaunch)
                 {
-                    await launched.WaitForExitAsync(cancellationToken).WaitAsync(TimeSpan.FromSeconds(90), cancellationToken);
-                    if (launched.ExitCode != 0) throw new IOException("The updated test app did not pass its integration test.");
+                    string receiptDir = Path.Combine(Path.GetTempPath(), "mcc-startup-test-" + Guid.NewGuid().ToString("N"));
+                    Directory.CreateDirectory(receiptDir);
+                    string receipt = Path.Combine(receiptDir, "ready");
+                    string nonce = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+                    try
+                    {
+                        start.ArgumentList.Add("--installer-test"); start.ArgumentList.Add("--integration-test");
+                        start.ArgumentList.Add("--test-startup-receipt=" + receipt); start.ArgumentList.Add("--test-startup-nonce=" + nonce);
+                        using var launched = System.Diagnostics.Process.Start(start) ?? throw new IOException("The updated test app could not start.");
+                        await StartupHealthGate.WaitForProcessAsync(launched, receipt, nonce, TimeSpan.FromSeconds(90), cancellationToken);
+                        await launched.WaitForExitAsync(cancellationToken).WaitAsync(TimeSpan.FromSeconds(90), cancellationToken);
+                        if (launched.ExitCode != 0) throw new IOException("The updated test app did not pass its integration test.");
+                    }
+                    finally
+                    {
+                        try { if (File.Exists(receipt)) File.Delete(receipt); if (Directory.Exists(receiptDir)) Directory.Delete(receiptDir); }
+                        catch (IOException) { /* A candidate may still be writing; never turn cleanup into a rollback. */ }
+                        catch (UnauthorizedAccessException) { }
+                    }
+                }
+                else
+                {
+                    string receiptDir = Path.Combine(Path.GetTempPath(), "mcc-startup-test-" + Guid.NewGuid().ToString("N"));
+                    Directory.CreateDirectory(receiptDir);
+                    string receipt = Path.Combine(receiptDir, "ready");
+                    string nonce = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+                    try
+                    {
+                        // Track the app itself: the launcher exits immediately after starting it.
+                        var candidate = new System.Diagnostics.ProcessStartInfo(activated) { WorkingDirectory = Path.GetDirectoryName(activated)!, UseShellExecute = false };
+                        candidate.ArgumentList.Add("--native-candidate");
+                        candidate.ArgumentList.Add("--startup-receipt=" + receipt); candidate.ArgumentList.Add("--startup-nonce=" + nonce);
+                        using var launched = System.Diagnostics.Process.Start(candidate) ?? throw new IOException("The updated app could not start.");
+                        try { await StartupHealthGate.WaitForProcessAsync(launched, receipt, nonce, TimeSpan.FromMinutes(3), cancellationToken, requireRunning: true); }
+                        catch (Exception error) when (!launched.HasExited)
+                        { throw new CandidateMayStillBeRunningException("The updated app has not confirmed startup and may still be running. Close it before recovering the previous version.", error); }
+                    }
+                    finally
+                    {
+                        try { if (File.Exists(receipt)) File.Delete(receipt); if (Directory.Exists(receiptDir)) Directory.Delete(receiptDir); }
+                        catch (IOException) { }
+                        catch (UnauthorizedAccessException) { }
+                    }
                 }
             }
+            catch (CandidateMayStillBeRunningException) { throw; }
             catch (Exception error)
             {
                 try
@@ -213,6 +417,8 @@ internal static class Program
         return (pid, start);
     }
 }
+
+internal sealed class CandidateMayStillBeRunningException(string message, Exception inner) : IOException(message, inner);
 
 internal sealed class InstallerTestReleaseHandler(string executable, string version) : HttpMessageHandler
 {

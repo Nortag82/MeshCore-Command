@@ -3,6 +3,15 @@ $ErrorActionPreference = 'Stop'
 $dotnet = if ($env:MCC_DOTNET_EXE) { $env:MCC_DOTNET_EXE } else { (Get-Command dotnet -ErrorAction Stop).Source }
 $root = Split-Path -Parent $PSScriptRoot
 $output = Join-Path $PSScriptRoot 'artifacts\preview-publish'
+$firmwareRoot = if ($env:MCC_FIRMWARE_DIR) { [IO.Path]::GetFullPath($env:MCC_FIRMWARE_DIR) } else { Join-Path $PSScriptRoot 'firmware' }
+if (-not (Test-Path -LiteralPath (Join-Path $firmwareRoot 'manifest.json'))) {
+    throw 'Firmware is not staged. Provide the complete staged image directory in MeshCore Windows/firmware or set MCC_FIRMWARE_DIR.'
+}
+foreach ($target in @('v3-headless','v3-oled','v4-auto','v4-tft','tracker-headless','tracker-screen','r8-headless','r8-oled','tbeam-oled')) {
+    foreach ($part in @('bootloader.bin','partitions.bin','boot_app0.bin','firmware.bin')) {
+        if (-not (Test-Path -LiteralPath (Join-Path (Join-Path $firmwareRoot $target) $part))) { throw "Firmware is incomplete: $target/$part is missing." }
+    }
+}
 Push-Location $root
 try {
     node (Join-Path $PSScriptRoot 'Build-WebUI.mjs')
@@ -22,8 +31,17 @@ try {
     if ($listenerRetry.ExitCode -ne 0) { throw 'Listener retry test failed.' }
     $firmware = Start-Process -FilePath (Join-Path $output 'MeshCore.Windows.Preview.exe') -ArgumentList '--verify-firmware' -WindowStyle Hidden -Wait -PassThru
     if ($firmware.ExitCode -ne 0) { throw 'Packaged firmware verification failed.' }
-    $test = Start-Process -FilePath (Join-Path $output 'MeshCore.Windows.Preview.exe') -ArgumentList '--integration-test' -WindowStyle Hidden -Wait -PassThru
-    if ($test.ExitCode -ne 0) { throw 'Preview integration test failed.' }
+    $receiptDir = Join-Path ([IO.Path]::GetTempPath()) ('mcc-startup-test-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $receiptDir | Out-Null
+    $receiptFile = Join-Path $receiptDir 'ready'
+    $nonce = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLowerInvariant()
+    try {
+        $test = Start-Process -FilePath (Join-Path $output 'MeshCore.Windows.Preview.exe') -ArgumentList @('--integration-test', "--test-startup-receipt=`"$receiptFile`"", "--test-startup-nonce=$nonce") -WindowStyle Hidden -Wait -PassThru
+        if ($test.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $receiptFile) -or (Get-Content -LiteralPath $receiptFile -Raw) -cne $nonce) { throw 'Preview integration or startup receipt test failed.' }
+    } finally {
+        if (Test-Path -LiteralPath $receiptFile) { Remove-Item -LiteralPath $receiptFile -Force }
+        Remove-Item -LiteralPath $receiptDir -Force
+    }
     $migration = Start-Process -FilePath (Join-Path $output 'MeshCore.Windows.Preview.exe') -ArgumentList '--profile-integration-test' -WindowStyle Hidden -Wait -PassThru
     if ($migration.ExitCode -ne 0) { throw 'Synthetic profile migration integration test failed.' }
     Write-Output 'Development preview built and tested. It is not an installer or production release.'
