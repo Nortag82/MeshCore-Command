@@ -31,8 +31,10 @@ test('missing secure key disables sending without deleting contact verification'
   const secure=createSecureComs({state,getConnection:()=>({}),exclusive:fn=>fn(),hex,toast:()=>{}});secure.refresh();secure.selectContact(peer);
   for(let i=0;i<100&&!element('secure-fingerprint').textContent.includes('shared secret missing');i++)await new Promise(resolve=>setTimeout(resolve,10));
   assert.match(element('secure-fingerprint').textContent,/shared secret missing/);assert.equal(element('secure-send').disabled,true);assert.equal(element('secure-verified').checked,false);assert.equal(JSON.parse(storage.get(storageKey)).contacts[peer].verified,true);
+  window.__MCC_NATIVE_TEMPORARY=true;
   element('secure-secret').value=password;await element('secure-save').onclick();
+  assert.match(element('secure-status').textContent,/temporary test session only/);
   assert.doesNotMatch(element('secure-fingerprint').textContent,/shared secret missing/);assert.equal(element('secure-verified').disabled,false);assert.equal(element('secure-verified').checked,false,'a different fingerprint requires verification');
   element('secure-verified').checked=true;element('secure-verified').onchange();assert.equal(element('secure-send').disabled,false);
- }finally{globalThis.fetch=previousFetch;storage.set(storageKey,previous)}
+ }finally{delete window.__MCC_NATIVE_TEMPORARY;globalThis.fetch=previousFetch;storage.set(storageKey,previous)}
 });

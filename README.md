@@ -1,5 +1,7 @@
 # MeshCore Command
 
+> **Native Windows test build:** A separately installed native Windows candidate is available for testing. It is still under development and does not replace the existing Windows release through its update button. See the [native Windows notes](MeshCore%20Windows/README.md) for its current limitations and data isolation.
+
 A Windows desktop companion for controlling a Wi-Fi connected MeshCore radio, with messaging, contacts, repeater management, monitoring, terrain planning and a shared situation map with offline basemaps. An experimental Android Bluetooth companion is also included.
 
 This repository contains the desktop source in `MeshCore Desktop/` and the modified companion firmware and interface sources in `NeonPocket/`. The firmware tree is based on [NeonPocketMC](https://github.com/n30nex/NeonPocketMC-Heltec-V4) and retains its license files and upstream notices. See [desktop documentation](MeshCore%20Desktop/README.md) for features and device support.

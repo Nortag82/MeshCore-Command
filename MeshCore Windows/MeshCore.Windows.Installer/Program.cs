@@ -295,6 +295,8 @@ internal static class Program
             {
                 using var lease = await NativeInstanceLease.WaitAsync(registry, TimeSpan.FromSeconds(60), token);
                 NativeProfileRegistry.RequireUnselected(registry);
+                if (testPaths is null)
+                    CredentialNamespaceMigration.EnsureNoConflicts(new WindowsBackupCredentials(), new WindowsBackupCredentials(native: true));
                 await InstallAsync(root, new Progress<string>(), token, allowVerifiedResume: true);
             },
             async token =>
@@ -488,10 +490,10 @@ internal sealed class InstallerTestReleaseHandler(string executable, string vers
 
 internal sealed class InstallerWindow : Form
 {
-    private readonly Label _status = new() { AutoSize = true, MaximumSize = new Size(450, 0), Text = "Development preview: this uses a separate installation and test data." };
+    private readonly Label _status = new() { AutoSize = true, MaximumSize = new Size(450, 0), Text = "Development build: install separately, then choose the saved-data candidate or the isolated temporary test." };
     private readonly Button _install = new() { Text = "Install preview", AutoSize = true };
-    private readonly Button _launch = new() { Text = "Open preview", AutoSize = true, Visible = false };
-    private readonly Button _candidate = new() { Text = "Open native candidate", AutoSize = true, Visible = false };
+    private readonly Button _launch = new() { Text = "Open isolated temporary test", AutoSize = true, Visible = false };
+    private readonly Button _candidate = new() { Text = "Open Command with saved data", AutoSize = true, Visible = false };
     private readonly Button _shortcut = new() { Text = "Create Start menu shortcut", AutoSize = true, Visible = false };
     private bool _busy;
     public InstallerWindow()
@@ -499,7 +501,7 @@ internal sealed class InstallerWindow : Form
         Text = "MeshCore Command — native preview setup"; Width = 520; Height = 320; StartPosition = FormStartPosition.CenterScreen;
         var layout = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(18), WrapContents = false };
         layout.Controls.Add(new Label { Text = "MeshCore Command native preview", AutoSize = true, Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold) });
-        layout.Controls.Add(_status); layout.Controls.Add(_install); layout.Controls.Add(_launch); layout.Controls.Add(_candidate); layout.Controls.Add(_shortcut); Controls.Add(layout);
+        layout.Controls.Add(_status); layout.Controls.Add(_install); layout.Controls.Add(_candidate); layout.Controls.Add(_launch); layout.Controls.Add(_shortcut); Controls.Add(layout);
         _install.Click += async (_, _) => {
             if (_busy) return;
             _busy = true; _install.Enabled = false;

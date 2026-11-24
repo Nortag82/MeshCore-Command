@@ -14,6 +14,16 @@ internal static class Program
     private static void Main()
     {
         var args = Environment.GetCommandLineArgs();
+        if (args.Contains("--audit-credential-conflicts"))
+        {
+            try
+            {
+                CredentialNamespaceMigration.EnsureNoConflicts(new WindowsBackupCredentials(), new WindowsBackupCredentials(native: true));
+                Console.WriteLine("No conflicting native credentials were found; no credentials were changed.");
+            }
+            catch (Exception error) { Console.Error.WriteLine("Credential preflight failed: " + error.GetType().Name); Environment.ExitCode = 1; }
+            return;
+        }
         if (args.Contains("--serial-ports-test"))
         {
             try
@@ -344,6 +354,7 @@ internal sealed class PreviewWindow : Form
     private readonly string? _testReceipt, _testNonce;
     private readonly byte[]? _expectedRecords;
     private bool _startupReady;
+    private bool _startupFailed;
 
     public PreviewWindow(bool experimentalRadio, bool experimentalFlash, bool smokeTest, bool integrationTest, string? integrationIp, int memorySeconds,
         string? profileDirectory = null, string? dataDirectory = null, bool seedHistory = true, int port = 19484,
@@ -448,6 +459,7 @@ internal sealed class PreviewWindow : Form
             var environment = await CoreWebView2Environment.CreateAsync(userDataFolder: _profile);
             await _web.EnsureCoreWebView2Async(environment);
             if (_candidate) await _web.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync("window.__MCC_NATIVE_CANDIDATE=true;");
+            else await _web.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync("window.__MCC_NATIVE_TEMPORARY=true;");
             if (_updater is not null) await _web.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync("window.__MCC_NATIVE_UPDATE=true;window.__MCC_NATIVE_VERSION=" + JsonSerializer.Serialize(_updater.CurrentVersion) + ";");
             if (_integrationTest && _integrationIp is null && _seedHistory)
             {
@@ -532,7 +544,14 @@ internal sealed class PreviewWindow : Form
                     }
                 }
                 catch (Exception error) when (error is InvalidOperationException or ObjectDisposedException or System.Runtime.InteropServices.COMException or IOException or UnauthorizedAccessException or ArgumentException or System.Text.Json.JsonException)
-                { System.Diagnostics.Debug.WriteLine("Startup readiness check failed: " + error.GetType().Name); }
+                {
+                    System.Diagnostics.Debug.WriteLine("Startup readiness check failed: " + error.GetType().Name);
+                    if (_expectedRecords is not null)
+                    {
+                        _startupFailed = true; Environment.ExitCode = 1;
+                        if (!IsDisposed && !_closing) BeginInvoke(Close);
+                    }
+                }
             };
             if (_smokeTest)
                 _web.CoreWebView2.NavigationCompleted += async (_, e) => {
@@ -617,6 +636,7 @@ internal sealed class PreviewWindow : Form
                             Environment.ExitCode = result == "true" ? 0 : 1;
                         }
                     }
+                    if (_startupFailed) Environment.ExitCode = 1;
                     if (Environment.ExitCode == 0 && _expectedRecords is not null && _testReceipt is null)
                     {
                         for (int attempt = 0; attempt < 100 && !_startupReady; attempt++) await Task.Delay(100);

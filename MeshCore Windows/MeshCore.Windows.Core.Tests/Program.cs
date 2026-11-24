@@ -509,12 +509,16 @@ if (OperatingSystem.IsWindows())
     string keyA = new('a', 64), keyB = new('b', 64);
     var source = new MigrationCredentials(); source.Put("secure", keyA, "source-a"); source.Put("repeater", keyB, "source-b");
     var destination = new MigrationCredentials();
+    CredentialNamespaceMigration.EnsureNoConflicts(source, destination);
+    Check(destination.ListSaved().Count == 0, "Credential preflight does not change the destination");
     CredentialNamespaceMigration.Copy(source, destination);
     Check(destination.Get("secure", keyA) == "source-a" && destination.Get("repeater", keyB) == "source-b", "Credential copy preserves both scopes");
     destination.Delete("repeater", keyB);
     CredentialNamespaceMigration.Copy(source, destination);
     Check(destination.Get("secure", keyA) == "source-a" && destination.Get("repeater", keyB) == "source-b", "Credential copy resumes matching partial results");
     destination.Put("secure", keyA, "existing");
+    try { CredentialNamespaceMigration.EnsureNoConflicts(source, destination); throw new Exception("Credential preflight accepted a conflict."); }
+    catch (IOException) { }
     try { CredentialNamespaceMigration.Copy(source, destination); throw new Exception("Credential conflict was not rejected."); }
     catch (IOException) { }
     Check(destination.Get("secure", keyA) == "existing" && source.Get("secure", keyA) == "source-a", "Credential conflict leaves both stores unchanged");
