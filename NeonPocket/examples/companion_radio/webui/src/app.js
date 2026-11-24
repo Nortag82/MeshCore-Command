@@ -4,6 +4,7 @@ import {captureRadioBackup,restoreRadioBackup,validateRadioBackup} from './radio
 import {createSettingsLocationMap} from './settings-location-map.js';
 import {setRadioLocation} from './radio-location.js';
 import {rebootLocalRadio} from './radio-reboot.js';
+import {channelSender,parseContactCard,importContactCard} from './channel-contact.js';
 import {sendFloodMessage} from './flood-message.js';
 import {CLEANUP_SETTING,protectedContacts,oldestContact,contactArguments,replaceContact} from './contact-cleanup.js';
 import {readRepeatEligibility,setCompanionRepeat} from './repeat-mode.js';
@@ -1462,6 +1463,7 @@ function openMessageMenu(event, message) {
   const selection = window.getSelection();
   const selected = selection && !selection.isCollapsed && event.currentTarget.contains(selection.anchorNode) && event.currentTarget.contains(selection.focusNode) ? selection.toString() : '';
   messageMenuTarget = { id: message.id, key: message.key, text: message.text, direction: message.direction, copyText: selected || message.text };
+  $("message-menu-contact").hidden = !channelSender(message);
   $("message-menu-correct").hidden = message.direction !== "out";
   const canSend = Boolean(state.connected && targetInfo(message.key));
   $("message-menu-reply").disabled = !canSend; $("message-menu-like").disabled = !canSend;
@@ -1475,6 +1477,30 @@ $("message-menu-copy").addEventListener("click", async () => {
   const target = messageMenuTarget; closeMessageMenu(); if (!target) return;
   try { await navigator.clipboard.writeText(target.copyText); toast("Text copied"); }
   catch { toast("Could not copy text. Select it and press Ctrl+C.", "error"); }
+});
+$("message-menu-contact").addEventListener("click", async () => {
+  const target=messageMenuTarget; closeMessageMenu();
+  const sender=channelSender(target); if(!sender)return;
+  const matches=state.contacts.filter(c=>c.type===1 && String(c.advName||'').trim().toLocaleLowerCase()===sender.toLocaleLowerCase());
+  if(matches.length===1) {
+    const c=matches[0], key=hex(c.publicKey);
+    if(confirm(`A saved contact is named “${sender}” (${key.slice(0,12)}…).\n\nChannel sender names are not authenticated. Confirm the public key with your contact before sending sensitive information. Open this contact?`)) { selectTarget(contactKey(c)); toast('Contact opened'); }
+    return;
+  }
+  if(!state.connected || !connection) { alert('Connect your radio first. Ask the sender to send a flood advert or share their MeshCore contact link.'); return; }
+  const value=prompt(`The message name “${sender}” does not contain a verified contact key${matches.length>1?' and multiple contacts have that name':''}.\n\nAsk the person for their MeshCore contact link (meshcore://…), then paste it here. Alternatively ask them to send a flood advert and check Contacts.\n\nVerify their public key with them before messaging.`, '');
+  if(value===null || !value.trim())return;
+  try {
+    const parsed=parseContactCard(value), key=hex(parsed.publicKey), radio=connection;
+    if(!confirm(`Import the contact with public key:\n\n${key}\n\nA channel message does not prove this is “${sender}”. Verify the key with them through a trusted method. Continue?`))return;
+    toast('Importing contact card…');
+    const contact=await exclusive(()=>importContactCard(radio,parsed,{canContinue:()=>state.connected&&connection===radio,newAdvertCode:Constants.PushCodes.NewAdvert}));
+    if(connection!==radio||!state.connected)throw Error('Radio connection changed; check Contacts.');
+    await exclusive(refreshContacts);
+    const saved=state.contacts.find(c=>hex(c.publicKey)===key);
+    if(!saved || saved.type!==1)throw Error('The radio did not confirm a chat contact. Check Contacts and the contact card.');
+    selectTarget(contactKey(saved)); toast(`Contact ${saved.advName||sender} added`);
+  } catch(error) { alert(error?.message||'Could not add this contact.'); }
 });
 $("message-menu-reply").addEventListener("click", () => {
   const target = messageMenuTarget; closeMessageMenu();
