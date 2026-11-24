@@ -355,6 +355,10 @@ internal sealed class PreviewWindow : Form
     private readonly byte[]? _expectedRecords;
     private bool _startupReady;
     private bool _startupFailed;
+    private bool _fullscreen;
+    private FormBorderStyle _previousBorder;
+    private FormWindowState _previousState;
+    private Rectangle _previousBounds;
 
     public PreviewWindow(bool experimentalRadio, bool experimentalFlash, bool smokeTest, bool integrationTest, string? integrationIp, int memorySeconds,
         string? profileDirectory = null, string? dataDirectory = null, bool seedHistory = true, int port = 19484,
@@ -367,7 +371,7 @@ internal sealed class PreviewWindow : Form
         _expectedRecords = expectedRecords;
         _port = port;
         _credentials = credentials ?? new PreviewCredentials();
-        _notifications = new DesktopNotifications(this, () => { if (!IsDisposed) { Show(); WindowState = FormWindowState.Normal; Activate(); } });
+        _notifications = new DesktopNotifications(this, RestoreAndActivate);
         _updater = candidate ? CandidateUpdater.ForCurrentInstallation() : null;
         _experimentalRadio = experimentalRadio;
         _experimentalFlash = experimentalFlash;
@@ -435,7 +439,7 @@ internal sealed class PreviewWindow : Form
             _elevationHttp.DefaultRequestHeaders.UserAgent.ParseAdd("MeshCoreCommandNativePreview/1.0");
             _tray.Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "meshcore-command.ico"));
             _tray.Text = "MeshCore Command preview"; _tray.Visible = !_smokeTest;
-            _tray.DoubleClick += (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); };
+            _tray.DoubleClick += (_, _) => RestoreAndActivate();
             _downloads = new OfflineDownloads(_elevationHttp, Path.Combine(_dataDirectory, "offline-maps"), _offlineMap, path => {
                 Directory.CreateDirectory(_dataDirectory);
                 WriteAtomicAsync(Path.Combine(_dataDirectory, "offline-map.json"), JsonSerializer.SerializeToUtf8Bytes(new { path })).GetAwaiter().GetResult();
@@ -487,7 +491,7 @@ internal sealed class PreviewWindow : Form
                     export_full_backup: (...a)=>call('export_full_backup',...a), prepare_full_restore: (...a)=>call('prepare_full_restore',...a),
                     commit_full_restore: (...a)=>call('commit_full_restore',...a), cancel_full_restore: (...a)=>call('cancel_full_restore',...a),
                     open_radio_backup: (...a)=>call('open_radio_backup',...a), save_radio_recovery: (...a)=>call('save_radio_recovery',...a), save_pc_recovery: (...a)=>call('save_pc_recovery',...a),
-                    minimize: (...a)=>call('minimize',...a), toggle_fullscreen: (...a)=>call('maximize',...a), exit_app: (...a)=>call('close',...a)
+                    minimize: (...a)=>call('minimize',...a), toggle_fullscreen: (...a)=>call('toggle_fullscreen',...a), exit_app: (...a)=>call('close',...a)
                   }};
                   if(window.__MCC_NATIVE_UPDATE){window.pywebview.api.check_app_update=(...a)=>call('check_app_update',...a);window.pywebview.api.install_app_update=(...a)=>call('install_app_update',...a)}
                   if(window.__MCC_NATIVE_CANDIDATE)window.pywebview.api.restore_local_credentials=(...a)=>call('restore_local_credentials',...a);
@@ -603,6 +607,20 @@ internal sealed class PreviewWindow : Form
                                 for (int i = 0; i < 50 && Volatile.Read(ref _syntheticMessageNotification) == 0; i++)
                                     await Task.Delay(100);
                                 if (Volatile.Read(ref _syntheticMessageNotification) == 0) Environment.ExitCode = 1;
+                            }
+                            if (_integrationIp is null && Environment.ExitCode == 0)
+                            {
+                                WindowState = FormWindowState.Normal;
+                                Rectangle originalBounds = Bounds;
+                                FormBorderStyle originalBorder = FormBorderStyle;
+                                await _web.CoreWebView2.ExecuteScriptAsync("window.pywebview.api.toggle_fullscreen();");
+                                for (int i = 0; i < 50 && !_fullscreen; i++) await Task.Delay(100);
+                                if (!_fullscreen || FormBorderStyle != FormBorderStyle.None || Bounds != Screen.FromControl(this).Bounds)
+                                    Environment.ExitCode = 1;
+                                await _web.CoreWebView2.ExecuteScriptAsync("window.pywebview.api.toggle_fullscreen();");
+                                for (int i = 0; i < 50 && _fullscreen; i++) await Task.Delay(100);
+                                if (_fullscreen || FormBorderStyle != originalBorder || WindowState != FormWindowState.Normal || Bounds != originalBounds)
+                                    Environment.ExitCode = 1;
                             }
                             if (Environment.ExitCode == 0)
                             {
@@ -894,7 +912,7 @@ internal sealed class PreviewWindow : Form
                     }
                     break;
                 case "minimize": WindowState = FormWindowState.Minimized; result = new { ok = true }; break;
-                case "maximize": WindowState = WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized; result = new { ok = true }; break;
+                case "toggle_fullscreen": ToggleFullScreen(); result = new { ok = true }; break;
                 case "close": result = new { ok = true }; BeginInvoke(Close); break;
                 default: result = new { error = "This feature is not implemented in the development preview." }; break;
             }
@@ -903,6 +921,41 @@ internal sealed class PreviewWindow : Form
         finally { if (locked) _requests.Release(); }
         if (!IsDisposed && _web.CoreWebView2 is not null)
             _web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "result", id, value = result }));
+    }
+
+    private void RestoreAndActivate()
+    {
+        if (IsDisposed) return;
+        Show();
+        if (WindowState == FormWindowState.Minimized)
+        {
+            WindowState = FormWindowState.Normal;
+            if (_fullscreen) Bounds = Screen.FromControl(this).Bounds;
+        }
+        Activate();
+    }
+
+    private void ToggleFullScreen()
+    {
+        if (!_fullscreen)
+        {
+            _previousBorder = FormBorderStyle;
+            _previousState = WindowState == FormWindowState.Minimized ? FormWindowState.Normal : WindowState;
+            _previousBounds = _previousState == FormWindowState.Normal ? Bounds : RestoreBounds;
+            var screenBounds = Screen.FromControl(this).Bounds;
+            WindowState = FormWindowState.Normal;
+            FormBorderStyle = FormBorderStyle.None;
+            Bounds = screenBounds;
+            _fullscreen = true;
+        }
+        else
+        {
+            WindowState = FormWindowState.Normal;
+            FormBorderStyle = _previousBorder;
+            Bounds = _previousBounds;
+            WindowState = _previousState;
+            _fullscreen = false;
+        }
     }
 
     private void EnsureExperimental()
