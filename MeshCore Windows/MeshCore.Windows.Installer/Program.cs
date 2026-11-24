@@ -239,6 +239,19 @@ internal static class Program
                 if (!chosenStarted || !File.Exists(chosenOld) || !File.ReadAllBytes(chosenLink + ".legacy-backup").SequenceEqual(chosenOriginal) ||
                     !File.ReadAllBytes(Path.Combine(chosenRegistry, "current.json")).SequenceEqual(chosenPointer))
                     throw new IOException("Using the chosen native profile did not preserve the old app or profile selection.");
+                string retireScenario = Path.Combine(root, "retirement"), retireLocal = Path.Combine(retireScenario, "local");
+                string retireInstall = Path.Combine(retireLocal, "MeshCore Command"), retireData = Path.Combine(retireLocal, "MeshCore Command Data");
+                string retirePrograms = Path.Combine(retireScenario, "programs"), retireDesktop = Path.Combine(retireScenario, "desktop");
+                Directory.CreateDirectory(retireInstall); Directory.CreateDirectory(retireData); Directory.CreateDirectory(retirePrograms); Directory.CreateDirectory(retireDesktop);
+                string retireOld = Path.Combine(retireInstall, "MeshCore Command.exe"), savedData = Path.Combine(retireData, "settings.json");
+                File.WriteAllText(retireOld, "old program"); File.WriteAllText(savedData, "saved data");
+                File.Move(PreviewShortcut.Create(retirePrograms, retireOld), Path.Combine(retirePrograms, "MeshCore Command.lnk"));
+                var retirePaths = new LegacyTestPaths(retireOld, Path.Combine(retireScenario, "native"), Path.Combine(retireScenario, "profile"), retirePrograms, retireDesktop);
+                LegacyUpgradeAsync(new[] { "--update", int.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture) }, testPaths: retirePaths,
+                    testCandidate: (_, _) => Task.CompletedTask, retireLegacyForTest: true).GetAwaiter().GetResult();
+                string[] retired = Directory.GetDirectories(retireLocal, "MeshCore Command previous *");
+                if (File.Exists(retireOld) || retired.Length != 1 || File.ReadAllText(Path.Combine(retired[0], "MeshCore Command.exe")) != "old program" ||
+                    File.ReadAllText(savedData) != "saved data") throw new IOException("Old program retirement failed or changed user data.");
                 using var app = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.Combine(root, LauncherName)) {
                     WorkingDirectory = root, UseShellExecute = false,
                     CreateNoWindow = true, Arguments = "--installer-test --integration-test" }) ?? throw new IOException("Installed test app did not start.");
@@ -320,13 +333,14 @@ internal static class Program
     internal sealed record LegacyTestPaths(string OldExecutable, string Root, string Registry, string Programs, string Desktop);
 
     internal static async Task LegacyUpgradeAsync(string[] args, CancellationToken cancellationToken = default,
-        LegacyTestPaths? testPaths = null, Func<string, CancellationToken, Task>? testCandidate = null, bool useExistingCandidateForTest = false)
+        LegacyTestPaths? testPaths = null, Func<string, CancellationToken, Task>? testCandidate = null, bool useExistingCandidateForTest = false, bool retireLegacyForTest = false)
     {
         string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         string oldExecutable = testPaths?.OldExecutable ?? Path.Combine(local, "MeshCore Command", "MeshCore Command.exe");
         string root = testPaths?.Root ?? Path.Combine(local, "MeshCore Command Native Preview");
         string registry = testPaths?.Registry ?? Path.Combine(local, "MeshCore Command Native Candidate Data");
         if ((testPaths is null) != (testCandidate is null)) throw new ArgumentException("Test paths and candidate must be supplied together.");
+        if (retireLegacyForTest && testPaths is null) throw new ArgumentException("Retirement test requires test paths.");
         string activated = Path.Combine(root, "versions", Version, ApplicationName);
         byte[]? selectedProfile = null;
         await LegacyUpgradeTransaction.RunAsync(args, oldExecutable,
@@ -389,6 +403,17 @@ internal static class Program
                 }
                 return Task.CompletedTask;
             }, TimeSpan.FromSeconds(60), cancellationToken);
+        if (testPaths is null || retireLegacyForTest)
+        {
+            string retirementRoot = testPaths is null ? local : Path.GetDirectoryName(Path.GetDirectoryName(oldExecutable)!)!;
+            try { _ = LegacyProgramRetirement.Retire(retirementRoot, oldExecutable); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                if (testPaths is not null) throw;
+                MessageBox.Show("The native app is running, but the previous program could not be removed from its old location. Your data is unchanged.\n\n" + error.Message,
+                    "MeshCore Command upgrade", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
     }
 
     private static byte[] ExistingCandidateSelection(string registry)

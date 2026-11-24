@@ -1,6 +1,6 @@
 # MeshCore Command
 
-> **Native Windows test build:** A separately installed native Windows candidate is available for testing. It is still under development and does not replace the existing Windows release through its update button. See the [native Windows notes](MeshCore%20Windows/README.md) for its current limitations and data isolation.
+> **Native Windows test build:** A native Windows candidate is available for testing. The existing Windows app can offer the native installer as a test update. The candidate is still under development; see the [native Windows notes](MeshCore%20Windows/README.md) for limitations and the [upgrade notes](MeshCore%20Windows/LEGACY-UPGRADE.md) for data isolation and recovery.
 
 A Windows desktop companion for controlling a Wi-Fi connected MeshCore radio, with messaging, contacts, repeater management, monitoring, terrain planning and a shared situation map with offline basemaps. An experimental Android Bluetooth companion is also included.
 

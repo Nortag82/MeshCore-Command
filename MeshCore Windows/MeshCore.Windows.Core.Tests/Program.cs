@@ -46,6 +46,23 @@ if (args.Contains("--live-map-test"))
 }
 
 var output = CompanionFrames.EncodeOutgoing(new byte[] { 1, 2, 3 });
+{
+    string local = Path.Combine(Path.GetTempPath(), "mcc-retirement-test-" + Guid.NewGuid().ToString("N"));
+    string install = Path.Combine(local, "MeshCore Command"), data = Path.Combine(local, "MeshCore Command Data");
+    Directory.CreateDirectory(install); Directory.CreateDirectory(data);
+    string executable = Path.Combine(install, "MeshCore Command.exe"), userFile = Path.Combine(data, "settings.json");
+    File.WriteAllText(executable, "old program"); File.WriteAllText(userFile, "saved settings");
+    try
+    {
+        await ThrowsAsync<IOException>(() => Task.Run(() => LegacyProgramRetirement.Retire(local, Path.Combine(data, "MeshCore Command.exe"))));
+        Check(File.Exists(executable) && File.Exists(userFile), "An unexpected legacy location is never retired");
+        string backup = LegacyProgramRetirement.Retire(local, executable);
+        Check(!Directory.Exists(install) && File.ReadAllText(Path.Combine(backup, "MeshCore Command.exe")) == "old program" &&
+              File.ReadAllText(userFile) == "saved settings", "Retirement moves only the old program and keeps data and rollback copy");
+        await ThrowsAsync<IOException>(() => Task.Run(() => LegacyProgramRetirement.Retire(local, executable)));
+    }
+    finally { Directory.Delete(local, recursive: true); }
+}
 Check(LegacyUpdateHandoff.Parse(new[] { "--update", "42" }) == 42, "Legacy updater handoff accepts a process ID");
 foreach (string[] invalid in new[] { Array.Empty<string>(), new[] { "--update" }, new[] { "--update", "0" }, new[] { "--update", "-1" }, new[] { "--update", " 42" }, new[] { "--update", "42", "extra" }, new[] { "--native-update", "42" } })
     await ThrowsAsync<ArgumentException>(() => Task.Run(() => LegacyUpdateHandoff.Parse(invalid)));
