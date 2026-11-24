@@ -68,6 +68,49 @@ foreach (string[] invalid in new[] { Array.Empty<string>(), new[] { "--update" }
     await ThrowsAsync<IOException>(() => LegacyUpgradeTransaction.RunAsync(handoff, runningExecutable, _ => Record("prepare"), _ => Record("ready"), _ => Record("shortcuts"), TimeSpan.FromSeconds(1)));
     Check(steps.Count == 0, "Another legacy process prevents migration and shortcut changes");
 }
+if (OperatingSystem.IsWindows())
+{
+    string testDirectory = Path.Combine(Path.GetTempPath(), "mcc-legacy-reopen-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(testDirectory);
+    string executable = Path.Combine(testDirectory, "mcc-legacy-" + Guid.NewGuid().ToString("N") + ".exe");
+    File.Copy(Path.Combine(Environment.SystemDirectory, "cmd.exe"), executable);
+    try
+    {
+        foreach (bool reopenAfterStartup in new[] { false, true })
+        {
+            using var started = new System.Threading.ManualResetEventSlim();
+            System.Diagnostics.Process? reopened = null;
+            bool candidateStarted = false, shortcutsSwitched = false;
+            Task Reopen()
+            {
+                var start = new System.Diagnostics.ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true };
+                start.ArgumentList.Add("/c"); start.ArgumentList.Add("ping -n 30 127.0.0.1 >nul");
+                reopened = System.Diagnostics.Process.Start(start) ?? throw new IOException("Could not start legacy process test.");
+                started.Set();
+                return Task.CompletedTask;
+            }
+            try
+            {
+                await ThrowsAsync<IOException>(() => LegacyUpgradeTransaction.RunAsync(
+                    new[] { "--update", int.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture) }, executable,
+                    _ => reopenAfterStartup ? Task.CompletedTask : Reopen(),
+                    async _ => { candidateStarted = true; if (reopenAfterStartup) await Reopen(); },
+                    _ => { shortcutsSwitched = true; return Task.CompletedTask; }, TimeSpan.FromSeconds(1)));
+                Check(started.IsSet && candidateStarted == reopenAfterStartup && !shortcutsSwitched,
+                    "Reopening the old app stops the upgrade before shortcuts are changed");
+            }
+            finally
+            {
+                if (reopened is not null)
+                {
+                    try { if (!reopened.HasExited) reopened.Kill(entireProcessTree: true); await reopened.WaitForExitAsync(); }
+                    finally { reopened.Dispose(); }
+                }
+            }
+        }
+    }
+    finally { Directory.Delete(testDirectory, recursive: true); }
+}
 using (var self = System.Diagnostics.Process.GetCurrentProcess())
 {
     long start = self.StartTime.ToUniversalTime().Ticks;

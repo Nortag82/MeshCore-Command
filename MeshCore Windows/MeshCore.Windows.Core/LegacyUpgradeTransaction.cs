@@ -16,8 +16,14 @@ public static class LegacyUpgradeTransaction
         LegacyProcessGuard.EnsureStopped(expectedLegacyExecutable);
         await prepare(cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
+        LegacyProcessGuard.EnsureStopped(expectedLegacyExecutable);
         await startAndConfirm(cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
+        try { LegacyProcessGuard.EnsureStopped(expectedLegacyExecutable); }
+        catch (IOException error)
+        {
+            throw new IOException("The old app reopened during the upgrade. Shortcuts were not changed. The native app may also be open with separate data; close both apps and do not use the profiles interchangeably.", error);
+        }
         await switchShortcuts(cancellationToken);
     }
 }

@@ -201,6 +201,44 @@ internal static class Program
                 catch (IOException) { }
                 if (unexpectedCandidate || !File.ReadAllBytes(existingLink).SequenceEqual(existingOriginal) || Directory.Exists(existingPaths.Root))
                     throw new IOException("An existing native profile did not stop the automatic upgrade safely.");
+                string chosenScenario = Path.Combine(root, "chosen-native-profile"), chosenRegistry = Path.Combine(chosenScenario, "profile");
+                string chosenPrograms = Path.Combine(chosenScenario, "programs"), chosenDesktop = Path.Combine(chosenScenario, "desktop");
+                Directory.CreateDirectory(chosenPrograms); Directory.CreateDirectory(chosenDesktop);
+                NativeProfileRegistry.CreateEmptyAsync(chosenRegistry).GetAwaiter().GetResult();
+                File.WriteAllText(Path.Combine(chosenRegistry, "credentials-isolated-v1"), "MeshCore native credential isolation v1\n");
+                byte[] chosenPointer = File.ReadAllBytes(Path.Combine(chosenRegistry, "current.json"));
+                string chosenOld = Path.Combine(chosenScenario, "mcc-chosen-old-" + Guid.NewGuid().ToString("N") + ".exe");
+                File.WriteAllText(chosenOld, "synthetic old app");
+                string chosenLink = Path.Combine(chosenPrograms, "MeshCore Command.lnk");
+                File.Move(PreviewShortcut.Create(chosenPrograms, chosenOld), chosenLink);
+                byte[] chosenOriginal = File.ReadAllBytes(chosenLink);
+                var chosenPaths = new LegacyTestPaths(chosenOld, Path.Combine(chosenScenario, "native"), chosenRegistry, chosenPrograms, chosenDesktop);
+                try
+                {
+                    LegacyUpgradeAsync(new[] { "--update", int.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture) }, testPaths: chosenPaths,
+                        testCandidate: (_, _) => Task.CompletedTask).GetAwaiter().GetResult();
+                    throw new InvalidOperationException("A native profile was used without consent.");
+                }
+                catch (IOException) { }
+                if (!File.ReadAllBytes(chosenLink).SequenceEqual(chosenOriginal) || Directory.Exists(chosenPaths.Root))
+                    throw new IOException("Cancelling the existing-profile choice changed the old app.");
+                string chosenMarker = Path.Combine(chosenRegistry, "credentials-isolated-v1");
+                try
+                {
+                    LegacyUpgradeAsync(new[] { "--update", int.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture) }, testPaths: chosenPaths,
+                        testCandidate: (_, _) => { File.Delete(chosenMarker); return Task.CompletedTask; }, useExistingCandidateForTest: true).GetAwaiter().GetResult();
+                    throw new InvalidOperationException("A changed native credential selection was accepted.");
+                }
+                catch (IOException) { }
+                if (!File.ReadAllBytes(chosenLink).SequenceEqual(chosenOriginal) || File.Exists(chosenLink + ".legacy-backup"))
+                    throw new IOException("A changed native selection changed the old shortcut.");
+                File.WriteAllText(chosenMarker, "MeshCore native credential isolation v1\n");
+                bool chosenStarted = false;
+                LegacyUpgradeAsync(new[] { "--update", int.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture) }, testPaths: chosenPaths,
+                    testCandidate: (_, _) => { chosenStarted = true; return Task.CompletedTask; }, useExistingCandidateForTest: true).GetAwaiter().GetResult();
+                if (!chosenStarted || !File.Exists(chosenOld) || !File.ReadAllBytes(chosenLink + ".legacy-backup").SequenceEqual(chosenOriginal) ||
+                    !File.ReadAllBytes(Path.Combine(chosenRegistry, "current.json")).SequenceEqual(chosenPointer))
+                    throw new IOException("Using the chosen native profile did not preserve the old app or profile selection.");
                 using var app = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.Combine(root, LauncherName)) {
                     WorkingDirectory = root, UseShellExecute = false,
                     CreateNoWindow = true, Arguments = "--installer-test --integration-test" }) ?? throw new IOException("Installed test app did not start.");
@@ -282,7 +320,7 @@ internal static class Program
     internal sealed record LegacyTestPaths(string OldExecutable, string Root, string Registry, string Programs, string Desktop);
 
     internal static async Task LegacyUpgradeAsync(string[] args, CancellationToken cancellationToken = default,
-        LegacyTestPaths? testPaths = null, Func<string, CancellationToken, Task>? testCandidate = null)
+        LegacyTestPaths? testPaths = null, Func<string, CancellationToken, Task>? testCandidate = null, bool useExistingCandidateForTest = false)
     {
         string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         string oldExecutable = testPaths?.OldExecutable ?? Path.Combine(local, "MeshCore Command", "MeshCore Command.exe");
@@ -290,17 +328,28 @@ internal static class Program
         string registry = testPaths?.Registry ?? Path.Combine(local, "MeshCore Command Native Candidate Data");
         if ((testPaths is null) != (testCandidate is null)) throw new ArgumentException("Test paths and candidate must be supplied together.");
         string activated = Path.Combine(root, "versions", Version, ApplicationName);
+        byte[]? selectedProfile = null;
         await LegacyUpgradeTransaction.RunAsync(args, oldExecutable,
             async token =>
             {
                 using var lease = await NativeInstanceLease.WaitAsync(registry, TimeSpan.FromSeconds(60), token);
-                NativeProfileRegistry.RequireUnselected(registry);
-                if (testPaths is null)
+                if (File.Exists(Path.Combine(registry, "current.json")))
+                {
+                    selectedProfile = ExistingCandidateSelection(registry);
+                    bool accepted = testPaths is not null ? useExistingCandidateForTest : MessageBox.Show(
+                        "A separate native test profile already exists. Use that profile for the updated app?\n\nIt will keep its own messages, maps, settings and secrets. Changes made in the old app since the profile was copied will NOT be merged. The old app and its data will remain available.\n\nChoose No to cancel without changing shortcuts.",
+                        "Choose existing native data", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+                    if (!accepted) throw new IOException("Upgrade cancelled. Your old app and both data profiles were not changed.");
+                }
+                else NativeProfileRegistry.RequireUnselected(registry);
+                if (testPaths is null && selectedProfile is null)
                     CredentialNamespaceMigration.EnsureNoConflicts(new WindowsBackupCredentials(), new WindowsBackupCredentials(native: true));
                 await InstallAsync(root, new Progress<string>(), token, allowVerifiedResume: true);
             },
             async token =>
             {
+                if (selectedProfile is not null && !System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(selectedProfile, ExistingCandidateSelection(registry)))
+                    throw new IOException("The selected native profile changed during the update. Your old app was not changed.");
                 if (testCandidate is not null) { await testCandidate(activated, token); return; }
                 string receiptDir = Path.Combine(Path.GetTempPath(), "mcc-startup-test-" + Guid.NewGuid().ToString("N"));
                 Directory.CreateDirectory(receiptDir);
@@ -310,7 +359,7 @@ internal static class Program
                 {
                     var start = new System.Diagnostics.ProcessStartInfo(activated) { WorkingDirectory = Path.GetDirectoryName(activated)!, UseShellExecute = false };
                     start.ArgumentList.Add("--native-candidate");
-                    start.ArgumentList.Add("--upgrade-require-fresh");
+                    if (selectedProfile is null) start.ArgumentList.Add("--upgrade-require-fresh");
                     start.ArgumentList.Add("--startup-receipt=" + receipt); start.ArgumentList.Add("--startup-nonce=" + nonce);
                     using var process = System.Diagnostics.Process.Start(start) ?? throw new IOException("The native app could not start.");
                     try { await StartupHealthGate.WaitForProcessAsync(process, receipt, nonce, TimeSpan.FromMinutes(3), token, requireRunning: true); }
@@ -328,13 +377,29 @@ internal static class Program
                 token.ThrowIfCancellationRequested();
                 string programs = testPaths?.Programs ?? Environment.GetFolderPath(Environment.SpecialFolder.Programs);
                 string desktop = testPaths?.Desktop ?? Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-                try { LegacyShortcutSwitch.Apply(new[] { Path.Combine(programs, "MeshCore Command.lnk"), Path.Combine(desktop, "MeshCore Command.lnk") }, oldExecutable, Path.Combine(root, LauncherName)); }
+                try
+                {
+                    if (selectedProfile is not null && !System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(selectedProfile, ExistingCandidateSelection(registry)))
+                        throw new IOException("The selected native profile changed during startup.");
+                    LegacyShortcutSwitch.Apply(new[] { Path.Combine(programs, "MeshCore Command.lnk"), Path.Combine(desktop, "MeshCore Command.lnk") }, oldExecutable, Path.Combine(root, LauncherName));
+                }
                 catch (Exception error)
                 {
                     throw new CandidateMayStillBeRunningException("The native app may be open, but the shortcuts could not be switched. Its data is separate from the old app; close it before retrying and do not use both profiles interchangeably.", error);
                 }
                 return Task.CompletedTask;
             }, TimeSpan.FromSeconds(60), cancellationToken);
+    }
+
+    private static byte[] ExistingCandidateSelection(string registry)
+    {
+        try { _ = NativeProfileRegistry.Open(registry); }
+        catch (System.Text.Json.JsonException error) { throw new IOException("The existing native profile selection is invalid. No data was changed.", error); }
+        string pointer = Path.Combine(registry, "current.json"), marker = Path.Combine(registry, "credentials-isolated-v1");
+        if (!File.Exists(marker) || (File.GetAttributes(marker) & FileAttributes.ReparsePoint) != 0 ||
+            new FileInfo(marker).Length > 128 || File.ReadAllText(marker) != "MeshCore native credential isolation v1\n")
+            throw new IOException("The existing native profile's independent credentials cannot be verified. No data was changed.");
+        return System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(pointer));
     }
 
     internal static async Task InstallAsync(string root, IProgress<string> progress, CancellationToken cancellationToken = default, string? version = null, bool allowVerifiedResume = false)
