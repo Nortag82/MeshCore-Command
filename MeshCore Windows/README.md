@@ -20,6 +20,8 @@ The preview's separate synthetic integration test seeds a saved conversation for
 
 Channel messages have an unverified display name, not a verified sender key. The message context menu can open a uniquely named saved chat contact after confirmation, or import a MeshCore contact-card link provided separately by the sender. The importer checks the packet structure, asks the user to compare the public key, and reports success only when the connected radio lists that key. A flood advert is another way to discover a contact.
 
+Secure messages are limited to 74 UTF-8 bytes. The individual and group composers show an inline warning with the excess byte count when a draft is too long; the limit has not changed.
+
 The native window's fullscreen control and F11 now use a borderless view on the current monitor, restoring the previous window position and state when toggled off. A preview integration check exercises the control through the desktop bridge; fullscreen and multimonitor behaviour still need interactive testing on different display setups.
 
 The optional `--audit-legacy-profile` developer check makes a temporary, hash-verified copy of a closed legacy profile, reports only aggregate counts and whether corresponding secure credential entries exist, then removes the temporary copy after WebView2 closes. It does not connect a radio or print message contents, names or secrets. It requires the original local origin to be free and does not itself install or migrate user data.

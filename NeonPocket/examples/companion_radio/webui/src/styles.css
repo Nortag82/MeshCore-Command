@@ -499,3 +499,5 @@ body{font-size:13px}
 @media(max-width:700px){.waypoint-navigation{top:73px;max-width:calc(100% - 32px);font-size:11px}body:has(.waypoint-navigation:not([hidden])) .situation-share-popup{top:155px}body:has(.waypoint-navigation:not([hidden])) .situation-panel{top:200px;max-height:calc(100% - 210px)}body:has(.waypoint-navigation:not([hidden])) .situation-deliveries{top:155px}}
 
 .situation-secure-unread{position:absolute;z-index:1200;right:12px;bottom:42px;max-width:calc(100% - 24px);box-shadow:0 4px 18px #000a}.situation-secure-unread[hidden]{display:none}@media(max-width:700px){.situation-secure-unread{right:8px;bottom:12px;min-height:36px}}
+
+.secure-compose-row small[data-over-limit='true'] { color: #ff9292; font-weight: 600; }

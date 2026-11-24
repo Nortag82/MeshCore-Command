@@ -1,3 +1,4 @@
+import {showSecureMessageCount} from './secure-message-count.js';
 const enc=new TextEncoder();
 const idOk=s=>/^[a-f0-9]{64}$/.test(s);
 export function createSecureGroups({state,secureComs,hex,onChange=()=>{}}){
@@ -21,7 +22,7 @@ export function createSecureGroups({state,secureComs,hex,onChange=()=>{}}){
  $('secure-group-delete').onclick=()=>{load();const id=$('secure-group-manage-select').value;if(!db.groups[id]||!confirm('Remove this group and its local group message history? This does not notify other members.'))return;delete db.groups[id];delete db.history[id];if(editing===id)editing='';persist();change();notice('secure-group-manage-status','Group removed on this PC.')};
  $('secure-message-group').onchange=()=>{selected=$('secure-message-group').value;if(selected)$('secure-message-contact').value='';change()};
  $('secure-message-contact').onchange=()=>{selected='';const peer=$('secure-message-contact').value;if(peer)secureComs.selectContact(peer);change()};
- $('secure-group-input').oninput=()=>{const n=enc.encode($('secure-group-input').value).length;$('secure-group-count').textContent=`${n} / 74 UTF-8 bytes`};
+ $('secure-group-input').oninput=()=>showSecureMessageCount($('secure-group-count'),$('secure-group-input').value);
  $('secure-group-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.ctrlKey&&!e.altKey&&!e.metaKey&&!e.isComposing){e.preventDefault();if(!e.repeat&&!busy)$('secure-group-compose').requestSubmit()}};
  $('secure-group-compose').onsubmit=async e=>{e.preventDefault();load();const id=selected,own=node,g=db.groups[id],text=$('secure-group-input').value.trim();if(busy||!g||!text)return;if(enc.encode(text).length>74){notice('secure-group-status','Message exceeds 74 UTF-8 bytes.');return}const verified=new Set(members().map(m=>m.id));if(g.members.some(m=>!verified.has(m))){notice('secure-group-status','Every member must be a verified contact before sending. Update the group or verify missing members.');return}busy=true;$('secure-group-send').disabled=true;let sent=0,failed=0,record=null;const total=g.members.length;
   function updateRecord(){if(!record)return;const acknowledged=record.deliveries.filter(d=>d.status==='acknowledged').length,unavailable=record.deliveries.filter(d=>d.status==='unavailable').length;record.status=acknowledged?`Radio acknowledged ${acknowledged}/${total}${failed?` · ${failed} failed`:''}${unavailable?` · ${unavailable} confirmation unavailable`:''}`:`queued for ${sent}/${total}${failed?` · ${failed} failed`:''}${unavailable?` · ${unavailable} confirmation unavailable`:''}`}
