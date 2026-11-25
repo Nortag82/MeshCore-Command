@@ -22,7 +22,7 @@ MeshCore Command brings messaging, radio management and mapping together in a de
 - **Setup and recovery** — flash supported Wi-Fi boards, discover radios on your network, reboot the selected local radio, and export an encrypted backup of supported PC and radio data.
 - **Android companion** — an experimental Bluetooth app offers messaging, Secure Coms and Situation Map features on Android 12 and newer.
 
-[Download for Windows](#download-for-windows) · [Android test app](#android-test-app) · [Screenshots](docs/SCREENSHOTS.md) · [User manual](docs/USER-MANUAL.md)
+[Download for Windows](#download-for-windows) · [Android test app](#android-test-app) · [Screenshots](docs/SCREENSHOTS.md) · [Windows quick start](docs/NATIVE-TEST-QUICKSTART.md)
 
 Features depend on radio firmware, connectivity and node permissions. Terrain visibility is an estimate, and Secure Coms has not been independently audited. Android and some multi-radio features need further hardware testing.
 
@@ -38,7 +38,7 @@ There are tradeoffs. Packet routing information and traffic patterns remain obse
 
 ## Download for Windows
 
-Download the [version 2.0.43 Windows installer](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). The previous Python application and native app can also offer the update. Back up important data first and see the [Windows quick start](docs/NATIVE-TEST-QUICKSTART.md) and [upgrade notes](MeshCore%20Windows/LEGACY-UPGRADE.md). Existing old and native profiles are separate and are not merged. Windows Edge WebView2 is required. The installer and bundled firmware are unsigned; use the exact board option and back up radio data before flashing.
+Download the [version 2.0.43 Windows installer](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). The previous Python application and native app can also offer the update. Back up important data first and see the [Windows quick start](docs/NATIVE-TEST-QUICKSTART.md) and [upgrade notes](MeshCore%20Windows/LEGACY-UPGRADE.md). Existing old and native profiles are separate and are not merged. Windows Edge WebView2 is required. The installer and bundled firmware are unsigned; use the exact board option and back up radio data before flashing. The 2.0.43 app still displays its early-candidate banner.
 
 ## Android test app
 
@@ -50,7 +50,7 @@ These previews use the interface from the released Android 0.2.15 APK with simul
 
 ## A look inside
 
-[See the current Windows test screenshots](docs/SCREENSHOTS.md), including the board selector and main navigation pages.
+[See the Windows screenshots](docs/SCREENSHOTS.md), including the board selector and main navigation pages.
 
 > Screenshots use simulated contacts, messages, telemetry and map markers. Map data © OpenStreetMap contributors.
 
@@ -103,7 +103,7 @@ Read the [MeshCore Command user manual](docs/USER-MANUAL.md) for setup, messagin
 
 ## Building
 
-The native Windows candidate uses .NET 10 and WebView2. Its build bundles the shared interface with Node.js; see the [native build notes](MeshCore%20Windows/README.md) for firmware staging, testing and packaging. The previous Python desktop uses pywebview, pyserial, esptool and PyInstaller. Generated firmware binaries and local device data are not included. Firmware targets and packaging must be verified before distributing builds.
+The native Windows app uses .NET 10 and WebView2. Its build bundles the shared interface with Node.js; see the [native build notes](MeshCore%20Windows/README.md) for firmware staging, testing and packaging. The previous Python desktop uses pywebview, pyserial, esptool and PyInstaller. Generated firmware binaries and local device data are not included. Firmware targets and packaging must be verified before distributing builds.
 
 Do not commit Wi-Fi credentials, radio identity backups, message histories or private keys.
 

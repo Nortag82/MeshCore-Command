@@ -1,6 +1,6 @@
 # MeshCore Command screenshots
 
-These images show the native Windows test interface with simulated contacts, messages, telemetry and map objects. The saved Wi-Fi dialog shows the 2.0.43 change; the main-page screenshots show 2.0.42. They were generated without connecting a radio or reading a user profile. The red banner is part of the test build. Map data © OpenStreetMap contributors.
+These images show the native Windows 2.0.43 interface with simulated contacts, messages, telemetry and map objects. They were generated without connecting a radio or reading a user profile. The released 2.0.43 app still displays the red early-candidate banner shown here. Map data © OpenStreetMap contributors.
 
 The native firmware dialog is not pictured here. The Android images in the README use the HTML from the released Android 0.2.15 APK with a simulated bridge; they are not photographs of a phone or live radio session.
 
