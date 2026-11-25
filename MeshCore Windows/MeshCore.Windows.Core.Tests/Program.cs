@@ -45,6 +45,7 @@ if (args.Contains("--live-map-test"))
     return;
 }
 
+await HfLinkChecks.RunAsync();
 var output = CompanionFrames.EncodeOutgoing(new byte[] { 1, 2, 3 });
 {
     string local = Path.Combine(Path.GetTempPath(), "mcc-retirement-test-" + Guid.NewGuid().ToString("N"));

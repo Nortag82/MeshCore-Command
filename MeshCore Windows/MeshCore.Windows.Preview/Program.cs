@@ -351,6 +351,7 @@ internal sealed class PreviewWindow : Form
     private bool _updatePrompted;
     private byte[]? _pendingRestore;
     private FirmwareDialog? _firmwareDialog;
+    private HfLinkDialog? _hfLinkDialog;
     private readonly string? _testReceipt, _testNonce;
     private readonly byte[]? _expectedRecords;
     private bool _startupReady;
@@ -414,6 +415,7 @@ internal sealed class PreviewWindow : Form
             {
                 _notifications.Dispose(); _tray.Visible = false; _tray.Dispose();
                 _updater?.Dispose();
+                if (_hfLinkDialog is not null) await _hfLinkDialog.StopAndCloseAsync();
                 if (_server is not null) await _server.DisposeAsync();
                 if (_downloads is not null) await _downloads.DisposeAsync();
                 await _sessions.DisposeAsync(); _elevationHttp.Dispose();
@@ -484,6 +486,7 @@ internal sealed class PreviewWindow : Form
                     board_connect_wifi: (...a)=>call('board_connect_wifi',...a), board_connect_ble: (...a)=>call('board_connect_ble',...a), board_scan_ble: (...a)=>call('board_scan_ble',...a),
                     board_connect_serial: (...a)=>call('board_connect_serial',...a),
                     open_firmware: (...a)=>call('open_firmware',...a),
+                    open_hflink: (...a)=>call('open_hflink',...a),
                     default_network: (...a)=>call('default_network',...a), wifi_scan: (...a)=>call('wifi_scan',...a),
                     board_rename: (...a)=>call('board_rename',...a), board_disconnect: (...a)=>call('board_disconnect',...a), board_forget: (...a)=>call('board_forget',...a),
                     choose_offline_map: (...a)=>call('choose_offline_map',...a), save_terrain_plan: (...a)=>call('save_terrain_plan',...a), open_terrain_plan: (...a)=>call('open_terrain_plan',...a),
@@ -505,6 +508,8 @@ internal sealed class PreviewWindow : Form
                     document.getElementById('native-forget-wifi').onclick=async()=>{const select=document.getElementById('native-saved-wifi'),id=select.value;if(!id){document.getElementById('status').textContent='Choose a saved Wi-Fi board first.';return}const label=select.selectedOptions[0]?.textContent||'this board';if(!confirm(`Remove ${label} from saved boards on this PC? This does not reset the radio.`))return;if(select.value!==id){document.getElementById('status').textContent='Board selection changed; nothing was removed.';return}const result=await window.pywebview.api.board_forget(id);if(result.error){document.getElementById('status').textContent=result.error;return}await refreshSaved();document.getElementById('wifi-address').value='';document.getElementById('status').textContent='Saved board removed.'};
                     const flash=document.createElement('button');flash.type='button';flash.textContent='Flash firmware';document.getElementById('add').after(flash);
                     flash.onclick=async()=>{const result=await window.pywebview.api.open_firmware();if(result.error)alert(result.error)};
+                    const hf=document.createElement('button');hf.id='open-hflink';hf.type='button';hf.textContent='HFLink';flash.after(hf);
+                    hf.onclick=async()=>{const result=await window.pywebview.api.open_hflink();if(result.error)alert(result.error)};
                     const scan=document.createElement('details');scan.innerHTML='<summary>Find a radio on Wi-Fi</summary><label>Subnet<input id="native-subnet" placeholder="192.168.1.0/24"></label><button type="button" id="native-wifi-scan">Scan network</button><span id="native-scan-status" role="status"></span><label>Discovered radios<select id="native-scan-results"><option value="">Scan for a radio</option></select></label>';wifi.append(scan);
                     scan.addEventListener('toggle',async()=>{if(scan.open&&!document.getElementById('native-subnet').value){const info=await window.pywebview.api.default_network();document.getElementById('native-subnet').value=info.network||''}});
                     document.getElementById('native-scan-results').onchange=e=>{if(e.target.value)document.getElementById('wifi-address').value=e.target.value};
@@ -580,6 +585,13 @@ internal sealed class PreviewWindow : Form
                                 string version = JsonSerializer.Serialize(typeof(PreviewWindow).Assembly.GetName().Version?.ToString(3));
                                 string branding = await _web.CoreWebView2.ExecuteScriptAsync("(()=>{const d=document.querySelector('iframe')?.contentDocument;return !!d?.querySelector('.brand')?.textContent.includes('MeshCore Command') && !!d?.getElementById('desktop-build')?.textContent.includes(" + version + ")})()");
                                 if (branding != "true") Environment.ExitCode = 1;
+                            }
+                            if (_integrationIp is null && Environment.ExitCode == 0)
+                            {
+                                await _web.CoreWebView2.ExecuteScriptAsync("document.getElementById('open-hflink').click()");
+                                for (int attempt = 0; attempt < 50 && _hfLinkDialog is null; attempt++) await Task.Delay(100);
+                                if (_hfLinkDialog is null || !_hfLinkDialog.Visible) Environment.ExitCode = 1;
+                                else await _hfLinkDialog.StopAndCloseAsync();
                             }
                             if (Environment.ExitCode != 0 && _integrationIp is not null)
                             {
@@ -793,6 +805,15 @@ internal sealed class PreviewWindow : Form
                         _firmwareDialog.Show(this);
                     }
                     else _firmwareDialog.Activate();
+                    result = new { ok = true }; break;
+                case "open_hflink":
+                    if (_closing) throw new InvalidOperationException("MeshCore Command is closing.");
+                    if (_hfLinkDialog is null || _hfLinkDialog.IsDisposed)
+                    {
+                        _hfLinkDialog = new HfLinkDialog(_dataDirectory, _experimentalRadio && !_smokeTest);
+                        _hfLinkDialog.Show(this);
+                    }
+                    else _hfLinkDialog.Activate();
                     result = new { ok = true }; break;
                 case "board_rename":
                     var liveProfile = _connectedProfiles.GetValueOrDefault(Arg(0));
