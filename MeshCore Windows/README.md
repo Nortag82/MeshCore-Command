@@ -1,6 +1,6 @@
 # Windows native migration (in progress)
 
-This directory contains the C# replacement for the Python desktop host. Native Windows 2.0.43 is the current Windows release and includes a legacy-upgrade path. User testing has covered migration, backups, radio use, messaging and maps, flashing and installation; results are not a guarantee for every hardware configuration.
+This directory contains the C# replacement for the Python desktop host. The native Windows app includes a legacy-upgrade path. User testing has covered migration, backups, radio use, messaging and maps, flashing and installation.
 
 See the [experimental HFLink guide](../docs/HFLINK.md) for the native direct-messaging workflow, no-RF simulation and Mercury setup.
 

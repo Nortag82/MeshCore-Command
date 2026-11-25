@@ -1,6 +1,6 @@
 # Native Windows quick start
 
-The [2.0.43 Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43) includes installers for a new installation, updates from previous native builds, and the existing Python app's updater. The previous legacy release and its [user manual](USER-MANUAL.md) remain available.
+The [2.0.44 Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.44) includes HFLink and supports new installations and updates from previous native builds. The legacy Python updater can offer the [2.0.43 migration release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). The previous legacy release and its [user manual](USER-MANUAL.md) remain available.
 
 ## Update or install
 

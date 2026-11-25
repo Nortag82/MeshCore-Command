@@ -4,7 +4,7 @@ Experimental HFLink sends openly readable direct messages between two attended s
 
 ## Set up simulation
 
-1. Start a native MeshCore Command build that includes HFLink. Select **HFLink** in the Windows shell toolbar. A MeshCore board connection is optional.
+1. In MeshCore Command for Windows, use **Settings → Check for updates** to install version 2.0.44 or later. Select **HFLink** in the Windows shell toolbar. A MeshCore board connection is optional.
 2. Select **Sign in** and create a password for the local `admin` account. Use at least 12 characters.
 3. Open **Station settings**, enter an example station callsign such as `M0ABC`, keep **Simulation (no RF)** checked and save. **Check modem** confirms that the simulator is ready.
 4. In **Users and permissions**, create a requester with a callsign, a password, HFLink access and transmit-request permission. Create a second account with the **Designated operator** role and HFLink access. The operator can also request messages if granted that permission. To revoke access, select the account and clear **Approve HFLink access**.
