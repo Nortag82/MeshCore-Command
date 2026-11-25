@@ -3,7 +3,7 @@ using System.Text;
 
 namespace MeshCore.Windows.Preview;
 
-internal sealed class HfLinkDialog : Form
+internal sealed class HfLinkView : UserControl
 {
     private readonly HfLink _link;
     private readonly bool _allowLive;
@@ -20,39 +20,42 @@ internal sealed class HfLinkDialog : Form
         RowHeadersVisible = false, MultiSelect = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect
     };
     private readonly TextBox _detail = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical };
-    private readonly Button _signIn, _signOut, _setup, _users, _probe, _send, _queue, _receive, _cancel, _retry, _audit, _stop;
+    private readonly Button _signIn, _signOut, _setup, _mercury, _users, _probe, _send, _queue, _receive, _cancel, _retry, _audit, _stop;
     private Guid _session;
     private CancellationTokenSource? _operation;
     private TaskCompletionSource? _finished;
-    private bool _closeRequested;
     private bool _ready;
 
-    public HfLinkDialog(string directory, bool allowLive)
+    public HfLinkView(string directory, bool allowLive, Func<Task> returnToRadio)
     {
         _link = new HfLink(Path.Combine(directory, "hflink-native.sqlite3"));
         _allowLive = allowLive;
-        Text = "MeshCore Command — Experimental HFLink";
-        Size = new Size(1080, 690);
-        MinimumSize = new Size(790, 560);
-        StartPosition = FormStartPosition.CenterParent;
+        Dock = DockStyle.Fill;
+        AccessibleName = "HFLink";
         Font = new Font("Segoe UI", 10);
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 9, Padding = new Padding(12) };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 10, Padding = new Padding(16), AutoScroll = true };
         Controls.Add(layout);
         for (int row = 0; row < layout.RowCount; row++)
-            layout.RowStyles.Add(row switch { 6 => new RowStyle(SizeType.Percent, 100), 7 => new RowStyle(SizeType.Absolute, 90), _ => new RowStyle(SizeType.AutoSize) });
-        layout.Controls.Add(new Label
+            layout.RowStyles.Add(row switch { 7 => new RowStyle(SizeType.Percent, 100), 8 => new RowStyle(SizeType.Absolute, 90), _ => new RowStyle(SizeType.AutoSize) });
+        var back = AsyncButton("Back to radio", returnToRadio);
+        back.Name = "hfLinkBack";
+        var title = new Label { Text = "HFLink", Font = new Font(Font, FontStyle.Bold), Anchor = AnchorStyles.Left, AutoSize = true, Padding = new Padding(8, 0, 0, 0) };
+        layout.Controls.Add(Row(back, title), 0, 0);
+        var notice = new Label
         {
-            AutoSize = true, MaximumSize = new Size(730, 0), ForeColor = Color.DarkRed,
+            AutoSize = true, MaximumSize = new Size(730, 0), ForeColor = SystemColors.WindowText,
             Text = "HF messages are openly readable. The designated operator is responsible for transmissions and applicable licence conditions. Callsigns and licence-check records do not verify identity, licensing or compliance."
-        }, 0, 0);
+        };
+        layout.Controls.Add(notice, 0, 1);
 
         _signIn = Button("Sign in", SignIn);
         _signOut = Button("Sign out", () => { _link.SignOut(_session); _session = Guid.Empty; RefreshView(); Report("Signed out."); });
         _setup = Button("Station settings", ConfigureStation);
+        _mercury = Button("Mercury settings", ConfigureMercury);
         _users = Button("Users and permissions", ConfigureUser);
         _audit = Button("Audit log", ShowAudit);
-        layout.Controls.Add(Row(_signIn, _signOut, _setup, _users, _audit), 0, 1);
-        layout.Controls.Add(_station, 0, 2);
+        layout.Controls.Add(Row(_signIn, _signOut, _setup, _mercury, _users, _audit), 0, 2);
+        layout.Controls.Add(_station, 0, 3);
 
         _queue = Button("Queue for approval", () =>
         {
@@ -61,7 +64,7 @@ internal sealed class HfLinkDialog : Form
             RefreshView();
             Report("Message is awaiting operator approval.");
         });
-        layout.Controls.Add(Row(_destination, _message, _bytes, _queue), 0, 3);
+        layout.Controls.Add(Row(_destination, _message, _bytes, _queue), 0, 4);
         _message.TextChanged += (_, _) => _bytes.Text = $"{Encoding.UTF8.GetByteCount(_message.Text)} / 512 bytes";
 
         _probe = AsyncButton("Check modem", () => RunAsync(async token =>
@@ -75,29 +78,66 @@ internal sealed class HfLinkDialog : Form
         _stop = Button("Stop operation", () => _operation?.Cancel());
         _simulation.Items.AddRange(["Simulate no receipt", "Simulate receipt", "Simulate disconnect", "Simulate timeout"]);
         _simulation.SelectedIndex = 0;
-        layout.Controls.Add(Row(_probe, _receive, _stop, _simulation), 0, 4);
+        layout.Controls.Add(Row(_probe, _receive, _stop, _simulation), 0, 5);
 
         _send = AsyncButton("Approve and send", SendAsync);
         _retry = Button("Retry", () => { _link.Retry(_session, Selected().Id); RefreshView(); Report("Retry requires fresh approval."); });
         _cancel = Button("Cancel request", () => { _link.Cancel(_session, Selected().Id); RefreshView(); Report("Request cancelled."); });
-        layout.Controls.Add(Row(_filter, _send, _retry, _cancel), 0, 5);
+        layout.Controls.Add(Row(_filter, _send, _retry, _cancel), 0, 6);
         _filter.TextChanged += (_, _) => RefreshView();
         foreach (var column in new[] { ("Time", 141), ("Mode", 85), ("Direction", 85), ("From", 95), ("To", 95), ("Status", 170) })
             _history.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = column.Item1, Width = column.Item2, SortMode = DataGridViewColumnSortMode.NotSortable });
         _history.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Message", AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, SortMode = DataGridViewColumnSortMode.NotSortable });
         _history.SelectionChanged += (_, _) => { if (_ready) SetActions(); };
-        layout.Controls.Add(_history, 0, 6);
-        layout.Controls.Add(_detail, 0, 7);
-        layout.Controls.Add(_status, 0, 8);
-        FormClosing += (_, e) =>
+        layout.Controls.Add(_history, 0, 7);
+        layout.Controls.Add(_detail, 0, 8);
+        layout.Controls.Add(_status, 0, 9);
+        if (!SystemInformation.HighContrast)
         {
-            if (_operation is null) { _link.SignOut(_session); return; }
-            _closeRequested = true;
-            _operation.Cancel();
-            e.Cancel = e.CloseReason == CloseReason.UserClosing;
-        };
+            StyleView(layout);
+            notice.ForeColor = Color.FromArgb(255, 204, 132);
+        }
         _ready = true;
         RefreshView();
+    }
+
+    private static void StyleView(Control container)
+    {
+        Color background = Color.FromArgb(9, 15, 20);
+        Color surface = Color.FromArgb(21, 37, 48);
+        Color foreground = Color.FromArgb(234, 242, 247);
+        container.BackColor = background;
+        container.ForeColor = foreground;
+        foreach (Control child in container.Controls)
+        {
+            child.ForeColor = foreground;
+            switch (child)
+            {
+                case Panel:
+                    StyleView(child);
+                    break;
+                case Button button:
+                    button.UseVisualStyleBackColor = false;
+                    button.BackColor = surface;
+                    button.FlatStyle = FlatStyle.Flat;
+                    button.FlatAppearance.BorderColor = Color.FromArgb(56, 80, 94);
+                    break;
+                case DataGridView grid:
+                    grid.BackgroundColor = background;
+                    grid.GridColor = Color.FromArgb(57, 81, 95);
+                    grid.EnableHeadersVisualStyles = false;
+                    grid.ColumnHeadersDefaultCellStyle.BackColor = surface;
+                    grid.ColumnHeadersDefaultCellStyle.ForeColor = foreground;
+                    grid.DefaultCellStyle.BackColor = background;
+                    grid.DefaultCellStyle.ForeColor = foreground;
+                    grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(30, 92, 87);
+                    grid.DefaultCellStyle.SelectionForeColor = Color.White;
+                    break;
+                case TextBoxBase or ComboBox:
+                    child.BackColor = surface;
+                    break;
+            }
+        }
     }
 
     private void SignIn()
@@ -131,6 +171,15 @@ internal sealed class HfLinkDialog : Form
         _link.SaveStation(_session, new(call.Text, host.Text, (int)control.Value, (int)data.Value, (int)timeout.Value, sim.Checked));
         RefreshView();
         Report("Station settings saved. Check the modem before using it.");
+    }
+
+    private void ConfigureMercury()
+    {
+        if (_operation is not null) return;
+        string? path = _link.MercuryConfigPath(_session) ?? MercurySettingsDialog.FindConfig();
+        using var editor = new MercurySettingsDialog(path, config => _link.SaveMercuryConfig(_session, config));
+        editor.ShowDialog(this);
+        if (editor.Saved) Report("Mercury configuration saved. Restart Mercury to apply it.");
     }
 
     private void ConfigureUser()
@@ -180,7 +229,7 @@ internal sealed class HfLinkDialog : Form
             await _link.ReceiveAsync(_session, _allowLive, (message, deadline) =>
             {
                 RefreshView();
-                return Task.FromResult(!deadline.IsCancellationRequested && !_closeRequested &&
+                return Task.FromResult(!deadline.IsCancellationRequested &&
                     ConfirmReceipt(message, deadline));
             }, token);
             return "Receive window closed.";
@@ -208,26 +257,29 @@ internal sealed class HfLinkDialog : Form
             _finished = null;
             try
             {
-                if (!IsDisposed)
-                {
-                    if (_closeRequested) Close();
-                    else RefreshView();
-                }
+                if (!IsDisposed) RefreshView();
             }
             finally { finished.SetResult(); }
         }
     }
 
-    public async Task StopAndCloseAsync()
+    public async Task StopAsync()
     {
-        if (IsDisposed) return;
-        _closeRequested = true;
         if (_finished is { } finished)
         {
             _operation?.Cancel();
             await finished.Task;
         }
-        if (!IsDisposed) Close();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _operation?.Cancel();
+            _link.SignOut(_session);
+        }
+        base.Dispose(disposing);
     }
 
     private bool ConfirmReceipt(HfMessage message, CancellationToken deadline)
@@ -297,6 +349,7 @@ internal sealed class HfLinkDialog : Form
         _signIn.Enabled = idle && user is null;
         _signOut.Enabled = idle && _session != Guid.Empty;
         _setup.Enabled = _users.Enabled = idle && admin;
+        _mercury.Enabled = idle && admin;
         _audit.Enabled = idle && (admin || op);
         _queue.Enabled = idle && user is { Access: true, MayRequest: true };
         _receive.Enabled = idle && op;

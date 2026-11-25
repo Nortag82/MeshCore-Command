@@ -1,6 +1,6 @@
 # MeshCore Command
 
-> **Windows release** 2.0.44 adds [experimental HFLink](docs/HFLINK.md) to the native Windows app. For upgrades from the Python app, see the [upgrade notes](MeshCore%20Windows/LEGACY-UPGRADE.md) and back up important data before updating.
+> **Windows release** 2.0.45 integrates [experimental HFLink](docs/HFLINK.md) into the main window and adds a Mercury settings editor. For upgrades from the Python app, see the [upgrade notes](MeshCore%20Windows/LEGACY-UPGRADE.md) and back up important data before updating.
 
 A Windows companion for MeshCore radios, with Wi-Fi, Bluetooth and USB connections, messaging, repeater monitoring, terrain planning and a shared situation map. An experimental Android Bluetooth companion is also included.
 
@@ -34,11 +34,11 @@ This extra layer protects the contents of secure messages and map updates from a
 
 There are tradeoffs. Packet routing information and traffic patterns remain observable; ordinary adverts and Public-channel discovery can reveal identifying information. Encryption adds overhead, limiting each secure message to **74 UTF-8 bytes**. A local group sends a separate encrypted message to each member, increasing airtime and delivery time. A radio acknowledgement is not proof the other app decrypted or read a message. **The implementation has not been independently audited and does not provide forward secrecy**: someone who obtains a shared secret may be able to decrypt previously recorded traffic. It also cannot protect plaintext on a compromised endpoint. For key handling, replay protection, map storage and recovery details, see [Secure Coms security and tradeoffs](docs/SECURE-COMS-SECURITY.md).
 
-**Latest Windows release** 2.0.44 adds experimental HFLink direct messaging through Mercury. Simulation is available without a modem or radio. Android 0.2.15 remains experimental.
+**Latest Windows release** 2.0.45 includes an integrated HFLink view and local Mercury audio and PTT settings. HFLink simulation works without a modem or radio. Android 0.2.15 remains experimental.
 
 ## Download for Windows
 
-Download the [version 2.0.44 Windows installer](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.44) or update from **Settings** in the native app. The legacy Python updater can offer the [2.0.43 migration release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). Back up important data first and see the [Windows quick start](docs/NATIVE-TEST-QUICKSTART.md) and [upgrade notes](MeshCore%20Windows/LEGACY-UPGRADE.md). The Python and native apps keep separate profiles. Windows Edge WebView2 is required. The installer and bundled firmware are unsigned. Use the exact board option and back up radio data before flashing.
+Download the [version 2.0.45 Windows installer](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.45) or update from **Settings** in the native app. The legacy Python updater can offer the [2.0.43 migration release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). Back up important data first and see the [Windows quick start](docs/NATIVE-TEST-QUICKSTART.md) and [upgrade notes](MeshCore%20Windows/LEGACY-UPGRADE.md). The Python and native apps keep separate profiles. Windows Edge WebView2 is required. The installer and bundled firmware are unsigned. Use the exact board option and back up radio data before flashing.
 
 ## Android test app
 
@@ -110,7 +110,7 @@ Do not commit Wi-Fi credentials, radio identity backups, message histories or pr
 <details>
 <summary>Version history and technical notes</summary>
 
-The current Windows release is **2.0.44**. The previous Python release is **2.0.38** and the Android test build is **0.2.15**. Secure groups use local recipient lists to send individual encrypted messages. The [secure pairing research prototype](experimental/secure-pairing/) is separate. Command discovery uses Public.
+The current Windows release is **2.0.45**. The previous Python release is **2.0.38** and the Android test build is **0.2.15**. Secure groups use local recipient lists to send individual encrypted messages. The [secure pairing research prototype](experimental/secure-pairing/) is separate. Command discovery uses Public.
 
 Windows 2.0.6 and newer add a user-initiated update check. Release publishers must name future Windows assets `MeshCore-Command-Windows-X.Y.Z-Setup.exe`, retain the installer's `--update` mode, and publish the asset with GitHub's SHA-256 digest. The app compares that digest before launching the installer; the digest is not an independent signature.
 

@@ -4,7 +4,7 @@ Experimental HFLink sends openly readable direct messages between two attended s
 
 ## Set up simulation
 
-1. In MeshCore Command for Windows, use **Settings → Check for updates** to install version 2.0.44 or later. Select **HFLink** in the Windows shell toolbar. A MeshCore board connection is optional.
+1. In MeshCore Command for Windows, use **Settings → Check for updates** to install version 2.0.45 or later. Select **HFLink** in the main toolbar. **Back to radio** restores your current radio page and stops any active HFLink operation. A MeshCore board connection is optional.
 2. Select **Sign in** and create a password for the local `admin` account. Use at least 12 characters.
 3. Open **Station settings**, enter an example station callsign such as `M0ABC`, keep **Simulation (no RF)** checked and save. **Check modem** confirms that the simulator is ready.
 4. In **Users and permissions**, create a requester with a callsign, a password, HFLink access and transmit-request permission. Create a second account with the **Designated operator** role and HFLink access. The operator can also request messages if granted that permission. To revoke access, select the account and clear **Approve HFLink access**.
@@ -14,12 +14,18 @@ Experimental HFLink sends openly readable direct messages between two attended s
 
 ## Connect Mercury
 
-1. Use two stations with native builds that include HFLink and separate Mercury v2 instances. Configure the audio devices, RF frequency and PTT in Mercury and the radio. Choose a Mercury-managed PTT backend. HFLink leaves frequency, audio levels, bandwidth selection and PTT configuration to the operator.
+1. Use two stations with native builds that include HFLink and separate Mercury v2 instances. Choose a Mercury-managed PTT backend and set the RF frequency and sideband on each radio.
 2. Reserve Mercury’s ARQ TCP ports for HFLink during the session. The defaults are control `8300` and data `8301`. Set a private host reachable from Windows, preferably `127.0.0.1` when Mercury runs locally. Protect the modem ports from untrusted clients. [Mercury TNC command reference](https://github.com/Rhizomatica/mercury/blob/mercuryv2/docs/TNC.md)
 3. On both stations, sign in as the HFLink administrator. In **Station settings**, enter the transmitting station’s callsign, the host and both ports. Choose a session timeout, clear **Simulation (no RF)** and save. The isolated Windows development preview requires `--enable-experimental-radio` to expose live mode.
 4. Select **Check modem**. HFLink opens both TCP sockets, configures the station callsign, checks a control response and releases the sockets. It attempts one reconnect if TCP setup fails. Session failures after a call starts require a fresh operator approval to try again.
 5. Keep operators present on both ends. On the destination station, sign in as the operator and select **Open receive window**. Mercury can transmit its ARQ responses during this explicit, time-limited window. The operator can stop it early.
 6. Queue the message on the originating station. Its operator selects it and chooses **Approve and send**. The destination operator sees the saved message and can authorize the HFLink receipt during the same session. A declined or missing receipt leaves delivery unconfirmed. If the window expires, establish a new attended session for a retry.
+
+### Edit your local Mercury settings
+
+Sign in as the HFLink administrator and select **Mercury settings**. Open the INI file used by your local Mercury process, or create one with **New INI**. Select your radio interface’s receive and transmit audio devices, then choose the PTT method and its settings. For an RTS-keyed USB serial interface, choose **serial**, its COM port, and **rts**. Choosing Windows audio devices uses Mercury’s WASAPI backend.
+
+Save the settings and restart Mercury with that INI file. HFLink retains a backup beside an edited file. Mercury command-line arguments can override the file, including `-P none` for a no-PTT check. Frequency and sideband stay on the radio. Use **Station settings** separately to tell HFLink which host and ports Mercury is using. For Mercury running on a different computer, configure its file on that computer. [Mercury INI reference](https://github.com/Rhizomatica/mercury/blob/v1.9.25/mercury.ini.example)
 
 ## Delivery and storage
 

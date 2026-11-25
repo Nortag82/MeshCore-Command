@@ -317,6 +317,7 @@ internal static class Program
 internal sealed class PreviewWindow : Form
 {
     private readonly WebView2 _web = new() { Dock = DockStyle.Fill };
+    private readonly Panel _content = new() { Dock = DockStyle.Fill };
     private readonly Label _warning = new() { Dock = DockStyle.Top, Height = 36, TextAlign = ContentAlignment.MiddleCenter,
         Text = "DEVELOPMENT PREVIEW — radio connections and data migration are disabled", BackColor = Color.DarkRed, ForeColor = Color.White };
     private BoardFrameEndpoint? _server;
@@ -351,7 +352,7 @@ internal sealed class PreviewWindow : Form
     private bool _updatePrompted;
     private byte[]? _pendingRestore;
     private FirmwareDialog? _firmwareDialog;
-    private HfLinkDialog? _hfLinkDialog;
+    private HfLinkView? _hfLinkView;
     private readonly string? _testReceipt, _testNonce;
     private readonly byte[]? _expectedRecords;
     private bool _startupReady;
@@ -405,7 +406,9 @@ internal sealed class PreviewWindow : Form
         Text = "MeshCore Command — native development preview";
         Width = 1280; Height = 800; MinimumSize = new Size(800, 500);
         if (_smokeTest) { Opacity = 0; ShowInTaskbar = false; }
-        Controls.Add(_web); Controls.Add(_warning);
+        _content.Controls.Add(_web);
+        Controls.Add(_content);
+        Controls.Add(_warning);
         Shown += async (_, _) => await InitialiseAsync();
         FormClosing += async (_, e) => {
             if (_closing) return;
@@ -415,7 +418,7 @@ internal sealed class PreviewWindow : Form
             {
                 _notifications.Dispose(); _tray.Visible = false; _tray.Dispose();
                 _updater?.Dispose();
-                if (_hfLinkDialog is not null) await _hfLinkDialog.StopAndCloseAsync();
+                if (_hfLinkView is not null) await _hfLinkView.StopAsync();
                 if (_server is not null) await _server.DisposeAsync();
                 if (_downloads is not null) await _downloads.DisposeAsync();
                 await _sessions.DisposeAsync(); _elevationHttp.Dispose();
@@ -588,10 +591,26 @@ internal sealed class PreviewWindow : Form
                             }
                             if (_integrationIp is null && Environment.ExitCode == 0)
                             {
-                                await _web.CoreWebView2.ExecuteScriptAsync("document.getElementById('open-hflink').click()");
-                                for (int attempt = 0; attempt < 50 && _hfLinkDialog is null; attempt++) await Task.Delay(100);
-                                if (_hfLinkDialog is null || !_hfLinkDialog.Visible) Environment.ExitCode = 1;
-                                else await _hfLinkDialog.StopAndCloseAsync();
+                                const string openHfLink = "document.getElementById('open-hflink').click()";
+                                await _web.CoreWebView2.ExecuteScriptAsync("window.hfLinkRadioFrame = document.querySelector('iframe'); " + openHfLink);
+                                for (int attempt = 0; attempt < 50 && _hfLinkView?.Visible != true; attempt++) await Task.Delay(100);
+                                var view = _hfLinkView;
+                                if (view is null || !view.Visible || view.FindForm() != this || _web.Visible ||
+                                    view.Controls.Find("hfLinkBack", true).SingleOrDefault() is not Button back)
+                                    Environment.ExitCode = 1;
+                                else
+                                {
+                                    back.PerformClick();
+                                    if (!_web.Visible || view.Visible || await _web.CoreWebView2.ExecuteScriptAsync(
+                                        "window.hfLinkRadioFrame === document.querySelector('iframe')") != "true") Environment.ExitCode = 1;
+                                    if (Environment.ExitCode == 0)
+                                    {
+                                        await _web.CoreWebView2.ExecuteScriptAsync(openHfLink);
+                                        for (int attempt = 0; attempt < 50 && !view.Visible; attempt++) await Task.Delay(100);
+                                        if (_hfLinkView != view || !view.Visible) Environment.ExitCode = 1;
+                                        await ReturnToRadioAsync();
+                                    }
+                                }
                             }
                             if (Environment.ExitCode != 0 && _integrationIp is not null)
                             {
@@ -807,13 +826,7 @@ internal sealed class PreviewWindow : Form
                     else _firmwareDialog.Activate();
                     result = new { ok = true }; break;
                 case "open_hflink":
-                    if (_closing) throw new InvalidOperationException("MeshCore Command is closing.");
-                    if (_hfLinkDialog is null || _hfLinkDialog.IsDisposed)
-                    {
-                        _hfLinkDialog = new HfLinkDialog(_dataDirectory, _experimentalRadio && !_smokeTest);
-                        _hfLinkDialog.Show(this);
-                    }
-                    else _hfLinkDialog.Activate();
+                    ShowHfLink();
                     result = new { ok = true }; break;
                 case "board_rename":
                     var liveProfile = _connectedProfiles.GetValueOrDefault(Arg(0));
@@ -943,6 +956,40 @@ internal sealed class PreviewWindow : Form
         finally { if (locked) _requests.Release(); }
         if (!IsDisposed && _web.CoreWebView2 is not null)
             _web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "result", id, value = result }));
+    }
+
+    private void ShowHfLink()
+    {
+        if (_closing) throw new InvalidOperationException("MeshCore Command is closing.");
+        if (_hfLinkView is null)
+        {
+            _hfLinkView = new HfLinkView(_dataDirectory, _experimentalRadio && !_smokeTest, ReturnToRadioAsync);
+            _content.Controls.Add(_hfLinkView);
+        }
+        _web.Hide();
+        _hfLinkView.Show();
+        _hfLinkView.BringToFront();
+        _hfLinkView.Select();
+    }
+
+    private async Task ReturnToRadioAsync()
+    {
+        if (_hfLinkView is null) return;
+        await _hfLinkView.StopAsync();
+        if (_closing) return;
+        _hfLinkView.Hide();
+        _web.Show();
+        _web.Focus();
+    }
+
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        if (keyData == Keys.F11 && _hfLinkView?.Visible == true)
+        {
+            ToggleFullScreen();
+            return true;
+        }
+        return base.ProcessCmdKey(ref msg, keyData);
     }
 
     private void RestoreAndActivate()

@@ -16,6 +16,7 @@ internal static class HfLinkChecks
             string path = Path.Combine(directory.FullName, "hf.sqlite3");
             var link = new HfLink(path);
             var admin = link.SetupAdministrator(Password);
+            CheckMercurySettings(link, admin, directory.FullName);
             var station = new HfStation("M0ABC");
             link.SaveStation(admin, station);
             var requester = new HfUser("alice", HfRole.User, "M0AAA", true, true, "Checked by the test admin");
@@ -25,6 +26,7 @@ internal static class HfLinkChecks
             var user = link.SignIn("alice", Password);
             var op = link.SignIn("operator", Password);
             var denied = link.SignIn("denied", Password);
+            await DeniedAsync(() => Task.FromResult(link.MercuryConfigPath(user)));
             await DeniedAsync(() => Task.FromResult(link.Queue(denied, "G1XYZ", "Unauthorized")));
             await DeniedAsync(() => Task.FromResult(link.Queue(admin, "G1XYZ", "Administrator without request access")));
             await DeniedAsync(() => Task.FromResult(link.SignIn("operator", "wrong")));
@@ -65,6 +67,36 @@ internal static class HfLinkChecks
         }
         finally { directory.Delete(recursive: true); }
         Console.WriteLine("HFLink SQLite, permissions, simulation and Mercury loopback checks passed.");
+    }
+
+    private static void CheckMercurySettings(HfLink link, Guid admin, string directory)
+    {
+        string path = Path.Combine(directory, "mercury.ini");
+        string original = "; Mercury\r\n[main]\r\ninput_device = \"USB #1\" ; keep this comment\r\n[ptt]\r\nmethod = none\r\n[custom]\r\nkey = keep\r\n";
+        File.WriteAllText(path, original);
+        var settings = MercurySettingsFile.Open(path);
+        Check(settings.Get("main", "input_device") == "USB #1", "Reads quoted device IDs with inline comments");
+        settings.Set("main", "input_device", "USB #2");
+        settings.Set("ptt", "method", "serial");
+        settings.Set("ptt", "device", "COM5");
+        settings.Set("audio", "tx_delay_ms", "200");
+        string? backup = link.SaveMercuryConfig(admin, settings);
+        Check(backup is not null && File.ReadAllText(backup) == original, "Mercury settings writes recoverable backup");
+        string saved = File.ReadAllText(path);
+        Check(saved.Contains("input_device = \"USB #2\" ; keep this comment\r\n") &&
+              saved.Contains("method = serial\r\ndevice = COM5\r\n[custom]\r\nkey = keep\r\n") &&
+              saved.Contains("[audio]\r\ntx_delay_ms = 200\r\n"), "Only selected Mercury settings change");
+        Check(link.MercuryConfigPath(admin) == path, "Remembers the Mercury settings file");
+        Check(MercurySettingsFile.Open(path).Save() is null, "Unchanged config is left alone");
+
+        var stale = MercurySettingsFile.Open(path);
+        stale.Set("ptt", "device", "COM7");
+        File.AppendAllText(path, "; changed by Mercury\r\n");
+        try { stale.Save(); throw new InvalidOperationException("Expected a config conflict."); }
+        catch (IOException) { }
+        Check(File.ReadAllText(path).EndsWith("; changed by Mercury\r\n"), "Concurrent edits are preserved");
+        try { stale.Set("ptt", "device", "COM7\nmethod=none"); throw new InvalidOperationException("Expected invalid device rejection."); }
+        catch (ArgumentException) { }
     }
 
     private static async Task LoopbackAsync(bool wrongReceipt)

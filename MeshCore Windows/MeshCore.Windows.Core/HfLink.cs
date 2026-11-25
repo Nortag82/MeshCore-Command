@@ -115,6 +115,30 @@ public sealed class HfLink
         }
     }
 
+    public string? MercuryConfigPath(Guid session)
+    {
+        lock (_gate)
+        {
+            using var db = Open();
+            RequireAdmin(db, session);
+            return Read<string>(db, "settings", "mercury-config-path");
+        }
+    }
+
+    public string? SaveMercuryConfig(Guid session, MercurySettingsFile config)
+    {
+        lock (_gate)
+        {
+            using var db = Open();
+            RequireAdmin(db, session);
+            if (_modem.CurrentCount == 0) throw new InvalidOperationException("Wait for the active modem operation to finish.");
+            string? backup = config.Save();
+            Write(db, "settings", "mercury-config-path", config.Path);
+            Record(db, "admin", "Local Mercury configuration saved");
+            return backup;
+        }
+    }
+
     public void SaveStation(Guid session, HfStation station)
     {
         string host = station.Host.Trim();
