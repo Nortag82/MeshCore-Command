@@ -34,7 +34,7 @@ This extra layer protects the contents of secure messages and map updates from a
 
 There are tradeoffs. Packet routing information and traffic patterns remain observable; ordinary adverts and Public-channel discovery can reveal identifying information. Encryption adds overhead, limiting each secure message to **74 UTF-8 bytes**. A local group sends a separate encrypted message to each member, increasing airtime and delivery time. A radio acknowledgement is not proof the other app decrypted or read a message. **The implementation has not been independently audited and does not provide forward secrecy**: someone who obtains a shared secret may be able to decrypt previously recorded traffic. It also cannot protect plaintext on a compromised endpoint. For key handling, replay protection, map storage and recovery details, see [Secure Coms security and tradeoffs](docs/SECURE-COMS-SECURITY.md).
 
-**Latest Windows test update:** 2.0.42 makes the secure-message length limit clear and includes the channel-message contact-card action. The previous stable Windows release is 2.0.38; Android 0.2.15 remains experimental.
+**Latest Windows test update:** 2.0.43 adds a Connect button beside saved Wi-Fi boards and asks before removing one. It also includes the secure-message length warning and channel-message contact-card action. The previous stable Windows release is 2.0.38; Android 0.2.15 remains experimental.
 
 ## Download for Windows
 
@@ -42,7 +42,7 @@ Download the [version 2.0.38 Windows installer](https://github.com/Nortag82/Mesh
 
 ### Native Windows test build
 
-The [native Windows 2.0.42 test installer](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.42) is an **early test build**. The existing Windows app's update checker includes test releases and can offer this upgrade. It keeps old data and a recovery copy of the old program; if a native test profile already exists, the installer asks before using it. The old and native profiles have separate credentials and are not merged. Back up important settings first and read the [native test quick start](docs/NATIVE-TEST-QUICKSTART.md) and [upgrade notes](MeshCore%20Windows/LEGACY-UPGRADE.md). The temporary preview does not retain its test credentials. Firmware flashing and other hardware combinations need further testing.
+The [native Windows 2.0.43 test installer](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43) is an **early test build**. The existing Windows app's update checker includes test releases and can offer this upgrade. It keeps old data and a recovery copy of the old program; if a native test profile already exists, the installer asks before using it. The old and native profiles have separate credentials and are not merged. Back up important settings first and read the [native test quick start](docs/NATIVE-TEST-QUICKSTART.md) and [upgrade notes](MeshCore%20Windows/LEGACY-UPGRADE.md). The temporary preview does not retain its test credentials. Firmware flashing and other hardware combinations need further testing.
 
 ## Android test app
 
@@ -114,7 +114,7 @@ Do not commit Wi-Fi credentials, radio identity backups, message histories or pr
 <details>
 <summary>Version history and technical notes</summary>
 
-The stable Windows release is **2.0.38**; the native Windows test release is **2.0.42** and the Android test build is **0.2.15**. Secure groups are local recipient lists that send individual encrypted messages; no group key is needed. The separate [secure pairing research prototype](experimental/secure-pairing/) is not integrated. Command discovery still uses Public.
+The stable Windows release is **2.0.38**; the native Windows test release is **2.0.43** and the Android test build is **0.2.15**. Secure groups are local recipient lists that send individual encrypted messages; no group key is needed. The separate [secure pairing research prototype](experimental/secure-pairing/) is not integrated. Command discovery still uses Public.
 
 Windows 2.0.6 and newer add a user-initiated update check. Release publishers must name future Windows assets `MeshCore-Command-Windows-X.Y.Z-Setup.exe`, retain the installer's `--update` mode, and publish the asset with GitHub's SHA-256 digest. The app compares that digest before launching the installer; the digest is not an independent signature.
 

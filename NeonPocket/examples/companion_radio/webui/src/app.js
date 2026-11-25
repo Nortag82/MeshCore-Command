@@ -345,6 +345,8 @@ let syncing = false;
 let recovering = false;
 let recoveryAttempts = 0;
 let unannouncedMessages = 0;
+let incomingNotificationsReady = false;
+let pendingIncomingMessages = [];
 let advertSending = false;
 let messageMenuTarget = null;
 const favorites = createFavorites(window.localStorage);
@@ -352,7 +354,7 @@ const repeaterTools = createRepeaterTools({state, getConnection: () => connectio
 const contactMap = createContactMap({state, hex, saveOwnLocation});
 const keywordWatch = createKeywordWatch({toast, targetInfo});
 let situationMap, secureGroups;
-const secureComs = createSecureComs({state,getConnection:()=>connection,exclusive,hex,toast,onObject:(peer,value)=>value.startsWith('IM1:')||value.startsWith('IA1:')?undefined:value.startsWith('TP:')||value.startsWith('TK:')?repeaterTools.ingestTerrainPlan(peer,value):situationMap.ingest(peer,value),getGroupUnread:()=>secureGroups?.unread()||0,isGroupSelected:()=>secureGroups?.active()||false});
+const secureComs = createSecureComs({state,getConnection:()=>connection,exclusive,hex,toast,onObject:(peer,value)=>value.startsWith('IM1:')||value.startsWith('IA1:')?undefined:value.startsWith('TP:')||value.startsWith('TK:')?repeaterTools.ingestTerrainPlan(peer,value):situationMap.ingest(peer,value),getGroupUnread:()=>secureGroups?.unread()||0,isGroupSelected:()=>secureGroups?.active()||false,isContactMuted:peer=>channelIsMuted(`dm:${peer}`)});
 const situationUnread=createSituationUnread({storage:window.localStorage,getOwner:()=>state.self?.publicKey?hex(state.self.publicKey):'',isViewing:()=>state.view==='situation'&&window.__MCC_BOARD_ACTIVE!==false&&!document.hidden&&document.hasFocus(),onChange:count=>{const box=$('situation-unread-indicator'),badge=$('situation-unread');box.hidden=!count;badge.hidden=!count;badge.textContent=String(count);box.textContent=count===1?'New map marker':`${count} map marker updates`;box.setAttribute('aria-label',`${count} new Secure Situation Map marker update${count===1?'':'s'}`)}});
 situationMap = createSituationMap({state,secureComs,hex,getGroups:()=>secureGroups?.listGroups()||[],onMarkerReceived:()=>{situationUnread.received();toast('New map marker received','warn')},onNavigate:()=>showView('situation')});
 secureGroups = createSecureGroups({state,secureComs,hex,onChange:()=>secureComs.refresh()});
@@ -502,21 +504,33 @@ function showChannelScope(key) {
   $('custom-region').hidden = select.value !== 'custom'; $('custom-region').value = select.value === 'custom' ? scope : '';
 }
 function channelIsMuted(key) {
-  const id = mutedChannelId(key);
-  if (!id) return false;
-  try { const values = JSON.parse(localStorage.getItem(`${historyKey()}:muted-channels`) || "[]"); return Array.isArray(values) && values.includes(id); } catch { return false; }
+  const identity = historyKey();
+  if (!identity) return false;
+  try {
+    if (key.startsWith('dm:')) {
+      const values = JSON.parse(localStorage.getItem(`${identity}:muted-contacts`) || '[]');
+      return Array.isArray(values) && values.includes(key.slice(3));
+    }
+    if (!key.startsWith('ch:')) return false;
+    const values = JSON.parse(localStorage.getItem(`${identity}:muted-channels`) || '[]');
+    if (!Array.isArray(values)) return false;
+    const id = mutedChannelId(key);
+    // If channel refresh failed, retain the stored mute for this radio slot.
+    return id ? values.includes(id) : values.some(value => typeof value === 'string' && value.startsWith(`${key.slice(3)}:`));
+  } catch { return false; }
 }
 function toggleChannelMute(key) {
-  const id = mutedChannelId(key); if (!id) return;
+  const direct = key.startsWith('dm:');
+  const id = direct ? key.slice(3) : mutedChannelId(key); if (!id || !historyKey()) return;
   try {
-    const store = `${historyKey()}:muted-channels`;
+    const store = `${historyKey()}:${direct ? 'muted-contacts' : 'muted-channels'}`;
     const saved = JSON.parse(localStorage.getItem(store) || "[]");
     const values = new Set(Array.isArray(saved) ? saved.filter(v => typeof v === "string") : []);
     values.has(id) ? values.delete(id) : values.add(id);
     localStorage.setItem(store, JSON.stringify([...values]));
     renderMessages(); renderHome();
-    toast(values.has(id) ? "Channel muted" : "Channel unmuted");
-  } catch { toast("Could not save channel mute setting", "error"); }
+    toast(`${direct ? "Contact" : "Channel"} ${values.has(id) ? "muted" : "unmuted"}`);
+  } catch { toast("Could not save mute setting", "error"); }
 }
 function contactKey(contact) { return `dm:${hex(contact.publicKey)}`; }
 function initials(name = "?") { return name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "?"; }
@@ -675,7 +689,7 @@ function ingestWaiting(item) {
     const key = targetForContactPrefix(message.pubKeyPrefix);
     const added = addMessage({ id: messageId("dm", hex(message.pubKeyPrefix), message.senderTimestamp, message.authorPrefix ? `${hex(message.authorPrefix)}:${message.text}` : message.text), key, text: message.text, authorPrefix: message.authorPrefix ? hex(message.authorPrefix) : undefined, timestamp: message.senderTimestamp, direction: "in", status: "received", unread: window.__MCC_BOARD_ACTIVE === false || document.hidden || state.view !== "messages" || state.selected !== key, snr: message.snr, pathLen: message.pathLen });
     if (added && key.startsWith("room:")) roomTools.noteMessage(key);
-    return added ? 1 : 0;
+    return added && !channelIsMuted(key) ? 1 : 0;
   }
   if (item.channelMessage) {
     const message = item.channelMessage;
@@ -837,6 +851,8 @@ async function syncAll() {
     await refreshContacts();
     try { state.channels = (await connection.getChannels()).filter((item) => item.name); } catch { state.channels = []; }
     normalizeTargets();
+    incomingNotificationsReady = true;
+    for (const item of pendingIncomingMessages.splice(0)) unannouncedMessages += ingestWaiting(item);
     await syncMessages();
     await refreshStats();
     await refreshUltimate();
@@ -1071,16 +1087,16 @@ function renderMessages() {
   select.value = state.selected;
   const info = targetInfo(state.selected);
   text("conversation-title", info?.name || "Choose a conversation");
-  const muted = info?.channel && channelIsMuted(state.selected);
+  const muted = channelIsMuted(state.selected);
   text("conversation-subtitle", info?.channel ? `Mesh channel · scope ${channelScope(state.selected) === "default" ? "radio default" : channelScope(state.selected)}${muted ? " · muted" : ""}` : info?.subtitle || "Channel or direct contact");
   $("conversation-edit").hidden = !info;
   $("conversation-delete").hidden = !info;
   $("conversation-edit").disabled = !info || !state.connected;
   $("conversation-delete").disabled = !info || !state.connected;
   const muteButton = $("channel-mute");
-  muteButton.hidden = !info?.channel;
+  muteButton.hidden = !info?.channel && !state.selected.startsWith("dm:");
   muteButton.disabled = !historyKey();
-  muteButton.textContent = muted ? "Unmute channel" : "Mute channel";
+  muteButton.textContent = `${muted ? "Unmute" : "Mute"} ${info?.channel ? "channel" : "contact"}`;
   muteButton.setAttribute("aria-pressed", String(Boolean(muted)));
   muteButton.title = "Mute notifications and unread badges; messages and word matches are still saved.";
   text("conversation-avatar", info?.avatar || "#");
@@ -1798,8 +1814,14 @@ async function cleanupFullContacts(radio,advert){
 }
 
 function bindConnectionEvents(radio) {
-  radio.on(Constants.ResponseCodes.ContactMsgRecv, (message) => { unannouncedMessages += ingestWaiting({ contactMessage: message }); });
-  radio.on(Constants.ResponseCodes.ChannelMsgRecv, (message) => { unannouncedMessages += ingestWaiting({ channelMessage: message }); });
+  incomingNotificationsReady = false;
+  pendingIncomingMessages = [];
+  const receive = (item) => {
+    if (!incomingNotificationsReady) pendingIncomingMessages.push(item);
+    else unannouncedMessages += ingestWaiting(item);
+  };
+  radio.on(Constants.ResponseCodes.ContactMsgRecv, (message) => receive({ contactMessage: message }));
+  radio.on(Constants.ResponseCodes.ChannelMsgRecv, (message) => receive({ channelMessage: message }));
   radio.on("connected", () => {
     if (!radio.ready || !radio.ownsLease()) return;
     setLink("connected");
@@ -1807,13 +1829,13 @@ function bindConnectionEvents(radio) {
     setTimeout(() => $("boot").classList.add("hidden"), 220);
     exclusive(syncAll).then(() => { recoveryAttempts = 0; }).catch(() => toast("Initial sync failed", "error"));
   });
-  radio.on("disconnected", () => setLink("offline"));
+  radio.on("disconnected", () => { incomingNotificationsReady = false; setLink("offline"); });
   radio.on("transport-busy", () => {
     setLink("busy");
     $("boot").classList.add("hidden");
     toast("Another tab controls this radio. Close it, then tap the link status to retry.", "warn");
   });
-  radio.on("transport-state", () => { setLink("reconnecting"); toast("Link interrupted — reconnecting", "warn"); });
+  radio.on("transport-state", () => { incomingNotificationsReady = false; setLink("reconnecting"); toast("Link interrupted — reconnecting", "warn"); });
   radio.on("transport-restored", () => {
     setLink("connected");
     toast("Link restored — resyncing");

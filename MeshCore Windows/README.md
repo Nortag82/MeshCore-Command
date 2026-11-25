@@ -1,6 +1,6 @@
 # Windows native migration (in progress)
 
-This directory contains the C# replacement for the Python desktop host. Native Windows 2.0.42 is available as an early test update, including a legacy-upgrade path; it is not a finished production release. Hardware coverage, feature parity and migration need further verification.
+This directory contains the C# replacement for the Python desktop host. Native Windows 2.0.43 is available as an early test update, including a legacy-upgrade path; it is not a finished production release. Hardware coverage, feature parity and migration need further verification.
 
 The .NET 10 core includes companion stream framing, acknowledged queues, Wi-Fi discovery and reconnect, USB serial, a Windows Bluetooth GATT adapter with authenticated pairing, profile and credential compatibility, GPS input, offline map access and verified-helper map downloads. It also includes compatible encrypted backup, snapshot, validation and rollback code, firmware preflight checks, and installer release/download validation. The local endpoint supports radio frames, credentials, notifications, elevation and offline maps. Hardware transports, notifications, real map downloads and the desktop backup workflow require physical and end-to-end testing. Firmware flashing, update installation, production data migration, and other desktop API features are not complete.
 
@@ -17,6 +17,8 @@ The migration staging code copies a closed WebView2 profile and desktop data int
 The native profile registry selects a successfully staged profile with an atomic pointer, preserves its loopback port, and reuses that profile on later starts. It rejects incomplete data, invalid pointers and simultaneous migration attempts. It also supports explicitly creating a fresh profile without replacing an existing selection. The app integration test exercises both paths with synthetic data. An explicitly invoked `--native-candidate` development path connects a copied profile and exposes the experimental flasher. The isolated preview installer offers a separate button to open this candidate; it must not be treated as a production migration. After a copy, changes made in the old and candidate apps are not merged. Published preview 0.1.1 shares its credential store with the old app; the development source changes this as described below.
 
 The preview's separate synthetic integration test seeds a saved conversation for a simulated radio, then checks that the view shows both the saved history and a newly received message. This does not test migration of actual user data.
+
+Message popups respect channel and direct-contact mute settings, including during initial radio synchronisation. Muted messages remain in local history; contact mute also suppresses Secure Coms message popups.
 
 Channel messages have an unverified display name, not a verified sender key. The message context menu can open a uniquely named saved chat contact after confirmation, or import a MeshCore contact-card link provided separately by the sender. The importer checks the packet structure, asks the user to compare the public key, and reports success only when the connected radio lists that key. A flood advert is another way to discover a contact.
 
