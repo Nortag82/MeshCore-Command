@@ -14,8 +14,8 @@ The native Windows candidate is in `MeshCore Windows/`; the previous Python desk
 MeshCore Command brings messaging, radio management and mapping together in a desktop workspace built for MeshCore users.
 
 - **Messages and channels** — chat directly, join channels and communicate with room servers. Search conversations, track unread messages and use word alerts.
-- **Secure Coms** — exchange encrypted app-to-app messages with verified contacts, or send individually to everyone in a local group. Secure Coms requires compatible Command installations and privately exchanged secrets.
-- **Secure Situation Map** — share markers, areas and opt-in GPS positions with verified contacts or groups, track confirmations and retry individual objects. GPS markers show the Command logo and station name, with per-recipient confirmations for the latest update. Send waypoints with optional live GPS bearing and distance, and see unread secure-message alerts over the map. Save desktop maps for offline use.
+- **Secure Coms** — add an AES-256-GCM app-to-app encryption layer to MeshCore direct messages. Exchange messages with verified contacts or send individually to everyone in a local group; compatible Command installations and privately exchanged secrets are required.
+- **Secure Situation Map** — use the same Secure Coms protection to share markers, areas and opt-in GPS positions with verified contacts or groups. Track confirmations and retry individual objects. Send waypoints with optional live GPS bearing and distance, and save desktop maps for offline use.
 - **Repeater management and monitoring** — search nodes, manage compatible repeaters, view available telemetry and schedule checks. Monitoring cards include a seven-day voltage graph.
 - **Terrain and coverage planning** — place planned and known repeater sites, estimate terrain visibility, inspect line-of-sight profiles and share plans with other Command users.
 - **Multiple radios** — connect compatible Wi-Fi and Bluetooth companion boards and switch between named board tabs.
@@ -25,6 +25,14 @@ MeshCore Command brings messaging, radio management and mapping together in a de
 [Download for Windows](#download-for-windows) · [Android test app](#android-test-app) · [Screenshots](docs/SCREENSHOTS.md) · [User manual](docs/USER-MANUAL.md)
 
 Features depend on radio firmware, connectivity and node permissions. Terrain visibility is an estimate, and Secure Coms has not been independently audited. Android and some multi-radio features need further hardware testing.
+
+## How Secure Coms protects messages and maps
+
+MeshCore already encrypts direct messages. Secure Coms adds a second, independent **AES-256-GCM** layer in the Command apps: the sender encrypts the content before passing it to the companion radio, and the receiving Command app decrypts it using the shared secret. Secure Situation Map updates, including shared markers, areas and GPS positions, use the same app-to-app transport. Ordinary channel and direct messages are not automatically covered by this additional layer. See [MeshCore's payload documentation](https://github.com/meshcore-dev/MeshCore/blob/main/docs/payloads.md) for the underlying packet formats.
+
+This extra layer protects the contents of secure messages and map updates from a party that can access the MeshCore transport but does not have the Command shared secret. GCM also checks integrity: a modified or unauthenticated secure payload is rejected. Each pair must exchange a randomly generated secret privately and compare the displayed fingerprint through a trusted channel. Compatible Command installations are required at both ends; a standard MeshCore app can display the encrypted `MC1.` payload as text but cannot open it.
+
+There are tradeoffs. Packet routing information and traffic patterns remain observable; ordinary adverts and Public-channel discovery can reveal identifying information. Encryption adds overhead, limiting each secure message to **74 UTF-8 bytes**. A local group sends a separate encrypted message to each member, increasing airtime and delivery time. A radio acknowledgement is not proof the other app decrypted or read a message. **The implementation has not been independently audited and does not provide forward secrecy**: someone who obtains a shared secret may be able to decrypt previously recorded traffic. It also cannot protect plaintext on a compromised endpoint. For key handling, replay protection, map storage and recovery details, see [Secure Coms security and tradeoffs](docs/SECURE-COMS-SECURITY.md).
 
 **Latest Windows test update:** 2.0.42 makes the secure-message length limit clear and includes the channel-message contact-card action. The previous stable Windows release is 2.0.38; Android 0.2.15 remains experimental.
 

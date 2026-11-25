@@ -10,7 +10,7 @@ The legacy upgrade starts the native app and checks its copied profile before sw
 
 ## Connect and communicate
 
-Use **+ Board** to add a compatible Wi-Fi, Bluetooth or USB companion. Pick the correct radio and firmware; flashing and some hardware combinations are still experimental. For Secure Coms, both people need compatible Command installations, a shared secret exchanged privately, and matching fingerprints verified through a trusted channel. Secure messages are limited to 74 UTF-8 bytes; the composer shows how many bytes to remove if a draft is too long.
+Use **+ Board** to add a compatible Wi-Fi, Bluetooth or USB companion. Pick the correct radio and firmware; flashing and some hardware combinations are still experimental. Secure Coms and shared Situation Map data add AES-256-GCM encryption inside MeshCore direct messages. Both people need compatible Command installations, a shared secret exchanged privately, and matching fingerprints verified through a trusted channel. Secure messages are limited to 74 UTF-8 bytes; the composer shows how many bytes to remove if a draft is too long. See [security and tradeoffs](SECURE-COMS-SECURITY.md).
 
 To find a missing chat contact, ask the person to send a flood advert from the radio you want to reach. You can also right-click an incoming channel message and choose **Find or add sender**. Channel sender names are unverified: to import a missing sender, obtain their `meshcore://` contact card separately and compare its public key with them before trusting it.
 
