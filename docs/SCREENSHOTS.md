@@ -1,117 +1,95 @@
 # MeshCore Command screenshots
 
-Screens show the version 2.0.4 interface with simulated contacts, messages, addresses, telemetry and map markers. The example address belongs to a documentation-only network. Map data © OpenStreetMap contributors.
+These images show the native Windows 2.0.42 test interface with simulated contacts, messages, telemetry and map objects. They were generated from the current interface without connecting a radio or reading a user profile. The red banner is part of the test build. Map data © OpenStreetMap contributors.
 
-## Connect
-
-Connect to a saved radio or find one on your network.
-
-![Connect screen](images/connect.png)
-
-## Flash firmware
-
-Select a board to see USB and boot instructions.
-
-![Flash firmware screen](images/flash-firmware.png)
+The board connection and native firmware dialogs are not pictured here. The Android images in the README use the HTML from the released Android 0.2.15 APK with a simulated bridge; they are not photographs of a phone or live radio session.
 
 ## Overview
 
-Review radio activity and quick actions.
+Radio status, recent activity and monitored nodes.
 
-![Overview screen](images/overview.png)
+![Overview](images/native/overview.png)
 
 ## Messages
 
-Read direct, channel and room conversations with unread indicators.
+Channels, direct conversations and rooms.
 
-![Messages screen](images/messages.png)
+![Messages](images/native/messages.png)
+
+## Channel message actions
+
+Right-click a channel message to find an existing contact or import a contact card.
+
+![Channel message actions](images/native/message-actions.png)
 
 ## Contacts
 
-Search known nodes and use contact tools.
+Search discovered nodes and inspect contact details.
 
-![Contacts screen](images/contacts.png)
+![Contacts](images/native/contacts.png)
 
 ## Contact map
 
-View known locations and packet information.
+Display the last known advertised locations.
 
-![Contact map screen](images/contact-map.png)
+![Contact map](images/native/contact-map.png)
 
 ## Secure Situation Map
 
-Use the floating toolbar to create markers and areas and share them with selected secure contacts or a group. The confirmations panel shows per-contact results and retries.
+Use the floating toolbar for markers, areas, sharing and waypoints.
 
-![Situation map screen](images/situation-map.png)
+![Secure Situation Map](images/native/situation-map.png)
 
 ## Secure Coms Messages
 
-Send encrypted messages to individual contacts.
+Communicate with verified contacts or local groups.
 
-![Secure Coms Messages screen](images/secure-coms.png)
+![Secure Coms Messages](images/native/secure-coms.png)
 
-## Secure groups
+## Secure message length
 
-Send to the members of a local recipient group.
+An inline warning explains when a message exceeds the 74-byte limit.
 
-![Secure group conversation](images/secure-groups.png)
+![Secure message length](images/native/secure-length-warning.png)
 
 ## Manage Secure Coms
 
-Manage secure contacts, verify fingerprints and arrange local groups.
+Manage shared secrets and local recipient groups.
 
-![Manage Secure Coms screen](images/secure-manage.png)
-
-## Secure Coms backup
-
-Export or import an encrypted backup of secure settings.
-
-![Secure Coms backup](images/secure-backup.png)
-
-## Situation map settings
-
-Configure the map and offline map options.
-
-![Situation map settings](images/situation-map-settings.png)
+![Manage Secure Coms](images/native/secure-manage.png)
 
 ## Word alerts
 
-Configure message word alerts.
+Configure alerts for words seen in messages.
 
-![Word alerts screen](images/word-alerts.png)
+![Word alerts](images/native/word-alerts.png)
 
 ## Monitoring
 
-Review scheduled checks and available telemetry.
+Review example telemetry and voltage history.
 
-![Monitoring screen](images/monitoring.png)
+![Monitoring](images/native/monitoring.png)
 
 ## Repeaters
 
-Control repeaters and review neighbour links.
+Select a repeater and inspect its management views.
 
-![Repeaters screen](images/repeaters.png)
+![Repeaters](images/native/repeaters.png)
 
 ## Terrain tools
 
-Plan links, estimate terrain visibility and highlight terrain above a chosen elevation.
+Plan sites, links and estimated terrain visibility.
 
-![Terrain tools screen](images/terrain-tools.png)
+![Terrain tools](images/native/terrain-tools.png)
 
 ## Radio
 
-Review radio information and activity.
+Review radio settings and observed packet activity.
 
-![Radio screen](images/radio.png)
+![Radio](images/native/radio.png)
 
 ## Settings
 
-Configure radio and MeshCore settings.
+Configure the connected radio, updates and backups.
 
-![Settings screen](images/settings.png)
-
-## Off-grid companion repeat
-
-Check the connected radio's permitted frequencies and request companion repeat on or off without changing the radio frequency.
-
-![Off-grid companion repeat controls](images/off-grid-repeat.png)
+![Settings](images/native/settings.png)
