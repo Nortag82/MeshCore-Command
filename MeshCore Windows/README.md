@@ -1,6 +1,6 @@
 # Windows native migration (in progress)
 
-This directory contains the C# replacement for the Python desktop host. Native Windows 2.0.43 is available as an early test update, including a legacy-upgrade path; it is not a finished production release. Hardware coverage, feature parity and migration need further verification.
+This directory contains the C# replacement for the Python desktop host. Native Windows 2.0.43 is the current Windows release and includes a legacy-upgrade path. User testing has covered migration, backups, radio use, messaging and maps, flashing and installation; results are not a guarantee for every hardware configuration.
 
 The .NET 10 core includes companion stream framing, acknowledged queues, Wi-Fi discovery and reconnect, USB serial, a Windows Bluetooth GATT adapter with authenticated pairing, profile and credential compatibility, GPS input, offline map access and verified-helper map downloads. It also includes compatible encrypted backup, snapshot, validation and rollback code, firmware preflight checks, and installer release/download validation. The local endpoint supports radio frames, credentials, notifications, elevation and offline maps. Hardware transports, notifications, real map downloads and the desktop backup workflow require physical and end-to-end testing. Firmware flashing, update installation, production data migration, and other desktop API features are not complete.
 
