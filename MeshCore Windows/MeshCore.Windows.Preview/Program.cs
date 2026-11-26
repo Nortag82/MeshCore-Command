@@ -1016,7 +1016,10 @@ internal sealed class PreviewWindow : Form
             view.Controls.Find("hfLinkReceive", true).SingleOrDefault() is not Button { Enabled: true } receive) return false;
         string? gallery = _candidate ? null : Environment.GetEnvironmentVariable("MCC_HFLINK_GALLERY_DIR");
         if (view.Controls.Find("hfLinkWaterfallToggle", true).SingleOrDefault() is not Button waterfall ||
-            view.Controls.Find("hfLinkWaterfallPlot", true).SingleOrDefault() is not HfWaterfallView plot)
+            view.Controls.Find("hfLinkWaterfallPlot", true).SingleOrDefault() is not HfWaterfallView { Visible: true } plot ||
+            view.Controls.Find("hfLinkSimulationOutcome", true).SingleOrDefault() is not ComboBox { Visible: true } simulation ||
+            view.Controls.Find("hfLinkDeleteMessage", true).SingleOrDefault() is not Button { Enabled: true } delete ||
+            waterfall.Text != "Hide waterfall")
             return false;
         var spectrum = new HfWaterfallSpectrum(48000);
         for (int index = 0; index < 4800; index++)
@@ -1026,13 +1029,18 @@ internal sealed class PreviewWindow : Form
             Math.Abs(frame.Max() - 20 * Math.Log10(0.25)) > 0.5)
             return false;
         waterfall.PerformClick();
+        if (plot.Visible || waterfall.Text != "Show waterfall") return false;
+        waterfall.PerformClick();
         if (!plot.Visible || waterfall.Text != "Hide waterfall") return false;
         await Task.Delay(string.IsNullOrEmpty(gallery) ? 250 : 3500);
+        using var settings = view.CreateSettingsDialog();
+        if (settings.Controls.Find("hfLinkMercuryVersion", true).SingleOrDefault() is not Label version ||
+            version.Text != $"Bundled Mercury {BundledMercury.PackageVersion}" ||
+            settings.Controls.Find("hfLinkMercuryUpdateCheck", true).SingleOrDefault() is not Button) return false;
         if (!string.IsNullOrEmpty(gallery))
         {
             Directory.CreateDirectory(gallery);
             CaptureControl(view, Path.Combine(gallery, "hflink-waterfall.png"));
-            using var settings = view.CreateSettingsDialog();
             settings.Show(this);
             await Task.Yield();
             CaptureControl(settings, Path.Combine(gallery, "hflink-settings.png"));
@@ -1071,7 +1079,14 @@ internal sealed class PreviewWindow : Form
         if (!string.IsNullOrEmpty(gallery))
             CaptureControl(view, Path.Combine(gallery, "hflink.png"));
         await view.StopAsync();
-        return view.Visible && !_web.Visible && fixture.Messages().Count(message => message.Incoming) == 1;
+        if (!view.Visible || _web.Visible || !delete.Enabled || fixture.Messages().Count(message => message.Incoming) != 1)
+            return false;
+        var station = fixture.Station();
+        fixture.SaveStation(station with { Simulation = false });
+        view.EnterView();
+        bool hiddenInLiveMode = !simulation.Visible;
+        fixture.SaveStation(station);
+        return hiddenInLiveMode;
     }
 
     private static void CaptureControl(Control control, string path)

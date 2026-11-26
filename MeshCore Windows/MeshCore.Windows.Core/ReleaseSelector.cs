@@ -10,7 +10,7 @@ public static class ReleaseSelector
 {
     public const long MaximumInstallerBytes = 200L * 1024 * 1024;
 
-    private static Version? Parse(string? text)
+    internal static Version? Parse(string? text)
     {
         if (text is null || !Regex.IsMatch(text, "^v?(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$")) return null;
         if (text.StartsWith('v')) text = text[1..];
@@ -50,6 +50,6 @@ public static class ReleaseSelector
         return new InstallerRelease(versionText, IsTrue(chosen, "prerelease"), url, digest[7..], length, name);
     }
 
-    private static bool IsTrue(JsonElement element, string property) => element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.True;
-    private static string? StringProperty(JsonElement element, string property) => element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+    internal static bool IsTrue(JsonElement element, string property) => element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.True;
+    internal static string? StringProperty(JsonElement element, string property) => element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 }

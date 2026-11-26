@@ -23,7 +23,7 @@ public sealed class UpdaterClient
 
     public async Task<InstallerRelease?> CheckAsync(string currentVersion, CancellationToken cancellationToken = default)
     {
-        using var response = await GetSafeAsync(Releases, cancellationToken);
+        using var response = await GetSafeAsync(_client, Releases, cancellationToken);
         byte[] data = await ReadLimitedAsync(response, 2_000_000, cancellationToken);
         using var document = JsonDocument.Parse(data);
         return ReleaseSelector.Select(document.RootElement, currentVersion);
@@ -41,7 +41,7 @@ public sealed class UpdaterClient
         string path = Path.Combine(directory, release.Name);
         try
         {
-            using var response = await GetSafeAsync(release.Url, token);
+            using var response = await GetSafeAsync(_client, release.Url, token);
             if (response.Content.Headers.ContentLength is long announced && announced != release.Size) throw new InvalidDataException("Installer size does not match the release.");
             await using var input = await response.Content.ReadAsStreamAsync(token);
             await using var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous);
@@ -67,14 +67,14 @@ public sealed class UpdaterClient
         }
     }
 
-    private async Task<HttpResponseMessage> GetSafeAsync(Uri url, CancellationToken cancellationToken)
+    internal static async Task<HttpResponseMessage> GetSafeAsync(HttpClient client, Uri url, CancellationToken cancellationToken)
     {
         for (int redirects = 0; redirects <= 5; redirects++)
         {
             if (url.Scheme != Uri.UriSchemeHttps || !Hosts.Contains(url.Host) || !url.IsDefaultPort || url.UserInfo.Length != 0)
                 throw new InvalidDataException("GitHub redirected the download to an untrusted address.");
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             if (response.RequestMessage?.RequestUri is Uri final && (final.Scheme != Uri.UriSchemeHttps || !Hosts.Contains(final.Host) || !final.IsDefaultPort || final.UserInfo.Length != 0))
             { response.Dispose(); throw new InvalidDataException("Download ended at an untrusted address."); }
             if ((int)response.StatusCode is >= 300 and < 400)
@@ -90,7 +90,7 @@ public sealed class UpdaterClient
         throw new InvalidDataException("Too many download redirects.");
     }
 
-    private static async Task<byte[]> ReadLimitedAsync(HttpResponseMessage response, int limit, CancellationToken cancellationToken)
+    internal static async Task<byte[]> ReadLimitedAsync(HttpResponseMessage response, int limit, CancellationToken cancellationToken)
     {
         if (response.Content.Headers.ContentLength > limit) throw new InvalidDataException("Release information is too large.");
         await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);

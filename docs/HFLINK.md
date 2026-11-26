@@ -27,15 +27,23 @@ Use **Stop operation** in HFLink to end the receive window early. Closing MeshCo
 
 ## Receive waterfall
 
-Select **Show waterfall** in HFLink to see a scrolling view of the receiver’s audio. Frequency labels are audio offsets from 0 to 4 kHz. The display shows signals within your radio’s tuned passband. In **Settings → Audio and PTT**, select the Windows receive input wired to the radio and save it. For the FT-450, use the same USB audio input that receives in JS8Call.
+The waterfall opens by default in HFLink. Frequency labels are audio offsets from 0 to 4 kHz. The display shows signals within your radio’s tuned passband. In **Settings → Audio and PTT**, select the Windows receive input wired to the radio and save it. For the FT-450, use the same USB audio input that receives in JS8Call.
 
 The waterfall uses shared-mode Windows audio alongside Mercury. You can view it before opening a receive window. **Hide waterfall** and **Back to radio** release the audio capture. In simulation mode the display uses generated signals.
+
+## Mercury version and updates
+
+HFLink displays the bundled Mercury version beside the station mode. Open **HFLink → Settings → Mercury updates** and select **Check for Mercury updates** to compare it with the latest stable Windows x64 release on Rhizomatica’s GitHub. When the versions match, HFLink verifies that the bundled files and upstream archive checksum match before reporting that Mercury is up to date.
+
+Use MeshCore Command’s **Settings → Check for updates** to install updates that include a newer bundled modem. Use the GitHub release link to view upstream changes. External Mercury installations have their own update process. [Rhizomatica Mercury releases](https://github.com/Rhizomatica/mercury/releases)
 
 ### Existing external Mercury setups
 
 Existing external configurations are preserved. Clear **Use bundled Mercury** in **Settings → Station** and save the external modem’s host and ports. If Mercury runs on another PC, configure its modem and firewall there. The integrated firewall rule applies only to bundled Mercury. [Mercury TCP interface](https://github.com/Rhizomatica/mercury/blob/mercuryv2/docs/TNC.md)
 
 ## Delivery and storage
+
+To remove a received or outgoing message, select its row, choose **Delete message**, and confirm. This removes it from HFLink on this PC. Deletion is available when the modem operation has ended.
 
 **Sent to local modem** records that the data socket accepted a write. **Delivered to destination station** requires an HFLink receipt for the current message and attempt, from the destination callsign on the corresponding ARQ session. Callsign and receipt checks correlate the exchange. They provide no cryptographic authentication. A session interrupted after the local write remains unconfirmed.
 
@@ -57,4 +65,4 @@ The loopback checks exercise Mercury’s TCP command and data protocol against a
 
 ## Bundled component
 
-The Windows build stages the standalone Rhizomatica Mercury 1.9.25 runtime, pins and verifies the upstream Windows archive and runtime binaries, and includes the upstream Mercury and FreeDV licence files. The [Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.49) includes a source and notices archive for the bundled modem and its dependencies. [Mercury release and source](https://github.com/Rhizomatica/mercury/releases/tag/v1.9.25) · [Mercury source at the pinned commit](https://github.com/Rhizomatica/mercury/tree/33efac4e3089f64f493fde1232b8e96305d15185)
+The Windows build stages the standalone Rhizomatica Mercury 1.9.25 runtime, pins and verifies the upstream Windows archive and runtime binaries, and includes the upstream Mercury and FreeDV licence files. The [Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.50) includes a source and notices archive for the bundled modem and its dependencies. [Mercury release and source](https://github.com/Rhizomatica/mercury/releases/tag/v1.9.25) · [Mercury source at the pinned commit](https://github.com/Rhizomatica/mercury/tree/33efac4e3089f64f493fde1232b8e96305d15185)

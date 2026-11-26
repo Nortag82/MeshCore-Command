@@ -1,6 +1,6 @@
 # Native Windows quick start
 
-The [2.0.49 Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.49) adds a receive audio waterfall to HFLink. It supports new installations and updates from previous native builds. The legacy Python updater can offer the [2.0.43 migration release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). The previous legacy release and its [user manual](USER-MANUAL.md) remain available.
+The [2.0.50 Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.50) adds Mercury update checks, message deletion, and a waterfall that opens by default in HFLink. It supports new installations and updates from previous native builds. The legacy Python updater can offer the [2.0.43 migration release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). The previous legacy release and its [user manual](USER-MANUAL.md) remain available.
 
 ## Update or install
 

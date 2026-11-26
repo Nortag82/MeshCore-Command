@@ -24,7 +24,7 @@ internal sealed class HfLinkView : UserControl
     private readonly HfWaterfallView _waterfall = new() { Visible = false };
     private readonly RowStyle _waterfallRow = new(SizeType.Absolute, 0);
     private readonly Button _waterfallToggle;
-    private readonly Button _settings, _probe, _send, _queue, _receive, _cancel, _retry, _audit, _stop, _stopMercury;
+    private readonly Button _settings, _probe, _send, _queue, _receive, _cancel, _retry, _delete, _audit, _stop, _stopMercury;
     private readonly Action<HfMessage> _received;
     private readonly FlowLayoutPanel _receipt;
     private readonly Label _receiptLabel = new() { AutoSize = true, Anchor = AnchorStyles.Left };
@@ -32,6 +32,7 @@ internal sealed class HfLinkView : UserControl
     private TaskCompletionSource? _finished;
     private TaskCompletionSource<bool>? _receiptDecision;
     private bool _receiving, _away, _checkingFirewall;
+    private bool _showWaterfall = true;
     private bool _ready;
 
     public HfLinkView(string directory, bool allowLive, Func<Task> returnToRadio, Action<HfMessage> received)
@@ -98,9 +99,14 @@ internal sealed class HfLinkView : UserControl
         _stop = Button("Stop operation", () => _operation?.Cancel());
         _stop.Name = "hfLinkStopOperation";
         _stopMercury = Button("Stop Mercury", () => { _bundled.Stop(); RefreshView(); Report("Bundled Mercury stopped."); });
-        _waterfallToggle = Button("Show waterfall", () => SetWaterfallVisible(!_waterfall.Visible));
+        _waterfallToggle = Button("Show waterfall", () =>
+        {
+            _showWaterfall = !_showWaterfall;
+            SetWaterfallVisible(_showWaterfall);
+        });
         _waterfallToggle.Name = "hfLinkWaterfallToggle";
         _simulation.Items.AddRange(["Simulate no receipt", "Simulate receipt", "Simulate disconnect", "Simulate timeout"]);
+        _simulation.Name = "hfLinkSimulationOutcome";
         _simulation.SelectedIndex = 0;
         layout.Controls.Add(Row(_probe, _receive, _stop, _stopMercury, _simulation, _waterfallToggle), 0, 5);
         layout.Controls.Add(_waterfall, 0, 6);
@@ -108,7 +114,9 @@ internal sealed class HfLinkView : UserControl
         _send = AsyncButton("Approve and send", SendAsync);
         _retry = Button("Retry", () => { _link.Retry(Selected().Id); RefreshView(); Report("Retry requires fresh approval."); });
         _cancel = Button("Cancel request", () => { _link.Cancel(Selected().Id); RefreshView(); Report("Request cancelled."); });
-        layout.Controls.Add(Row(FieldLabel(_filter), _filter, _send, _retry, _cancel), 0, 7);
+        _delete = Button("Delete message", DeleteSelectedMessage);
+        _delete.Name = "hfLinkDeleteMessage";
+        layout.Controls.Add(Row(FieldLabel(_filter), _filter, _send, _retry, _cancel, _delete), 0, 7);
         _filter.TextChanged += (_, _) => RefreshView();
         foreach (var column in new[] { ("Time", 141), ("Mode", 85), ("Direction", 85), ("From", 95), ("To", 95), ("Status", 170) })
             _history.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = column.Item1, Width = column.Item2, SortMode = DataGridViewColumnSortMode.NotSortable });
@@ -176,9 +184,12 @@ internal sealed class HfLinkView : UserControl
     private void ConfigureSettings()
     {
         SetWaterfallVisible(false);
-        using var dialog = CreateSettingsDialog();
-        dialog.ShowDialog(this);
-        EnterView();
+        try
+        {
+            using var dialog = CreateSettingsDialog();
+            dialog.ShowDialog(this);
+        }
+        finally { EnterView(); }
     }
 
     private void SetWaterfallVisible(bool visible)
@@ -219,8 +230,10 @@ internal sealed class HfLinkView : UserControl
         var tabs = new TabControl { Dock = DockStyle.Fill };
         var stationTab = new TabPage("Station");
         var modemTab = new TabPage("Audio and PTT");
+        var updatesTab = new TabPage("Mercury updates");
         var firewallTab = new TabPage("Firewall");
-        tabs.TabPages.AddRange([stationTab, modemTab, firewallTab]);
+        tabs.TabPages.AddRange([stationTab, modemTab, updatesTab, firewallTab]);
+        AddMercuryUpdates(updatesTab, dialog);
         var close = new Button { Text = "Close", AutoSize = true, DialogResult = DialogResult.Cancel };
         var footer = Row(close);
         footer.Dock = DockStyle.Bottom;
@@ -308,9 +321,80 @@ internal sealed class HfLinkView : UserControl
         return dialog;
     }
 
+    private static void AddMercuryUpdates(TabPage tab, Form dialog)
+    {
+        var localVersion = new Label
+        {
+            Name = "hfLinkMercuryVersion", AutoSize = true,
+            Text = BundledMercury.Available ? $"Bundled Mercury {BundledMercury.PackageVersion}" : "Bundled Mercury is missing"
+        };
+        var check = new Button { Name = "hfLinkMercuryUpdateCheck", Text = "Check for Mercury updates", AutoSize = true };
+        var status = new Label { AutoSize = true, MaximumSize = new Size(565, 0), Text = "Compare the bundled modem with the latest stable Windows x64 release from Rhizomatica." };
+        var instructions = new Label
+        {
+            AutoSize = true, MaximumSize = new Size(565, 0),
+            Text = "Get bundled modem upgrades through MeshCore Command’s Settings → Check for updates. Update an external modem separately."
+        };
+        Uri releasePage = MercuryReleaseClient.ReleasesPage;
+        var details = new LinkLabel { Text = "View Mercury releases on GitHub", AutoSize = true };
+        details.LinkClicked += (_, _) =>
+        {
+            try
+            {
+                using var browser = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(releasePage.AbsoluteUri)
+                    { UseShellExecute = true });
+            }
+            catch (System.ComponentModel.Win32Exception) { status.Text = "Windows could not open the Mercury release page."; }
+        };
+        var lifetime = new CancellationTokenSource();
+        dialog.Disposed += CancelCheck;
+        void CancelCheck(object? sender, EventArgs args)
+        {
+            dialog.Disposed -= CancelCheck;
+            lifetime.Cancel();
+            lifetime.Dispose();
+        }
+        check.Click += async (_, _) =>
+        {
+            check.Enabled = false;
+            status.Text = "Checking Rhizomatica’s Mercury releases…";
+            CancellationToken stop = lifetime.Token;
+            try
+            {
+                using var http = UpdaterClient.CreateClient();
+                var latest = await new MercuryReleaseClient(http).CheckAsync(stop);
+                releasePage = latest.ReleasePage;
+                bool available = BundledMercury.Available;
+                if (available) await Task.Run(BundledMercury.VerifyPackageFiles, stop);
+                if (dialog.IsDisposed) return;
+                string result = latest.Version.CompareTo(BundledMercury.PackageVersion) switch
+                {
+                    _ when !available => "Bundled Mercury is missing. Repair it with the MeshCore Command installer.",
+                    > 0 => $"Mercury {latest.Version} is available upstream.",
+                    < 0 => $"Bundled Mercury {BundledMercury.PackageVersion} is newer than the Windows release listed by GitHub.",
+                    _ when latest.ArchiveSha256 is null => "GitHub did not provide the Windows archive checksum.",
+                    _ when !BundledMercury.ArchiveSha256.Equals(latest.ArchiveSha256, StringComparison.OrdinalIgnoreCase) =>
+                        "The upstream Windows archive differs from the verified bundle.",
+                    _ => "Bundled Mercury is up to date."
+                };
+                status.Text = $"Latest stable Windows x64 release · {latest.Version}\r\n{result}";
+            }
+            catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+            catch (Exception error) when (error is HttpRequestException or IOException or InvalidDataException or UnauthorizedAccessException or
+                OperationCanceledException or System.Text.Json.JsonException)
+            {
+                if (!dialog.IsDisposed) status.Text = $"Could not confirm the latest Mercury version. {error.Message}";
+            }
+            finally { if (!dialog.IsDisposed) check.Enabled = true; }
+        };
+        tab.Controls.Add(Fields([("", localVersion), ("", check), ("", status), ("", details), ("", instructions)]));
+    }
+
     public void EnterView()
     {
         _away = false;
+        RefreshView();
+        if (_showWaterfall && !_waterfall.Visible) SetWaterfallVisible(true);
         if (!_allowLive || _checkingFirewall || _operation is not null || !BundledMercury.Available) return;
         BeginInvoke(async () => await OfferFirewallSetupAsync());
     }
@@ -406,13 +490,14 @@ internal sealed class HfLinkView : UserControl
     public Task LeaveViewAsync()
     {
         _away = true;
+        if (!_receiving) return StopAsync();
         SetWaterfallVisible(false);
-        return _receiving ? Task.CompletedTask : StopAsync();
+        return Task.CompletedTask;
     }
 
     public async Task StopAsync()
     {
-        _waterfall.Stop();
+        SetWaterfallVisible(false);
         if (_finished is { } finished)
         {
             _operation?.Cancel();
@@ -474,7 +559,8 @@ internal sealed class HfLinkView : UserControl
         _history.Rows.Clear();
         var station = _link.Station();
         string mode = station.Simulation ? "simulation" : station.UseBundledMercury ? "bundled Mercury" : "external Mercury";
-        _station.Text = $"Station: {(station.Callsign.Length == 0 ? "not configured" : station.Callsign)}   Mode: {mode}";
+        string bundledVersion = station.UseBundledMercury && BundledMercury.Available ? $"   Mercury {BundledMercury.PackageVersion}" : "";
+        _station.Text = $"Station: {(station.Callsign.Length == 0 ? "not configured" : station.Callsign)}   Mode: {mode}{bundledVersion}";
         var filter = _filter.Text.Trim().ToUpperInvariant();
         foreach (var message in _link.Messages().Where(m => filter.Length == 0 || m.From.Contains(filter) || m.To.Contains(filter)))
         {
@@ -500,12 +586,26 @@ internal sealed class HfLinkView : UserControl
         _queue.Enabled = idle && configured;
         _receive.Enabled = _probe.Enabled = idle && configured && liveAllowed;
         _stop.Enabled = !idle;
+        _simulation.Visible = station.Simulation;
         _simulation.Enabled = idle && station.Simulation;
         _send.Enabled = idle && configured && liveAllowed && message is { Incoming: false, Status: HfStatus.AwaitingApproval };
         _cancel.Enabled = idle && message is { Incoming: false, Status: HfStatus.AwaitingApproval };
         _retry.Enabled = idle && message is { Incoming: false, Status: HfStatus.Failed or HfStatus.Unconfirmed };
+        _delete.Enabled = idle && message is not null;
         _detail.Text = message is null ? "" : message.Text + Environment.NewLine + message.Detail +
             (message.Incoming ? "" : $"\r\nRequested by {message.Requester} ({message.RequesterCall})\r\nID: {message.Id}");
+    }
+
+    private void DeleteSelectedMessage()
+    {
+        var message = Selected();
+        string direction = message.Incoming ? $"received message from {message.From}" : $"outgoing message to {message.To}";
+        if (MessageBox.Show(this, $"Permanently delete the {direction} from HFLink on this PC?",
+            "Delete HFLink message", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+            MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+        _link.DeleteMessage(message);
+        RefreshView();
+        Report("Message deleted.");
     }
 
     private void ShowAudit()

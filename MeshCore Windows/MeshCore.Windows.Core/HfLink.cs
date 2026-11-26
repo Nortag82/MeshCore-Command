@@ -26,6 +26,7 @@ public sealed class HfLink
         Execute(db, """
             CREATE TABLE IF NOT EXISTS settings (id TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, value TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS deleted_incoming (id TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
             """);
         foreach (var message in ReadAll<HfMessage>(db, "messages").Where(m => m.Status is HfStatus.Sending or HfStatus.Sent))
@@ -141,6 +142,23 @@ public sealed class HfLink
     public void Cancel(Guid id) => ChangeRequest(id, retry: false);
     public void Retry(Guid id) => ChangeRequest(id, retry: true);
 
+    public void DeleteMessage(HfMessage message)
+    {
+        lock (_gate)
+        {
+            if (_modem.CurrentCount == 0) throw new InvalidOperationException("Wait for the active modem operation to finish.");
+            string key = message.Incoming ? IncomingKey(message.Simulated, message.To, message.From, message.Id) : message.Id.ToString("D");
+            using var db = Open();
+            using var transaction = db.BeginTransaction();
+            if (Execute(db, "DELETE FROM messages WHERE id=$id", key, transaction: transaction) == 0)
+                throw new InvalidOperationException("The message is no longer in the list.");
+            if (message.Incoming)
+                Execute(db, "INSERT OR IGNORE INTO deleted_incoming (id) VALUES ($id)", key, transaction: transaction);
+            Record(db, Operator, message.Incoming ? "Received message deleted" : "Outgoing message deleted", message.Id, transaction);
+            transaction.Commit();
+        }
+    }
+
     private void ChangeRequest(Guid id, bool retry)
     {
         lock (_gate)
@@ -255,10 +273,14 @@ public sealed class HfLink
                 HfPacket.ValidateText(packet.Text);
                 HfMessage message;
                 bool isNew;
-                string key = $"in:{station.Simulation}:{packet.To}:{packet.From}:{packet.Id:D}";
+                string key = IncomingKey(station.Simulation, packet.To, packet.From, packet.Id);
                 lock (_gate)
                 {
                     using var db = Open();
+                    using var deleted = db.CreateCommand();
+                    deleted.CommandText = "SELECT 1 FROM deleted_incoming WHERE id=$id";
+                    deleted.Parameters.AddWithValue("$id", key);
+                    if (deleted.ExecuteScalar() is not null) return null;
                     var existing = Read<HfMessage>(db, "messages", key);
                     if (existing is not null && (existing.Text != packet.Text || existing.Attempt == packet.Attempt)) return null;
                     isNew = existing is null;
@@ -309,6 +331,7 @@ public sealed class HfLink
     }
 
     private static HfStation LoadStation(SqliteConnection db) => Read<HfStation>(db, "settings", "station") ?? new();
+    private static string IncomingKey(bool simulation, string to, string from, Guid id) => $"in:{simulation}:{to}:{from}:{id:D}";
     private static HfMessage GetMessage(SqliteConnection db, Guid id) =>
         Read<HfMessage>(db, "messages", id.ToString("D")) ?? throw new ArgumentException("Outgoing message not found.");
 
@@ -351,13 +374,13 @@ public sealed class HfLink
         while (reader.Read()) yield return JsonSerializer.Deserialize<T>(reader.GetString(0))!;
     }
 
-    private static void Execute(SqliteConnection db, string sql, string? id = null, string? value = null, SqliteTransaction? transaction = null)
+    private static int Execute(SqliteConnection db, string sql, string? id = null, string? value = null, SqliteTransaction? transaction = null)
     {
         using var command = db.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = sql;
         if (id is not null) command.Parameters.AddWithValue("$id", id);
         if (value is not null) command.Parameters.AddWithValue("$value", value);
-        command.ExecuteNonQuery();
+        return command.ExecuteNonQuery();
     }
 }

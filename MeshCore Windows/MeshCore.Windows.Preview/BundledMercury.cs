@@ -11,6 +11,8 @@ namespace MeshCore.Windows.Preview;
 
 internal sealed class BundledMercury(string dataDirectory) : IDisposable
 {
+    public static Version PackageVersion { get; } = new(1, 9, 25);
+    public const string ArchiveSha256 = "7cf95ef0dd5f589c6d9224e481452029a7435d820b80ecc6d1258ed1f532df6e";
     private static readonly string Payload = Path.Combine(AppContext.BaseDirectory, "mercury");
     private static readonly (string Name, string Sha256)[] PayloadFiles =
     [
@@ -186,12 +188,23 @@ internal sealed class BundledMercury(string dataDirectory) : IDisposable
 
     public static async Task VerifyPackageAsync()
     {
-        VerifyFiles(Payload);
-        using var process = Process.Start(StartInfo(Path.Combine(Payload, "mercury.exe"), Payload, "-V")) ?? throw new IOException("Bundled Mercury could not run.");
+        VerifyPackageFiles();
+        var start = StartInfo(Path.Combine(Payload, "mercury.exe"), Payload, "-V");
+        start.RedirectStandardOutput = true;
+        using var process = Process.Start(start) ?? throw new IOException("Bundled Mercury could not run.");
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await process.WaitForExitAsync(deadline.Token);
-        if (process.ExitCode != 0) throw new IOException("Bundled Mercury version check failed.");
+        var output = process.StandardOutput.ReadToEndAsync(deadline.Token);
+        try
+        {
+            await process.WaitForExitAsync(deadline.Token);
+            if (process.ExitCode != 0 ||
+                !(await output).StartsWith($"Rhizomatica Mercury Version {PackageVersion} (", StringComparison.Ordinal))
+                throw new IOException("Bundled Mercury version check failed.");
+        }
+        finally { if (!process.HasExited) process.Kill(); }
     }
+
+    public static void VerifyPackageFiles() => VerifyFiles(Payload);
 
     // IPv4 MIB_TCPROW_OWNER_PID: state, local address, local port, remote address, remote port, owning process.
     private static bool OwnsListeners(int pid)

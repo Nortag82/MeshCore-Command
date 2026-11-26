@@ -45,7 +45,22 @@ if (args.Contains("--live-map-test"))
     return;
 }
 
+if (args.Contains("--live-mercury-release-test"))
+{
+    using var http = UpdaterClient.CreateClient();
+    var mercury = await new MercuryReleaseClient(http).CheckAsync();
+    Console.WriteLine($"Latest Mercury Windows x64 release: {mercury.Version}, checksum {mercury.ArchiveSha256}.");
+    return;
+}
+
 await HfLinkChecks.RunAsync();
+using (var http = new HttpClient(new MercuryReleaseTestHandler()))
+{
+    var mercury = await new MercuryReleaseClient(http).CheckAsync();
+    Check(mercury is { Version: { Major: 1, Minor: 9, Build: 25 }, ArchiveSha256: MercuryReleaseTestHandler.ArchiveChecksum } &&
+        mercury.ReleasePage.AbsoluteUri == "https://github.com/Rhizomatica/mercury/releases/tag/v1.9.25",
+        "Mercury checks the newest stable release with an uploaded Windows x64 archive");
+}
 var output = CompanionFrames.EncodeOutgoing(new byte[] { 1, 2, 3 });
 {
     string local = Path.Combine(Path.GetTempPath(), "mcc-retirement-test-" + Guid.NewGuid().ToString("N"));
@@ -908,6 +923,29 @@ sealed class BogusHelperHandler : HttpMessageHandler
     {
         if (request.RequestUri?.Host != "github.com") throw new Exception("Unexpected helper host");
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("invalid helper") });
+    }
+}
+
+sealed class MercuryReleaseTestHandler : HttpMessageHandler
+{
+    public const string ArchiveChecksum = "7cf95ef0dd5f589c6d9224e481452029a7435d820b80ecc6d1258ed1f532df6e";
+
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        if (request.RequestUri?.AbsoluteUri != "https://api.github.com/repos/Rhizomatica/mercury/releases?per_page=30")
+            throw new InvalidOperationException("Unexpected Mercury releases endpoint.");
+        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent($$"""
+                [
+                  {"tag_name":"v1.9.24","published_at":"2026-01-01","assets":[{"state":"uploaded","name":"mercury-1.9.24-w64-1b13fab1.zip"}]},
+                  {"tag_name":"v2.0.0","prerelease":true,"published_at":"2026-01-01","assets":[{"state":"uploaded","name":"mercury-2.0.0-w64-1234567.zip"}]},
+                  {"tag_name":"v1.9.26","published_at":"2026-01-01","assets":[{"state":"uploaded","name":"mercury-1.9.26-linux.zip"}]},
+                  {"tag_name":"v1.9.25","published_at":"2026-01-01","assets":[{"state":"uploaded","name":"mercury-1.9.25-w64-33efac4e.zip","digest":"sha256:{{ArchiveChecksum}}"}]}
+                ]
+                """),
+            RequestMessage = request
+        });
     }
 }
 

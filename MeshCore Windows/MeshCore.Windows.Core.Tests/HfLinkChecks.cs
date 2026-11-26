@@ -50,6 +50,10 @@ internal static class HfLinkChecks
             var audit = reopened.Audit();
             Check(audit.Any(a => a.Message == id && a.Actor == "local operator" && a.Event.Contains("Approved")) &&
                 audit.All(a => !a.Event.Contains("First message")), "Approval and transmission audit contains no message text");
+            reopened.DeleteMessage(reopened.Messages().Single(message => message.Id == id));
+            Check(new HfLink(path).Messages().All(message => message.Id != id) &&
+                reopened.Messages().Any(message => message.Id == cancelled), "Deleting a sent message preserves other messages");
+            await CheckDeletedReceiveAsync(Path.Combine(directory.FullName, "deleted-receive.sqlite3"));
 
             await LoopbackAsync(wrongReceipt: false);
             await LoopbackAsync(wrongReceipt: true);
@@ -57,6 +61,32 @@ internal static class HfLinkChecks
         }
         finally { directory.Delete(recursive: true); }
         Console.WriteLine("HFLink SQLite, bundled station settings, simulation and Mercury loopback checks passed.");
+    }
+
+    private static async Task CheckDeletedReceiveAsync(string path)
+    {
+        var packet = new HfPacket(HfPacket.Version, "message", Guid.NewGuid(), Guid.NewGuid(), "G1XYZ", "M0ABC", "Received example");
+        var modem = new ReplayModem(packet);
+        var link = new HfLink(path, (_, _) => modem);
+        link.SaveStation(new HfStation("M0ABC"));
+        int notifications = 0;
+        await link.ReceiveAsync(false, (_, _) => Task.FromResult(false), default, _ => notifications++);
+        link.DeleteMessage(link.Messages().Single());
+        var reopened = new HfLink(path, (_, _) => new ReplayModem(packet with { Attempt = Guid.NewGuid() }));
+        await reopened.ReceiveAsync(false, (_, _) => throw new InvalidOperationException("Deleted message should not prompt for a receipt."),
+            default, _ => notifications++);
+        Check(reopened.Messages().Count == 0 && notifications == 1, "The sender's retry does not restore a deleted message");
+        Check(reopened.Audit().Any(item => item.Event == "Received message deleted" && item.Message == packet.Id),
+            "A deletion records metadata in the audit log");
+    }
+
+    private sealed class ReplayModem(HfPacket packet) : IHfModem
+    {
+        public Task ProbeAsync(HfStation station, CancellationToken stop) => throw new NotSupportedException();
+        public Task<HfPacket?> SendAsync(HfStation station, HfPacket message, Action accepted, CancellationToken stop) =>
+            throw new NotSupportedException();
+        public async Task ReceiveAsync(HfStation station, Func<HfPacket, CancellationToken, Task<HfPacket?>> onPacket, CancellationToken stop) =>
+            _ = await onPacket(packet, stop);
     }
 
     private static void CheckMercurySettings(HfLink link, string directory)
