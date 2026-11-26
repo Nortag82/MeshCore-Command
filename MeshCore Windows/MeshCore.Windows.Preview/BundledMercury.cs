@@ -44,25 +44,28 @@ internal sealed class BundledMercury(string dataDirectory) : IDisposable
         return MercuryFirewall.ConfigureAsync(Executable, stop);
     }
 
+    public Task<bool> IsFirewallProtectedAsync(CancellationToken stop) =>
+        MercuryFirewall.IsProtectedAsync(Executable, stop);
+
     public async Task EnsureReadyAsync(bool transmission, CancellationToken stop)
     {
-        if (!File.Exists(ConfigPath)) throw new InvalidOperationException("Open Mercury settings and save your audio devices and PTT settings.");
+        if (!File.Exists(ConfigPath)) throw new InvalidOperationException("Open HFLink Settings and save your audio devices and PTT settings.");
         var config = MercurySettingsFile.Open(ConfigPath);
         if (config.Get("main", "input_device", "\0") == "\0" || config.Get("main", "output_device", "\0") == "\0")
-            throw new InvalidOperationException("Choose both audio devices in Mercury settings before starting the bundled modem.");
+            throw new InvalidOperationException("Choose both audio devices in HFLink Settings before starting the bundled modem.");
         if (transmission && config.Get("ptt", "method", "none") is "none" or "")
-            throw new InvalidOperationException("Set a push-to-talk method in Mercury settings before using live send or receive.");
+            throw new InvalidOperationException("Set a push-to-talk method in HFLink Settings before using live send or receive.");
         if (!await MercuryFirewall.IsProtectedAsync(Executable, stop))
         {
             Stop();
-            throw new InvalidOperationException("Use Configure firewall before starting bundled Mercury.");
+            throw new InvalidOperationException("Use Fix firewall in HFLink Settings before starting bundled Mercury.");
         }
 
         if (Running && OwnsListeners(_process!.Id)) return;
         Stop();
         StageRuntime();
         if (IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(endpoint => Ports.Contains(endpoint.Port)))
-            throw new IOException("A Mercury port is already in use. Close the external modem or select External Mercury in Station settings.");
+            throw new IOException("A Mercury port is already in use. Close the external modem or select External Mercury in HFLink Settings.");
         if (config.Get("main", "ui_enabled", "false") != "false")
         {
             config.Set("main", "ui_enabled", "false");

@@ -7,7 +7,7 @@ using Windows.Media.Devices;
 
 namespace MeshCore.Windows.Preview;
 
-internal sealed class MercurySettingsDialog : Form
+internal sealed class MercurySettingsPanel : UserControl
 {
     private sealed record AudioChoice(string Id, string Name)
     {
@@ -30,16 +30,11 @@ internal sealed class MercurySettingsDialog : Form
     private readonly Button _save = new() { Text = "Save settings", AutoSize = true, Enabled = false };
     private MercurySettingsFile? _config;
     private AudioChoice[] _inputs = [], _outputs = [];
-    public bool Saved { get; private set; }
-
-    public MercurySettingsDialog(string? path, Func<MercurySettingsFile, string?> saveConfig, bool fixedPath = false)
+    public MercurySettingsPanel(string? path, Func<MercurySettingsFile, string?> saveConfig, bool fixedPath)
     {
         _saveConfig = saveConfig;
         _fixedPath = fixedPath;
-        Text = "HFLink — Mercury settings";
-        StartPosition = FormStartPosition.CenterParent;
-        MinimumSize = new Size(690, 540);
-        Size = new Size(720, 570);
+        Dock = DockStyle.Fill;
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, ColumnCount = 1, Padding = new Padding(12) };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         Controls.Add(layout);
@@ -71,14 +66,12 @@ internal sealed class MercurySettingsDialog : Form
         }
         layout.Controls.Add(fields);
         layout.Controls.Add(_status);
-        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true };
-        layout.Controls.Add(Row(_save, cancel));
-        CancelButton = cancel;
+        layout.Controls.Add(_save);
         _save.Click += (_, _) => Save();
         _method.SelectedIndexChanged += (_, _) => SetPttControls();
         _device.Items.AddRange(SerialPort.GetPortNames().Order().Cast<object>().ToArray());
         LoadConfig(path);
-        Shown += async (_, _) =>
+        Load += async (_, _) =>
         {
             try
             {
@@ -221,12 +214,10 @@ internal sealed class MercurySettingsDialog : Form
             SaveAudio(config, input, "input");
             SaveAudio(config, output, "output");
             string? backup = _saveConfig(config);
-            Saved = true;
-            if (backup is not null)
-                MessageBox.Show(this, (_fixedPath ? "HFLink will use these settings the next time it starts Mercury. " :
-                    "Restart Mercury to apply these settings. ") + $"Backup saved as {Path.GetFileName(backup)}.",
-                    "Mercury settings saved", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            DialogResult = DialogResult.OK;
+            _config = config;
+            _status.Text = (_fixedPath ? "Saved. Check modem to start Mercury with these settings." :
+                "Saved. Restart your external Mercury to apply these settings.") +
+                (backup is null ? "" : $" Backup saved as {Path.GetFileName(backup)}.");
         }
         catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or InvalidOperationException or Microsoft.Data.Sqlite.SqliteException)
         {

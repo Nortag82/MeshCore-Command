@@ -41,6 +41,24 @@ public sealed class HfLink
         }
     }
 
+    public bool FirewallSetupOffered()
+    {
+        lock (_gate)
+        {
+            using var db = Open();
+            return Read<string>(db, "settings", "firewall-setup-offered") is not null;
+        }
+    }
+
+    public void MarkFirewallSetupOffered()
+    {
+        lock (_gate)
+        {
+            using var db = Open();
+            Write(db, "settings", "firewall-setup-offered", "yes");
+        }
+    }
+
     public string? MercuryConfigPath()
     {
         lock (_gate)
@@ -215,7 +233,8 @@ public sealed class HfLink
     }
 
     public async Task ReceiveAsync(bool allowLive,
-        Func<HfMessage, CancellationToken, Task<bool>> approveReceipt, CancellationToken stop)
+        Func<HfMessage, CancellationToken, Task<bool>> approveReceipt, CancellationToken stop,
+        Action<HfMessage>? onReceived = null)
     {
         EnterModem();
         try
@@ -235,12 +254,14 @@ public sealed class HfLink
                 if (packet.Protocol != HfPacket.Version || packet.Type != "message" || packet.To != station.Callsign) return null;
                 HfPacket.ValidateText(packet.Text);
                 HfMessage message;
+                bool isNew;
                 string key = $"in:{station.Simulation}:{packet.To}:{packet.From}:{packet.Id:D}";
                 lock (_gate)
                 {
                     using var db = Open();
                     var existing = Read<HfMessage>(db, "messages", key);
                     if (existing is not null && (existing.Text != packet.Text || existing.Attempt == packet.Attempt)) return null;
+                    isNew = existing is null;
                     var now = DateTimeOffset.UtcNow;
                     message = existing is null
                         ? new(packet.Id, packet.From, packet.To, packet.Text!, "", "", now, now, true, station.Simulation, HfStatus.Received, Attempt: packet.Attempt)
@@ -248,6 +269,7 @@ public sealed class HfLink
                     Write(db, "messages", key, message);
                     if (existing is null) Record(db, packet.From, "Incoming message stored", packet.Id);
                 }
+                if (isNew) onReceived?.Invoke(message);
                 if (!approved.Add(packet.Attempt) || !await approveReceipt(message, token)) return null;
                 token.ThrowIfCancellationRequested();
                 lock (_gate)
@@ -286,7 +308,7 @@ public sealed class HfLink
         return db;
     }
 
-    private static HfStation LoadStation(SqliteConnection db) => Read<HfStation>(db, "settings", "station") ?? new(UseBundledMercury: true);
+    private static HfStation LoadStation(SqliteConnection db) => Read<HfStation>(db, "settings", "station") ?? new();
     private static HfMessage GetMessage(SqliteConnection db, Guid id) =>
         Read<HfMessage>(db, "messages", id.ToString("D")) ?? throw new ArgumentException("Outgoing message not found.");
 

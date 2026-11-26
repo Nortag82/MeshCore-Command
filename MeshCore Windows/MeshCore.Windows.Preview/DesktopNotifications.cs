@@ -10,11 +10,11 @@ internal sealed class DesktopNotifications : IDisposable
 
     public DesktopNotifications(Form owner, Action activate) { _owner = owner; _activate = activate; }
 
-    public void Show(string title, string body)
+    public void Show(string title, string body, Action? activate = null)
     {
         if (_disposed) return;
         while (_alerts.Count >= 3) _alerts[0].Close();
-        var alert = new AlertWindow(title, body, _activate);
+        var alert = new AlertWindow(title, body, activate ?? _activate);
         _alerts.Add(alert);
         alert.FormClosed += (_, _) => { _alerts.Remove(alert); PositionAlerts(); };
         PositionAlerts();

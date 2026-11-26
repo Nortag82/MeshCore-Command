@@ -15,6 +15,11 @@ internal static class HfLinkChecks
             var link = new HfLink(path);
             CheckMercurySettings(link, directory.FullName);
             Check(link.Station().UseBundledMercury, "New stations default to bundled Mercury");
+            Check(!link.FirewallSetupOffered(), "An unopened profile has no firewall prompt record");
+            link.MarkFirewallSetupOffered();
+            Check(new HfLink(path).FirewallSetupOffered(), "The first firewall prompt is recorded across restarts");
+            link.SaveStation(new HfStation("M0ABC", Host: "example.org", ControlPort: 10300, DataPort: 10301, UseBundledMercury: false));
+            Check(new HfLink(path).Station() is { UseBundledMercury: false, Host: "example.org" }, "An explicit external modem remains selected");
             link.SaveStation(new HfStation("M0ABC", Host: "example.org", ControlPort: 10300, DataPort: 10301, UseBundledMercury: true));
             Check(link.Station() is { Host: "127.0.0.1", ControlPort: 8300, DataPort: 8301 }, "Bundled Mercury is forced to the local ports");
             var id = link.Queue("G1XYZ", "First message");
@@ -32,9 +37,13 @@ internal static class HfLinkChecks
             var cancelled = link.Queue("G1XYZ", "Cancel this");
             link.Cancel(cancelled);
             Check(link.Messages().Single(m => m.Id == cancelled).Status == HfStatus.Cancelled, "Cancellation persists");
-            int prompts = 0;
-            await link.ReceiveAsync(false, (_, _) => { prompts++; return Task.FromResult(true); }, default);
-            Check(prompts == 1 && link.Messages().Count(m => m.Incoming) == 1, "Duplicate incoming suppression");
+            int prompts = 0, notifications = 0;
+            await link.ReceiveAsync(false, (_, _) => { prompts++; return Task.FromResult(true); }, default, message =>
+            {
+                notifications++;
+                Check(link.Messages().Any(saved => saved.Id == message.Id && saved.Incoming), "Notification follows storage");
+            });
+            Check(prompts == 1 && notifications == 1 && link.Messages().Count(m => m.Incoming) == 1, "Duplicate incoming suppression");
 
             var reopened = new HfLink(path);
             Check(reopened.Messages().Any(m => m.Id == id && m.Status == HfStatus.Delivered), "History survives restart");

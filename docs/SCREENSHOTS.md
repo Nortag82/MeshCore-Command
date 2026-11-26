@@ -1,8 +1,18 @@
 # MeshCore Command screenshots
 
-These images show the native Windows 2.0.43 interface with simulated contacts, messages, telemetry and map objects. They were generated without connecting a radio or reading a user profile. The released 2.0.43 app still displays the red early-candidate banner shown here. Map data © OpenStreetMap contributors.
+The HFLink images show Windows 2.0.48. The other Windows images show 2.0.43, including its earlier candidate banner. The captures use simulated contacts, messages, telemetry and map objects, without connecting a radio or reading a user profile. Map data © OpenStreetMap contributors.
 
 The native firmware dialog is not pictured here. The Android images in the README use the HTML from the released Android 0.2.15 APK with a simulated bridge; they are not photographs of a phone or live radio session.
+
+## HFLink
+
+HFLink has one **Settings** button for the station, audio and PTT, and firewall. With a receive window open, you can return to the radio page and get notified when a message arrives.
+
+![HFLink with an incoming simulated message and receipt controls](images/native/hflink.png)
+
+![HFLink Settings with the bundled Mercury option selected](images/native/hflink-settings.png)
+
+![HFLink notification over the MeshCore radio page](images/native/hflink-notification.png)
 
 ## Saved Wi-Fi boards
 

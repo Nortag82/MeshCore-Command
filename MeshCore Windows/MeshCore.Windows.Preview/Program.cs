@@ -359,6 +359,7 @@ internal sealed class PreviewWindow : Form
     private byte[]? _pendingRestore;
     private FirmwareDialog? _firmwareDialog;
     private HfLinkView? _hfLinkView;
+    private string? _hfLinkTestDirectory;
     private readonly string? _testReceipt, _testNonce;
     private readonly byte[]? _expectedRecords;
     private bool _startupReady;
@@ -425,6 +426,11 @@ internal sealed class PreviewWindow : Form
                 _notifications.Dispose(); _tray.Visible = false; _tray.Dispose();
                 _updater?.Dispose();
                 if (_hfLinkView is not null) await _hfLinkView.StopAsync();
+                if (_hfLinkTestDirectory is not null)
+                {
+                    foreach (string file in Directory.GetFiles(_hfLinkTestDirectory)) File.Delete(file);
+                    Directory.Delete(_hfLinkTestDirectory);
+                }
                 if (_server is not null) await _server.DisposeAsync();
                 if (_downloads is not null) await _downloads.DisposeAsync();
                 await _sessions.DisposeAsync(); _elevationHttp.Dispose();
@@ -613,7 +619,8 @@ internal sealed class PreviewWindow : Form
                                     {
                                         await _web.CoreWebView2.ExecuteScriptAsync(openHfLink);
                                         for (int attempt = 0; attempt < 50 && !view.Visible; attempt++) await Task.Delay(100);
-                                        if (_hfLinkView != view || !view.Visible) Environment.ExitCode = 1;
+                                        if (_hfLinkView != view || !view.Visible || !await CheckHfLinkReceiveAsync(view, back))
+                                            Environment.ExitCode = 1;
                                         await ReturnToRadioAsync();
                                     }
                                 }
@@ -969,13 +976,95 @@ internal sealed class PreviewWindow : Form
         if (_closing) throw new InvalidOperationException("MeshCore Command is closing.");
         if (_hfLinkView is null)
         {
-            _hfLinkView = new HfLinkView(_dataDirectory, _experimentalRadio && !_smokeTest, ReturnToRadioAsync);
+            string directory = _dataDirectory;
+            if (_integrationTest && _integrationIp is null)
+            {
+                _hfLinkTestDirectory = Directory.CreateTempSubdirectory("mcc-hflink-preview-").FullName;
+                directory = _hfLinkTestDirectory;
+                var fixture = new HfLink(Path.Combine(directory, "hflink-native.sqlite3"));
+                fixture.SaveStation(new HfStation("M0ABC"));
+                fixture.Queue("G1XYZ", "Example message from the local operator");
+            }
+            _hfLinkView = new HfLinkView(directory, _experimentalRadio && !_smokeTest, ReturnToRadioAsync, NotifyHfLinkMessage);
             _content.Controls.Add(_hfLinkView);
         }
         _web.Hide();
         _hfLinkView.Show();
         _hfLinkView.BringToFront();
         _hfLinkView.Select();
+        _hfLinkView.EnterView();
+    }
+
+    private void NotifyHfLinkMessage(HfMessage message)
+    {
+        if (_closing || (_hfLinkView?.Visible == true && WindowState != FormWindowState.Minimized)) return;
+        string title = message.Simulated ? "HFLink simulation" : "HFLink message received";
+        _notifications.Show(title, $"From {message.From}\n{message.Text}", () => OpenHfLinkMessage(message));
+    }
+
+    private void OpenHfLinkMessage(HfMessage message)
+    {
+        if (_closing) return;
+        RestoreAndActivate();
+        ShowHfLink();
+        _hfLinkView!.SelectMessage(message, clearFilter: true);
+    }
+
+    private async Task<bool> CheckHfLinkReceiveAsync(HfLinkView view, Button back)
+    {
+        if (view.Controls.Find("hfLinkSettings", true).SingleOrDefault() is not Button { Text: "Settings" } ||
+            view.Controls.Find("hfLinkReceive", true).SingleOrDefault() is not Button { Enabled: true } receive) return false;
+        string? gallery = _candidate ? null : Environment.GetEnvironmentVariable("MCC_HFLINK_GALLERY_DIR");
+        if (!string.IsNullOrEmpty(gallery))
+        {
+            Directory.CreateDirectory(gallery);
+            using var settings = view.CreateSettingsDialog();
+            settings.Show(this);
+            await Task.Yield();
+            CaptureControl(settings, Path.Combine(gallery, "hflink-settings.png"));
+            settings.Close();
+        }
+        receive.PerformClick();
+        back.PerformClick();
+        if (!_web.Visible || view.Visible) return false;
+        Form? notification = null;
+        for (int attempt = 0; attempt < 50 && notification is null; attempt++)
+        {
+            await Task.Delay(100);
+            notification = Application.OpenForms.Cast<Form>().FirstOrDefault(form =>
+                form.Text == "MeshCore Command notification" &&
+                form.Controls.OfType<Label>().Any(label => label.Text == "HFLink simulation"));
+        }
+        if (notification is null || !_web.Visible) return false;
+        if (!string.IsNullOrEmpty(gallery))
+        {
+            using var preview = new MemoryStream();
+            await _web.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, preview);
+            preview.Position = 0;
+            using var dashboard = new Bitmap(preview);
+            using var overlay = new Bitmap(notification.Width, notification.Height);
+            notification.DrawToBitmap(overlay, new Rectangle(Point.Empty, overlay.Size));
+            using (var graphics = Graphics.FromImage(dashboard))
+                graphics.DrawImageUnscaled(overlay, dashboard.Width - overlay.Width - 16, dashboard.Height - overlay.Height - 16);
+            dashboard.Save(Path.Combine(gallery, "hflink-notification.png"));
+        }
+        notification.Close();
+        var fixture = new HfLink(Path.Combine(_hfLinkTestDirectory!, "hflink-native.sqlite3"));
+        var incoming = fixture.Messages().Where(message => message.Incoming).ToArray();
+        if (incoming.Length != 1) return false;
+        ShowHfLink();
+        view.SelectMessage(incoming[0], clearFilter: true);
+        if (!string.IsNullOrEmpty(gallery))
+            CaptureControl(view, Path.Combine(gallery, "hflink.png"));
+        await view.StopAsync();
+        return view.Visible && !_web.Visible && fixture.Messages().Count(message => message.Incoming) == 1;
+    }
+
+    private static void CaptureControl(Control control, string path)
+    {
+        using var bitmap = new Bitmap(control.Width, control.Height);
+        control.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
+        bitmap.Save(path);
     }
 
     private static bool CheckHfLinkButtonContrast(HfLinkView view)
@@ -998,7 +1087,7 @@ internal sealed class PreviewWindow : Form
     private async Task ReturnToRadioAsync()
     {
         if (_hfLinkView is null) return;
-        await _hfLinkView.StopAsync();
+        await _hfLinkView.LeaveViewAsync();
         if (_closing) return;
         _hfLinkView.Hide();
         _web.Show();

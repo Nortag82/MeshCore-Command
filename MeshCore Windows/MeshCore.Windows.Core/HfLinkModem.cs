@@ -7,7 +7,7 @@ namespace MeshCore.Windows.Core;
 
 public sealed record HfStation(string Callsign = "", string Host = "127.0.0.1",
     int ControlPort = 8300, int DataPort = 8301, int TimeoutSeconds = 120, bool Simulation = true,
-    bool UseBundledMercury = false)
+    bool UseBundledMercury = true)
 {
     public static string Call(string value)
     {
@@ -83,6 +83,7 @@ public sealed class MockHfModem(HfSimulation outcome = HfSimulation.NoAcknowledg
 
     public async Task ReceiveAsync(HfStation station, Func<HfPacket, CancellationToken, Task<HfPacket?>> onPacket, CancellationToken stop)
     {
+        await Task.Delay(TimeSpan.FromSeconds(2), stop);
         string peer = station.Callsign == "N0SIM" ? "N1SIM" : "N0SIM";
         var packet = new HfPacket(HfPacket.Version, "message", Guid.NewGuid(), Guid.NewGuid(), peer, station.Callsign,
             "Simulated incoming HFLink message");

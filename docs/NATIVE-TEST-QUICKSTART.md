@@ -1,6 +1,6 @@
 # Native Windows quick start
 
-The [2.0.47 Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.47) includes the integrated HFLink view, bundled Mercury, and its settings editor. It supports new installations and updates from previous native builds. The legacy Python updater can offer the [2.0.43 migration release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). The previous legacy release and its [user manual](USER-MANUAL.md) remain available.
+The [2.0.48 Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.48) adds HFLink receive notifications, bundled Mercury by default, and a single HFLink settings window. It supports new installations and updates from previous native builds. The legacy Python updater can offer the [2.0.43 migration release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). The previous legacy release and its [user manual](USER-MANUAL.md) remain available.
 
 ## Update or install
 
@@ -13,6 +13,10 @@ The legacy upgrade starts the native app and checks its copied profile before sw
 Use **+ Board** to add a compatible Wi-Fi, Bluetooth or USB companion. For a saved Wi-Fi board, choose it and press **Connect** beneath the list; manual IP entry remains available. Removing a saved Wi-Fi board asks for confirmation and does not reset the radio. Pick the correct radio and firmware; flashing and some hardware combinations are still experimental. Secure Coms and shared Situation Map data add AES-256-GCM encryption inside MeshCore direct messages. Both people need compatible Command installations, a shared secret exchanged privately, and matching fingerprints verified through a trusted channel. Secure messages are limited to 74 UTF-8 bytes; the composer shows how many bytes to remove if a draft is too long. See [security and tradeoffs](SECURE-COMS-SECURITY.md).
 
 To find a missing chat contact, ask the person to send a flood advert from the radio you want to reach. You can also right-click an incoming channel message and choose **Find or add sender**. Channel sender names are unverified: to import a missing sender, obtain their `meshcore://` contact card separately and compare its public key with them before trusting it.
+
+## HFLink
+
+Open **HFLink → Settings** to configure your station, audio and PTT. HFLink checks Windows Firewall on the first visit with bundled Mercury selected and offers to fix it if needed. After you select **Open receive window**, **Back to radio** keeps the session open so incoming HFLink messages can alert you while you use MeshCore. [HFLink setup](HFLINK.md) · [HFLink screenshots](SCREENSHOTS.md#hflink)
 
 ## Important limitations
 
