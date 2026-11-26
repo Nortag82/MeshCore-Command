@@ -6,8 +6,6 @@ using System.Text.Json;
 
 internal static class HfLinkChecks
 {
-    private const string Password = "hflink-test-password";
-
     public static async Task RunAsync()
     {
         var directory = Directory.CreateTempSubdirectory("mcc-hflink-test-");
@@ -15,50 +13,33 @@ internal static class HfLinkChecks
         {
             string path = Path.Combine(directory.FullName, "hf.sqlite3");
             var link = new HfLink(path);
-            var admin = link.SetupAdministrator(Password);
-            CheckMercurySettings(link, admin, directory.FullName);
-            var station = new HfStation("M0ABC");
-            link.SaveStation(admin, station);
-            var requester = new HfUser("alice", HfRole.User, "M0AAA", true, true, "Checked by the test admin");
-            link.SaveUser(admin, requester, Password);
-            link.SaveUser(admin, new("operator", HfRole.Operator, "M0ABC", true, false, ""), Password);
-            link.SaveUser(admin, new("denied", HfRole.User, "M0ZZZ", false, false, ""), Password);
-            var user = link.SignIn("alice", Password);
-            var op = link.SignIn("operator", Password);
-            var denied = link.SignIn("denied", Password);
-            await DeniedAsync(() => Task.FromResult(link.MercuryConfigPath(user)));
-            await DeniedAsync(() => Task.FromResult(link.Queue(denied, "G1XYZ", "Unauthorized")));
-            await DeniedAsync(() => Task.FromResult(link.Queue(admin, "G1XYZ", "Administrator without request access")));
-            await DeniedAsync(() => Task.FromResult(link.SignIn("operator", "wrong")));
-            var id = link.Queue(user, "G1XYZ", "First message");
-            Check(link.Messages(user).Single().Status == HfStatus.AwaitingApproval, "Queue must await approval");
-            await DeniedAsync(() => link.ApproveAndSendAsync(user, id, HfSimulation.Acknowledged, false, default));
-            link.SaveUser(admin, requester with { Access = false }, "");
-            await DeniedAsync(() => link.ApproveAndSendAsync(op, id, HfSimulation.Acknowledged, false, default));
-            link.SaveUser(admin, requester, "");
-            Check(await link.ApproveAndSendAsync(op, id, HfSimulation.Disconnected, false, default) == HfStatus.Failed, "Mock disconnect");
-            link.Retry(user, id);
-            Check(link.Messages(user).Single().Status == HfStatus.AwaitingApproval, "Retry requires renewed approval");
-            Check(await link.ApproveAndSendAsync(op, id, HfSimulation.Timeout, false, default) == HfStatus.Failed, "Mock timeout");
-            link.Retry(user, id);
-            Check(await link.ApproveAndSendAsync(op, id, HfSimulation.NoAcknowledgement, false, default) == HfStatus.Unconfirmed,
+            CheckMercurySettings(link, directory.FullName);
+            Check(link.Station().UseBundledMercury, "New stations default to bundled Mercury");
+            link.SaveStation(new HfStation("M0ABC", Host: "example.org", ControlPort: 10300, DataPort: 10301, UseBundledMercury: true));
+            Check(link.Station() is { Host: "127.0.0.1", ControlPort: 8300, DataPort: 8301 }, "Bundled Mercury is forced to the local ports");
+            var id = link.Queue("G1XYZ", "First message");
+            Check(link.Messages().Single().Status == HfStatus.AwaitingApproval, "Queue must await approval");
+            Check(await link.ApproveAndSendAsync(id, HfSimulation.Disconnected, false, default) == HfStatus.Failed, "Mock disconnect");
+            link.Retry(id);
+            Check(link.Messages().Single().Status == HfStatus.AwaitingApproval, "Retry requires renewed approval");
+            Check(await link.ApproveAndSendAsync(id, HfSimulation.Timeout, false, default) == HfStatus.Failed, "Mock timeout");
+            link.Retry(id);
+            Check(await link.ApproveAndSendAsync(id, HfSimulation.NoAcknowledgement, false, default) == HfStatus.Unconfirmed,
                 "Local send does not confirm delivery");
-            link.Retry(user, id);
-            Check(await link.ApproveAndSendAsync(op, id, HfSimulation.Acknowledged, false, default) == HfStatus.Delivered,
+            link.Retry(id);
+            Check(await link.ApproveAndSendAsync(id, HfSimulation.Acknowledged, false, default) == HfStatus.Delivered,
                 "Matching app receipt confirms delivery");
-            var cancelled = link.Queue(user, "G1XYZ", "Cancel this");
-            link.Cancel(user, cancelled);
-            Check(link.Messages(user).Single(m => m.Id == cancelled).Status == HfStatus.Cancelled, "Cancellation persists");
+            var cancelled = link.Queue("G1XYZ", "Cancel this");
+            link.Cancel(cancelled);
+            Check(link.Messages().Single(m => m.Id == cancelled).Status == HfStatus.Cancelled, "Cancellation persists");
             int prompts = 0;
-            await link.ReceiveAsync(op, false, (_, _) => { prompts++; return Task.FromResult(true); }, default);
-            Check(prompts == 1 && link.Messages(op).Count(m => m.Incoming) == 1, "Duplicate incoming suppression");
-            Check(link.Messages(user).All(m => !m.Incoming), "Ordinary users only see their own messages");
+            await link.ReceiveAsync(false, (_, _) => { prompts++; return Task.FromResult(true); }, default);
+            Check(prompts == 1 && link.Messages().Count(m => m.Incoming) == 1, "Duplicate incoming suppression");
 
             var reopened = new HfLink(path);
-            var reopenedOperator = reopened.SignIn("operator", Password);
-            Check(reopened.Messages(reopenedOperator).Any(m => m.Id == id && m.Status == HfStatus.Delivered), "History survives restart");
-            var audit = reopened.Audit(reopenedOperator);
-            Check(audit.Any(a => a.Message == id && a.Actor == "operator" && a.Event.Contains("Approved")) &&
+            Check(reopened.Messages().Any(m => m.Id == id && m.Status == HfStatus.Delivered), "History survives restart");
+            var audit = reopened.Audit();
+            Check(audit.Any(a => a.Message == id && a.Actor == "local operator" && a.Event.Contains("Approved")) &&
                 audit.All(a => !a.Event.Contains("First message")), "Approval and transmission audit contains no message text");
 
             await LoopbackAsync(wrongReceipt: false);
@@ -66,10 +47,10 @@ internal static class HfLinkChecks
             await ReceiveLoopbackAsync();
         }
         finally { directory.Delete(recursive: true); }
-        Console.WriteLine("HFLink SQLite, permissions, simulation and Mercury loopback checks passed.");
+        Console.WriteLine("HFLink SQLite, bundled station settings, simulation and Mercury loopback checks passed.");
     }
 
-    private static void CheckMercurySettings(HfLink link, Guid admin, string directory)
+    private static void CheckMercurySettings(HfLink link, string directory)
     {
         string path = Path.Combine(directory, "mercury.ini");
         string original = "; Mercury\r\n[main]\r\ninput_device = \"USB #1\" ; keep this comment\r\n[ptt]\r\nmethod = none\r\n[custom]\r\nkey = keep\r\n";
@@ -80,13 +61,13 @@ internal static class HfLinkChecks
         settings.Set("ptt", "method", "serial");
         settings.Set("ptt", "device", "COM5");
         settings.Set("audio", "tx_delay_ms", "200");
-        string? backup = link.SaveMercuryConfig(admin, settings);
+        string? backup = link.SaveMercuryConfig(settings);
         Check(backup is not null && File.ReadAllText(backup) == original, "Mercury settings writes recoverable backup");
         string saved = File.ReadAllText(path);
         Check(saved.Contains("input_device = \"USB #2\" ; keep this comment\r\n") &&
               saved.Contains("method = serial\r\ndevice = COM5\r\n[custom]\r\nkey = keep\r\n") &&
               saved.Contains("[audio]\r\ntx_delay_ms = 200\r\n"), "Only selected Mercury settings change");
-        Check(link.MercuryConfigPath(admin) == path, "Remembers the Mercury settings file");
+        Check(link.MercuryConfigPath() == path, "Remembers the Mercury settings file");
         Check(MercurySettingsFile.Open(path).Save() is null, "Unchanged config is left alone");
 
         var stale = MercurySettingsFile.Open(path);
@@ -193,13 +174,6 @@ internal static class HfLinkChecks
 
     private static ValueTask WriteAsync(Stream stream, string text, CancellationToken stop) =>
         stream.WriteAsync(Encoding.UTF8.GetBytes(text), stop);
-
-    private static async Task DeniedAsync(Func<Task> action)
-    {
-        try { await action(); }
-        catch (UnauthorizedAccessException) { return; }
-        throw new InvalidOperationException("Expected HFLink access denial.");
-    }
 
     private static void Check(bool condition, string message)
     {

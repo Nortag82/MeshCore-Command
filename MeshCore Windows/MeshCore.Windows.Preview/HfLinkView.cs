@@ -7,11 +7,12 @@ internal sealed class HfLinkView : UserControl
 {
     private readonly HfLink _link;
     private readonly bool _allowLive;
-    private readonly Label _status = new() { AutoSize = true, Text = "Sign in to HFLink." };
+    private readonly BundledMercury _bundled;
+    private readonly Label _status = new() { AutoSize = true, Text = "Ready." };
     private readonly Label _station = new() { AutoSize = true };
-    private readonly TextBox _destination = new() { Width = 110, MaxLength = 15, PlaceholderText = "Callsign" };
-    private readonly TextBox _message = new() { Width = 420, MaxLength = 512, PlaceholderText = "Openly readable message" };
-    private readonly TextBox _filter = new() { Width = 130, MaxLength = 15, PlaceholderText = "Filter by callsign" };
+    private readonly TextBox _destination = new() { Width = 110, MaxLength = 15, AccessibleName = "Destination callsign" };
+    private readonly TextBox _message = new() { Width = 360, MaxLength = 512, AccessibleName = "Message" };
+    private readonly TextBox _filter = new() { Width = 130, MaxLength = 15, AccessibleName = "Filter by callsign" };
     private readonly ComboBox _simulation = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 160 };
     private readonly Label _bytes = new() { AutoSize = true, Text = "0 / 512 bytes" };
     private readonly DataGridView _history = new()
@@ -20,8 +21,7 @@ internal sealed class HfLinkView : UserControl
         RowHeadersVisible = false, MultiSelect = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect
     };
     private readonly TextBox _detail = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical };
-    private readonly Button _signIn, _signOut, _setup, _mercury, _users, _probe, _send, _queue, _receive, _cancel, _retry, _audit, _stop;
-    private Guid _session;
+    private readonly Button _setup, _mercury, _firewall, _probe, _send, _queue, _receive, _cancel, _retry, _audit, _stop, _stopMercury;
     private CancellationTokenSource? _operation;
     private TaskCompletionSource? _finished;
     private bool _ready;
@@ -30,9 +30,15 @@ internal sealed class HfLinkView : UserControl
     {
         _link = new HfLink(Path.Combine(directory, "hflink-native.sqlite3"));
         _allowLive = allowLive;
+        _bundled = new BundledMercury(directory);
+        _bundled.ModemStopped += detail =>
+        {
+            _operation?.Cancel();
+            Report(detail);
+        };
         Dock = DockStyle.Fill;
         AccessibleName = "HFLink";
-        Font = new Font("Segoe UI", 10);
+        Font = new Font("Segoe UI", 11);
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 10, Padding = new Padding(16), AutoScroll = true };
         Controls.Add(layout);
         for (int row = 0; row < layout.RowCount; row++)
@@ -44,46 +50,47 @@ internal sealed class HfLinkView : UserControl
         var notice = new Label
         {
             AutoSize = true, MaximumSize = new Size(730, 0), ForeColor = SystemColors.WindowText,
-            Text = "HF messages are openly readable. The designated operator is responsible for transmissions and applicable licence conditions. Callsigns and licence-check records do not verify identity, licensing or compliance."
+            Text = "HF messages are openly readable. The designated operator is responsible for transmissions and applicable licence conditions. Use your station callsign and check that the frequency is clear before sending."
         };
         layout.Controls.Add(notice, 0, 1);
 
-        _signIn = Button("Sign in", SignIn);
-        _signOut = Button("Sign out", () => { _link.SignOut(_session); _session = Guid.Empty; RefreshView(); Report("Signed out."); });
         _setup = Button("Station settings", ConfigureStation);
         _mercury = Button("Mercury settings", ConfigureMercury);
-        _users = Button("Users and permissions", ConfigureUser);
+        _firewall = AsyncButton("Configure firewall", ConfigureFirewallAsync);
         _audit = Button("Audit log", ShowAudit);
-        layout.Controls.Add(Row(_signIn, _signOut, _setup, _mercury, _users, _audit), 0, 2);
+        layout.Controls.Add(Row(_setup, _mercury, _firewall, _audit), 0, 2);
         layout.Controls.Add(_station, 0, 3);
 
         _queue = Button("Queue for approval", () =>
         {
-            _link.Queue(_session, _destination.Text, _message.Text);
+            _link.Queue(_destination.Text, _message.Text);
             _message.Clear();
             RefreshView();
             Report("Message is awaiting operator approval.");
         });
-        layout.Controls.Add(Row(_destination, _message, _bytes, _queue), 0, 4);
+        layout.Controls.Add(Row(FieldLabel(_destination), _destination, FieldLabel(_message), _message, _bytes, _queue), 0, 4);
         _message.TextChanged += (_, _) => _bytes.Text = $"{Encoding.UTF8.GetByteCount(_message.Text)} / 512 bytes";
 
         _probe = AsyncButton("Check modem", () => RunAsync(async token =>
         {
-            await _link.ProbeAsync(_session, _allowLive, token);
-            return _link.Station(_session).Simulation
+            await PrepareModemAsync(transmission: false, token);
+            await _link.ProbeAsync(_allowLive, token);
+            return _link.Station().Simulation
                 ? "Simulator ready. No RF is used."
                 : "Mercury responded. TCP ports released after the check.";
         }));
         _receive = AsyncButton("Open receive window", ReceiveAsync);
         _stop = Button("Stop operation", () => _operation?.Cancel());
+        _stop.Name = "hfLinkStopOperation";
+        _stopMercury = Button("Stop Mercury", () => { _bundled.Stop(); RefreshView(); Report("Bundled Mercury stopped."); });
         _simulation.Items.AddRange(["Simulate no receipt", "Simulate receipt", "Simulate disconnect", "Simulate timeout"]);
         _simulation.SelectedIndex = 0;
-        layout.Controls.Add(Row(_probe, _receive, _stop, _simulation), 0, 5);
+        layout.Controls.Add(Row(_probe, _receive, _stop, _stopMercury, _simulation), 0, 5);
 
         _send = AsyncButton("Approve and send", SendAsync);
-        _retry = Button("Retry", () => { _link.Retry(_session, Selected().Id); RefreshView(); Report("Retry requires fresh approval."); });
-        _cancel = Button("Cancel request", () => { _link.Cancel(_session, Selected().Id); RefreshView(); Report("Request cancelled."); });
-        layout.Controls.Add(Row(_filter, _send, _retry, _cancel), 0, 6);
+        _retry = Button("Retry", () => { _link.Retry(Selected().Id); RefreshView(); Report("Retry requires fresh approval."); });
+        _cancel = Button("Cancel request", () => { _link.Cancel(Selected().Id); RefreshView(); Report("Request cancelled."); });
+        layout.Controls.Add(Row(FieldLabel(_filter), _filter, _send, _retry, _cancel), 0, 6);
         _filter.TextChanged += (_, _) => RefreshView();
         foreach (var column in new[] { ("Time", 141), ("Mode", 85), ("Direction", 85), ("From", 95), ("To", 95), ("Status", 170) })
             _history.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = column.Item1, Width = column.Item2, SortMode = DataGridViewColumnSortMode.NotSortable });
@@ -133,42 +140,34 @@ internal sealed class HfLinkView : UserControl
                     grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(30, 92, 87);
                     grid.DefaultCellStyle.SelectionForeColor = Color.White;
                     break;
-                case TextBoxBase or ComboBox:
+                case TextBoxBase:
                     child.BackColor = surface;
+                    break;
+                case ComboBox:
+                    child.ForeColor = SystemColors.WindowText;
+                    child.BackColor = SystemColors.Window;
                     break;
             }
         }
     }
 
-    private void SignIn()
-    {
-        bool setup = _link.NeedsAdministrator;
-        var name = Input("admin", 32);
-        var password = Input("", 256, secret: true);
-        var confirm = Input("", 256, secret: true);
-        if (!Prompt(setup ? "Set the HFLink administrator password" : "Sign in to HFLink", setup
-            ? [("New admin password (12+ characters)", password), ("Confirm password", confirm)]
-            : [("Username", name), ("Password", password)])) return;
-        if (setup && password.Text != confirm.Text) throw new ArgumentException("Passwords do not match.");
-        if (_session != Guid.Empty) _link.SignOut(_session);
-        _session = setup ? _link.SetupAdministrator(password.Text) : _link.SignIn(name.Text, password.Text);
-        RefreshView();
-        var user = _link.CurrentUser(_session);
-        Report($"Signed in as {user.Name} ({user.Role})." + (setup ? " Configure the station and add a designated operator." : ""));
-    }
-
     private void ConfigureStation()
     {
-        var station = _link.Station(_session);
+        var station = _link.Station();
         var call = Input(station.Callsign, 15);
         var host = Input(station.Host, 253);
         var control = Number(station.ControlPort, 1, 65535);
         var data = Number(station.DataPort, 1, 65535);
         var timeout = Number(station.TimeoutSeconds, 5, 600);
+        var bundled = new CheckBox { Text = "Use bundled Mercury", Checked = station.UseBundledMercury, AutoSize = true };
+        void SetExternalFields() => host.Enabled = control.Enabled = data.Enabled = !bundled.Checked;
+        bundled.CheckedChanged += (_, _) => SetExternalFields();
+        SetExternalFields();
         var sim = new CheckBox { Text = "Simulation (no RF)", Checked = station.Simulation || !_allowLive, Enabled = _allowLive, AutoSize = true };
-        if (!Prompt("HFLink station settings", [("Station callsign", call), ("Mercury host", host), ("Control port", control),
+        if (!Prompt("HFLink station settings", [("Station callsign", call), ("Modem", bundled), ("External Mercury host", host), ("Control port", control),
             ("Data port", data), ("Session timeout in seconds", timeout), ("Mode", sim)])) return;
-        _link.SaveStation(_session, new(call.Text, host.Text, (int)control.Value, (int)data.Value, (int)timeout.Value, sim.Checked));
+        _link.SaveStation(new(call.Text, host.Text, (int)control.Value, (int)data.Value, (int)timeout.Value, sim.Checked, bundled.Checked));
+        _bundled.Stop();
         RefreshView();
         Report("Station settings saved. Check the modem before using it.");
     }
@@ -176,57 +175,52 @@ internal sealed class HfLinkView : UserControl
     private void ConfigureMercury()
     {
         if (_operation is not null) return;
-        string? path = _link.MercuryConfigPath(_session) ?? MercurySettingsDialog.FindConfig();
-        using var editor = new MercurySettingsDialog(path, config => _link.SaveMercuryConfig(_session, config));
+        bool managed = _link.Station().UseBundledMercury;
+        string? path = managed ? _bundled.PrepareSettings() : _link.MercuryConfigPath() ?? MercurySettingsDialog.FindConfig();
+        using var editor = new MercurySettingsDialog(path, config => _link.SaveMercuryConfig(config, rememberPath: !managed), fixedPath: managed);
         editor.ShowDialog(this);
-        if (editor.Saved) Report("Mercury configuration saved. Restart Mercury to apply it.");
+        if (!editor.Saved) return;
+        if (managed) _bundled.Stop();
+        Report(managed ? "Mercury settings saved. Select Check modem to start Mercury with these settings." :
+            "Mercury configuration saved. Restart your external Mercury to apply it.");
     }
 
-    private void ConfigureUser()
+    private async Task ConfigureFirewallAsync()
     {
-        var users = _link.Users(_session).Where(user => user.Role != HfRole.Administrator).ToArray();
-        var name = new ComboBox { Width = 255, MaxLength = 32 };
-        name.Items.AddRange(users.Select(user => user.Name).Cast<object>().ToArray());
-        var password = Input("", 256, secret: true);
-        var call = Input("", 15);
-        var role = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 255 };
-        role.Items.AddRange(["User", "Designated operator"]);
-        var access = new CheckBox { Text = "Approve HFLink access", AutoSize = true };
-        var tx = new CheckBox { Text = "May request transmissions", AutoSize = true };
-        var licence = Input("", 240);
-        name.TextChanged += (_, _) =>
+        if (!Confirm("Enable Windows Firewall on the Domain, Private and Public profiles and block remote TCP access to bundled Mercury? Windows will ask for administrator approval.")) return;
+        await RunAsync(async token =>
         {
-            var existing = users.FirstOrDefault(user => user.Name == name.Text.Trim().ToLowerInvariant());
-            call.Text = existing?.Callsign ?? "";
-            role.SelectedIndex = existing?.Role == HfRole.Operator ? 1 : 0;
-            access.Checked = existing?.Access == true;
-            tx.Checked = existing?.MayRequest == true;
-            licence.Text = existing?.LicenceCheck ?? "";
-        };
-        role.SelectedIndex = 0;
-        if (!Prompt("HFLink users and permissions", [("Username (select existing or type new)", name),
-            ("Password (empty to keep existing)", password), ("Callsign", call), ("Role", role),
-            ("Access", access), ("Transmit requests", tx), ("Administrator’s licence check record", licence)])) return;
-        _link.SaveUser(_session, new(name.Text, role.SelectedIndex == 1 ? HfRole.Operator : HfRole.User,
-            call.Text, access.Checked, tx.Checked, licence.Text), password.Text);
-        Report("User permissions saved.");
+            await _bundled.ConfigureFirewallAsync(token);
+            return "Firewall protection verified. Select Check modem to start bundled Mercury.";
+        });
+    }
+
+    private Task PrepareModemAsync(bool transmission, CancellationToken token)
+    {
+        var station = _link.Station();
+        return !station.Simulation && station.UseBundledMercury && _allowLive
+            ? _bundled.EnsureReadyAsync(transmission, token) : Task.CompletedTask;
     }
 
     private async Task SendAsync()
     {
         var message = Selected();
         if (!Confirm($"Approve this transmission from {message.From} to {message.To}?\n\n{message.Text}")) return;
-        await RunAsync(async token => StatusText(await _link.ApproveAndSendAsync(_session, message.Id,
-            (HfSimulation)_simulation.SelectedIndex, _allowLive, token)));
+        await RunAsync(async token =>
+        {
+            await PrepareModemAsync(transmission: true, token);
+            return StatusText(await _link.ApproveAndSendAsync(message.Id, (HfSimulation)_simulation.SelectedIndex, _allowLive, token));
+        });
     }
 
     private async Task ReceiveAsync()
     {
-        var station = _link.Station(_session);
+        var station = _link.Station();
         if (!station.Simulation && !Confirm($"Open a receive window for {station.Callsign} for up to {station.TimeoutSeconds} seconds? Mercury may transmit ARQ control frames while listening.")) return;
         await RunAsync(async token =>
         {
-            await _link.ReceiveAsync(_session, _allowLive, (message, deadline) =>
+            await PrepareModemAsync(transmission: true, token);
+            await _link.ReceiveAsync(_allowLive, (message, deadline) =>
             {
                 RefreshView();
                 return Task.FromResult(!deadline.IsCancellationRequested &&
@@ -270,6 +264,7 @@ internal sealed class HfLinkView : UserControl
             _operation?.Cancel();
             await finished.Task;
         }
+        _bundled.Stop();
     }
 
     protected override void Dispose(bool disposing)
@@ -277,7 +272,7 @@ internal sealed class HfLinkView : UserControl
         if (disposing)
         {
             _operation?.Cancel();
-            _link.SignOut(_session);
+            _bundled.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -313,23 +308,16 @@ internal sealed class HfLinkView : UserControl
         var selection = _history.CurrentRow?.Tag as HfMessage;
         _ready = false;
         _history.Rows.Clear();
-        _station.Text = "Sign in to view the station and conversation history.";
-        if (_session != Guid.Empty)
+        var station = _link.Station();
+        string mode = station.Simulation ? "simulation" : station.UseBundledMercury ? "bundled Mercury" : "external Mercury";
+        _station.Text = $"Station: {(station.Callsign.Length == 0 ? "not configured" : station.Callsign)}   Mode: {mode}";
+        var filter = _filter.Text.Trim().ToUpperInvariant();
+        foreach (var message in _link.Messages().Where(m => filter.Length == 0 || m.From.Contains(filter) || m.To.Contains(filter)))
         {
-            try
-            {
-                var station = _link.Station(_session);
-                _station.Text = $"Station: {(station.Callsign.Length == 0 ? "not configured" : station.Callsign)}   Mode: {(station.Simulation ? "simulation" : "Mercury")}";
-                var filter = _filter.Text.Trim().ToUpperInvariant();
-                foreach (var message in _link.Messages(_session).Where(m => filter.Length == 0 || m.From.Contains(filter) || m.To.Contains(filter)))
-                {
-                    int index = _history.Rows.Add(message.Created.ToLocalTime().ToString("g"), message.Simulated ? "Simulation" : "Mercury",
-                        message.Incoming ? "Incoming" : "Outgoing", message.From, message.To, StatusText(message.Status), message.Text);
-                    _history.Rows[index].Tag = message;
-                    if (selection?.Id == message.Id && selection.From == message.From) _history.CurrentCell = _history.Rows[index].Cells[0];
-                }
-            }
-            catch (UnauthorizedAccessException error) { _station.Text = error.Message; }
+            int index = _history.Rows.Add(message.Created.ToLocalTime().ToString("g"), message.Simulated ? "Simulation" : "Mercury",
+                message.Incoming ? "Incoming" : "Outgoing", message.From, message.To, StatusText(message.Status), message.Text);
+            _history.Rows[index].Tag = message;
+            if (selection?.Id == message.Id && selection.From == message.From) _history.CurrentCell = _history.Rows[index].Cells[0];
         }
         _ready = true;
         SetActions();
@@ -337,28 +325,23 @@ internal sealed class HfLinkView : UserControl
 
     private void SetActions()
     {
-        HfUser? user = null;
-        if (_session != Guid.Empty)
-            try { user = _link.CurrentUser(_session); }
-            catch (UnauthorizedAccessException) { }
+        var station = _link.Station();
         bool idle = _operation is null;
-        bool admin = user?.Role == HfRole.Administrator;
-        bool op = user is { Role: HfRole.Operator, Access: true };
-        bool access = admin || user?.Access == true;
+        bool configured = station.Callsign.Length != 0;
+        bool liveAllowed = station.Simulation || _allowLive;
         var message = _history.CurrentRow?.Tag as HfMessage;
-        _signIn.Enabled = idle && user is null;
-        _signOut.Enabled = idle && _session != Guid.Empty;
-        _setup.Enabled = _users.Enabled = idle && admin;
-        _mercury.Enabled = idle && admin;
-        _audit.Enabled = idle && (admin || op);
-        _queue.Enabled = idle && user is { Access: true, MayRequest: true };
-        _receive.Enabled = idle && op;
-        _probe.Enabled = idle && (admin || op);
+        _setup.Enabled = _mercury.Enabled = _audit.Enabled = idle;
+        _firewall.Visible = station.UseBundledMercury && _allowLive;
+        _firewall.Enabled = idle && BundledMercury.Available;
+        _stopMercury.Visible = station.UseBundledMercury && !station.Simulation;
+        _stopMercury.Enabled = idle && _bundled.Running;
+        _queue.Enabled = idle && configured;
+        _receive.Enabled = _probe.Enabled = idle && configured && liveAllowed;
         _stop.Enabled = !idle;
-        _simulation.Enabled = idle && op && _link.Station(_session).Simulation;
-        _send.Enabled = idle && op && message is { Incoming: false, Status: HfStatus.AwaitingApproval };
-        _cancel.Enabled = idle && access && message is { Incoming: false, Status: HfStatus.AwaitingApproval };
-        _retry.Enabled = idle && access && message is { Incoming: false, Status: HfStatus.Failed or HfStatus.Unconfirmed };
+        _simulation.Enabled = idle && station.Simulation;
+        _send.Enabled = idle && configured && liveAllowed && message is { Incoming: false, Status: HfStatus.AwaitingApproval };
+        _cancel.Enabled = idle && message is { Incoming: false, Status: HfStatus.AwaitingApproval };
+        _retry.Enabled = idle && message is { Incoming: false, Status: HfStatus.Failed or HfStatus.Unconfirmed };
         _detail.Text = message is null ? "" : message.Text + Environment.NewLine + message.Detail +
             (message.Incoming ? "" : $"\r\nRequested by {message.Requester} ({message.RequesterCall})\r\nID: {message.Id}");
     }
@@ -369,7 +352,7 @@ internal sealed class HfLinkView : UserControl
         audit.Controls.Add(new TextBox
         {
             Dock = DockStyle.Fill, ReadOnly = true, Multiline = true, ScrollBars = ScrollBars.Both, WordWrap = false,
-            Text = string.Join(Environment.NewLine, _link.Audit(_session).Select(item =>
+            Text = string.Join(Environment.NewLine, _link.Audit().Select(item =>
                 $"{item.Time.ToLocalTime():g}    {item.Actor}    {item.Event}    {item.Message}"))
         });
         audit.ShowDialog(this);
@@ -390,16 +373,42 @@ internal sealed class HfLinkView : UserControl
     private Button Button(string title, Action action) => AsyncButton(title, () => { action(); return Task.CompletedTask; });
     private Button AsyncButton(string title, Func<Task> action)
     {
-        var button = new Button { Text = title, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
+        var button = new HfLinkButton { Text = title, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
         button.Click += async (_, _) =>
         {
             try { await action(); }
             catch (Exception error) when (error is ArgumentException or UnauthorizedAccessException or InvalidOperationException or
-                IOException or InvalidDataException or System.Net.Sockets.SocketException or Microsoft.Data.Sqlite.SqliteException)
+                IOException or InvalidDataException or System.ComponentModel.Win32Exception or System.Net.Sockets.SocketException or Microsoft.Data.Sqlite.SqliteException)
             { Report(error is Microsoft.Data.Sqlite.SqliteException ? "HFLink storage operation failed." : error.Message); }
         };
         return button;
     }
+
+    private sealed class HfLinkButton : Button
+    {
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            if (Enabled || FlatStyle != FlatStyle.Flat || SystemInformation.HighContrast)
+            {
+                base.OnPaint(e);
+                return;
+            }
+
+            e.Graphics.Clear(BackColor);
+            using var border = new Pen(FlatAppearance.BorderColor);
+            e.Graphics.DrawRectangle(border, 0, 0, ClientSize.Width - 1, ClientSize.Height - 1);
+            TextRenderer.DrawText(e.Graphics, Text, Font, ClientRectangle, Color.FromArgb(164, 183, 195),
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
+                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        }
+    }
+
+    private static Label FieldLabel(Control field) => new()
+    {
+        Text = field.AccessibleName,
+        AutoSize = true,
+        Anchor = AnchorStyles.Left
+    };
 
     private static FlowLayoutPanel Row(params Control[] controls)
     {

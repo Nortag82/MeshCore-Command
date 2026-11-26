@@ -13,6 +13,12 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
+        if (Environment.GetCommandLineArgs().Contains("--verify-mercury"))
+        {
+            try { BundledMercury.VerifyPackageAsync().GetAwaiter().GetResult(); }
+            catch { Environment.ExitCode = 1; }
+            return;
+        }
         var args = Environment.GetCommandLineArgs();
         if (args.Contains("--audit-credential-conflicts"))
         {
@@ -408,7 +414,7 @@ internal sealed class PreviewWindow : Form
         if (_smokeTest) { Opacity = 0; ShowInTaskbar = false; }
         _content.Controls.Add(_web);
         Controls.Add(_content);
-        Controls.Add(_warning);
+        if (_updater is null) Controls.Add(_warning);
         Shown += async (_, _) => await InitialiseAsync();
         FormClosing += async (_, e) => {
             if (_closing) return;
@@ -595,7 +601,7 @@ internal sealed class PreviewWindow : Form
                                 await _web.CoreWebView2.ExecuteScriptAsync("window.hfLinkRadioFrame = document.querySelector('iframe'); " + openHfLink);
                                 for (int attempt = 0; attempt < 50 && _hfLinkView?.Visible != true; attempt++) await Task.Delay(100);
                                 var view = _hfLinkView;
-                                if (view is null || !view.Visible || view.FindForm() != this || _web.Visible ||
+                                if (view is null || !view.Visible || view.FindForm() != this || _web.Visible || !CheckHfLinkButtonContrast(view) ||
                                     view.Controls.Find("hfLinkBack", true).SingleOrDefault() is not Button back)
                                     Environment.ExitCode = 1;
                                 else
@@ -970,6 +976,23 @@ internal sealed class PreviewWindow : Form
         _hfLinkView.Show();
         _hfLinkView.BringToFront();
         _hfLinkView.Select();
+    }
+
+    private static bool CheckHfLinkButtonContrast(HfLinkView view)
+    {
+        if (SystemInformation.HighContrast) return true;
+        if (view.Controls.Find("hfLinkStopOperation", true).SingleOrDefault() is not Button { Enabled: false } button ||
+            button.Width < 3 || button.Height < 3) return false;
+        using var bitmap = new Bitmap(button.Width, button.Height);
+        button.DrawToBitmap(bitmap, new Rectangle(Point.Empty, button.Size));
+        // Sample the painted interior. The background and border are both deliberately dark.
+        for (int y = 2; y < bitmap.Height - 2; y++)
+            for (int x = 2; x < bitmap.Width - 2; x++)
+            {
+                Color pixel = bitmap.GetPixel(x, y);
+                if (pixel.R >= 125 && pixel.G >= 140 && pixel.B >= 150) return true;
+            }
+        return false;
     }
 
     private async Task ReturnToRadioAsync()

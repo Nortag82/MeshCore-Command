@@ -729,15 +729,21 @@ async function refreshContacts() {
 }
 
 async function syncMessages() {
+  // Leave the radio's queue intact until its identity and channel mutes are available.
+  if (!incomingNotificationsReady) return;
   let added = 0;
-  while (true) {
+  while (incomingNotificationsReady) {
     const waiting = await connection.syncNextMessage();
     if (!waiting) break;
+    if (!incomingNotificationsReady) {
+      pendingIncomingMessages.push(waiting);
+      break;
+    }
     added += ingestWaiting(waiting);
   }
   added += unannouncedMessages;
   unannouncedMessages = 0;
-  if (added) toast(`${added} new message${added === 1 ? "" : "s"}`, "warn");
+  if (added && incomingNotificationsReady) toast(`${added} new message${added === 1 ? "" : "s"}`, "warn");
 }
 
 async function refreshStats() {

@@ -16,6 +16,7 @@ internal sealed class MercurySettingsDialog : Form
 
     private static readonly Regex EndpointId = new(@"\{0\.0\.[01]\.00000000\}\.\{[a-fA-F0-9-]{36}\}");
     private readonly Func<MercurySettingsFile, string?> _saveConfig;
+    private readonly bool _fixedPath;
     private readonly Label _file = new() { AutoSize = true, MaximumSize = new Size(590, 0) };
     private readonly Label _status = new() { AutoSize = true, MaximumSize = new Size(590, 0) };
     private readonly ComboBox _input = Choice(), _output = Choice();
@@ -31,9 +32,10 @@ internal sealed class MercurySettingsDialog : Form
     private AudioChoice[] _inputs = [], _outputs = [];
     public bool Saved { get; private set; }
 
-    public MercurySettingsDialog(string? path, Func<MercurySettingsFile, string?> saveConfig)
+    public MercurySettingsDialog(string? path, Func<MercurySettingsFile, string?> saveConfig, bool fixedPath = false)
     {
         _saveConfig = saveConfig;
+        _fixedPath = fixedPath;
         Text = "HFLink — Mercury settings";
         StartPosition = FormStartPosition.CenterParent;
         MinimumSize = new Size(690, 540);
@@ -44,14 +46,15 @@ internal sealed class MercurySettingsDialog : Form
         layout.Controls.Add(new Label
         {
             AutoSize = true, MaximumSize = new Size(590, 0),
-            Text = "Select the INI file used to start your local Mercury. Restart Mercury after saving. Set frequency and sideband on the radio."
+            Text = fixedPath ? "Select audio and push-to-talk for bundled Mercury. Set frequency and sideband on the radio." :
+                "Select the INI file used to start your local Mercury. Restart Mercury after saving. Set frequency and sideband on the radio."
         });
         layout.Controls.Add(_file);
         var browse = new Button { Text = "Open INI…", AutoSize = true };
         browse.Click += (_, _) => ChooseFile(create: false);
         var create = new Button { Text = "New INI…", AutoSize = true };
         create.Click += (_, _) => ChooseFile(create: true);
-        layout.Controls.Add(Row(browse, create));
+        if (!fixedPath) layout.Controls.Add(Row(browse, create));
 
         var fields = new TableLayoutPanel { AutoSize = true, ColumnCount = 2 };
         (string Caption, Control Control)[] rows =
@@ -191,6 +194,9 @@ internal sealed class MercurySettingsDialog : Form
             string device = _device.Text.Trim();
             var input = _input.SelectedItem as AudioChoice;
             var output = _output.SelectedItem as AudioChoice;
+            if (_fixedPath && ((input is null && config.Get("main", "input_device", "\0") == "\0") ||
+                (output is null && config.Get("main", "output_device", "\0") == "\0")))
+                throw new ArgumentException("Choose both audio devices for bundled Mercury.");
             if ((input is not null || output is not null) && (input is null || output is null) &&
                 !config.Get("main", "sound_system").Equals("wasapi", StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("Choose both audio devices when switching Mercury to WASAPI.");
@@ -217,7 +223,8 @@ internal sealed class MercurySettingsDialog : Form
             string? backup = _saveConfig(config);
             Saved = true;
             if (backup is not null)
-                MessageBox.Show(this, $"Restart Mercury to apply these settings. Backup saved as {Path.GetFileName(backup)}.",
+                MessageBox.Show(this, (_fixedPath ? "HFLink will use these settings the next time it starts Mercury. " :
+                    "Restart Mercury to apply these settings. ") + $"Backup saved as {Path.GetFileName(backup)}.",
                     "Mercury settings saved", MessageBoxButtons.OK, MessageBoxIcon.Information);
             DialogResult = DialogResult.OK;
         }

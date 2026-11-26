@@ -1,13 +1,9 @@
 using Microsoft.Data.Sqlite;
-using System.Security.Cryptography;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 
 namespace MeshCore.Windows.Core;
 
-public enum HfRole { User, Operator, Administrator }
 public enum HfStatus { AwaitingApproval, Sending, Sent, Delivered, Unconfirmed, Failed, Cancelled, Received }
-public sealed record HfUser(string Name, HfRole Role, string Callsign, bool Access, bool MayRequest, string LicenceCheck);
 public sealed record HfMessage(Guid Id, string From, string To, string Text, string Requester, string RequesterCall,
     DateTimeOffset Created, DateTimeOffset Updated, bool Incoming, bool Simulated, HfStatus Status, string Detail = "",
     Guid Attempt = default, DateTimeOffset? Sent = null, DateTimeOffset? Delivered = null);
@@ -15,10 +11,9 @@ public sealed record HfAudit(DateTimeOffset Time, string Actor, string Event, Gu
 
 public sealed class HfLink
 {
-    private sealed record Account(HfUser User, byte[] Salt, byte[] PasswordHash);
+    private const string Operator = "local operator";
     private readonly string _connection;
     private readonly object _gate = new();
-    private readonly Dictionary<Guid, Account> _sessions = [];
     private readonly SemaphoreSlim _modem = new(1);
     private readonly Func<HfStation, HfSimulation, IHfModem> _adapter;
 
@@ -29,7 +24,6 @@ public sealed class HfLink
         _adapter = adapter ?? ((station, simulation) => station.Simulation ? new MockHfModem(simulation) : new MercuryHfModem());
         using var db = Open();
         Execute(db, """
-            CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS settings (id TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
@@ -38,109 +32,40 @@ public sealed class HfLink
             SetStatus(db, message, HfStatus.Unconfirmed, "Previous session ended before delivery was confirmed.", "system");
     }
 
-    public bool NeedsAdministrator
-    {
-        get { lock (_gate) { using var db = Open(); return Read<Account>(db, "accounts", "admin") is null; } }
-    }
-
-    public Guid SetupAdministrator(string password)
+    public HfStation Station()
     {
         lock (_gate)
         {
             using var db = Open();
-            if (Read<Account>(db, "accounts", "admin") is not null) throw new InvalidOperationException("An administrator already exists.");
-            var account = MakeAccount(new("admin", HfRole.Administrator, "", false, false, ""), password);
-            Write(db, "accounts", "admin", account);
-            Record(db, "admin", "Administrator initialized");
-            return Issue(account);
-        }
-    }
-
-    public Guid SignIn(string name, string password)
-    {
-        lock (_gate)
-        {
-            using var db = Open();
-            var account = Read<Account>(db, "accounts", name.Trim().ToLowerInvariant());
-            if (account is null || password.Length > 256 ||
-                !CryptographicOperations.FixedTimeEquals(account.PasswordHash, Hash(password, account.Salt)))
-                throw new UnauthorizedAccessException("Incorrect HFLink username or password.");
-            return Issue(account);
-        }
-    }
-
-    public void SignOut(Guid session) { lock (_gate) _sessions.Remove(session); }
-
-    public HfUser CurrentUser(Guid session)
-    {
-        lock (_gate) { using var db = Open(); return Require(db, session).User; }
-    }
-
-    public IReadOnlyList<HfUser> Users(Guid session)
-    {
-        lock (_gate)
-        {
-            using var db = Open();
-            RequireAdmin(db, session);
-            return ReadAll<Account>(db, "accounts").Select(account => account.User).OrderBy(user => user.Name).ToArray();
-        }
-    }
-
-    public void SaveUser(Guid session, HfUser user, string password)
-    {
-        string name = user.Name.Trim().ToLowerInvariant();
-        if (!Regex.IsMatch(name, @"\A[a-z0-9][a-z0-9_.-]{0,31}\z") || name == "admin" ||
-            user.Role is not (HfRole.User or HfRole.Operator) || user.LicenceCheck.Length > 240)
-            throw new ArgumentException("Use a username of 1–32 letters, digits, dots, underscores or hyphens and select a valid role.");
-        string call = string.IsNullOrWhiteSpace(user.Callsign) && !user.Access ? "" : HfStation.Call(user.Callsign);
-        user = user with { Name = name, Callsign = call };
-        lock (_gate)
-        {
-            using var db = Open();
-            RequireAdmin(db, session);
-            var old = Read<Account>(db, "accounts", name);
-            var account = password.Length == 0 && old is not null ? old with { User = user } : MakeAccount(user, password);
-            Write(db, "accounts", name, account);
-            Record(db, "admin", $"Permissions saved for {name}");
-        }
-    }
-
-    public HfStation Station(Guid session)
-    {
-        lock (_gate)
-        {
-            using var db = Open();
-            RequireAccess(db, session);
             return LoadStation(db);
         }
     }
 
-    public string? MercuryConfigPath(Guid session)
+    public string? MercuryConfigPath()
     {
         lock (_gate)
         {
             using var db = Open();
-            RequireAdmin(db, session);
             return Read<string>(db, "settings", "mercury-config-path");
         }
     }
 
-    public string? SaveMercuryConfig(Guid session, MercurySettingsFile config)
+    public string? SaveMercuryConfig(MercurySettingsFile config, bool rememberPath = true)
     {
         lock (_gate)
         {
             using var db = Open();
-            RequireAdmin(db, session);
             if (_modem.CurrentCount == 0) throw new InvalidOperationException("Wait for the active modem operation to finish.");
             string? backup = config.Save();
-            Write(db, "settings", "mercury-config-path", config.Path);
-            Record(db, "admin", "Local Mercury configuration saved");
+            if (rememberPath) Write(db, "settings", "mercury-config-path", config.Path);
+            Record(db, Operator, "Local Mercury configuration saved");
             return backup;
         }
     }
 
-    public void SaveStation(Guid session, HfStation station)
+    public void SaveStation(HfStation station)
     {
+        if (station.UseBundledMercury) station = station with { Host = "127.0.0.1", ControlPort = 8300, DataPort = 8301 };
         string host = station.Host.Trim();
         if (Uri.CheckHostName(host) == UriHostNameType.Unknown || host.Length > 253 ||
             station.ControlPort is < 1 or > 65535 || station.DataPort is < 1 or > 65535 ||
@@ -150,88 +75,81 @@ public sealed class HfLink
         lock (_gate)
         {
             using var db = Open();
-            RequireAdmin(db, session);
             if (_modem.CurrentCount == 0) throw new InvalidOperationException("Wait for the active modem operation to finish.");
             Write(db, "settings", "station", station);
-            Record(db, "admin", "Station configuration saved");
+            Record(db, Operator, "Station configuration saved");
         }
     }
 
-    public Guid Queue(Guid session, string destination, string text)
+    public Guid Queue(string destination, string text)
     {
         destination = HfStation.Call(destination);
         HfPacket.ValidateText(text);
         lock (_gate)
         {
             using var db = Open();
-            var user = RequireRequester(db, session);
             var station = LoadStation(db);
             string from = HfStation.Call(station.Callsign);
             if (from == destination) throw new ArgumentException("Choose a different destination station.");
             var now = DateTimeOffset.UtcNow;
-            if (ReadAll<HfMessage>(db, "messages").Take(200).Any(m => !m.Incoming && m.Requester == user.Name && m.To == destination &&
+            if (ReadAll<HfMessage>(db, "messages").Take(200).Any(m => !m.Incoming && m.To == destination &&
                 m.From == from && m.Simulated == station.Simulation && m.Text == text && m.Created > now.AddMinutes(-1) && m.Status != HfStatus.Cancelled))
                 throw new InvalidOperationException("That message was just queued. Use Retry on the original if needed.");
-            var message = new HfMessage(Guid.NewGuid(), from, destination, text, user.Name, user.Callsign,
+            var message = new HfMessage(Guid.NewGuid(), from, destination, text, Operator, from,
                 now, now, false, station.Simulation, HfStatus.AwaitingApproval);
-            SaveMessage(db, message, user.Name, "Queued for operator approval");
+            SaveMessage(db, message, Operator, "Queued for operator approval");
             return message.Id;
         }
     }
 
-    public IReadOnlyList<HfMessage> Messages(Guid session)
+    public IReadOnlyList<HfMessage> Messages()
     {
         lock (_gate)
         {
             using var db = Open();
-            var user = RequireAccess(db, session);
-            return ReadAll<HfMessage>(db, "messages").Where(m => Visible(user, m)).Take(500).ToArray();
+            return ReadAll<HfMessage>(db, "messages", 500).ToArray();
         }
     }
 
-    public IReadOnlyList<HfAudit> Audit(Guid session)
+    public IReadOnlyList<HfAudit> Audit()
     {
         lock (_gate)
         {
             using var db = Open();
-            var user = RequireAccess(db, session);
-            if (user.Role == HfRole.User) throw new UnauthorizedAccessException("Operator or administrator access is required.");
             return ReadAll<HfAudit>(db, "audit", 200).ToArray();
         }
     }
 
-    public void Cancel(Guid session, Guid id) => ChangeRequest(session, id, retry: false);
-    public void Retry(Guid session, Guid id) => ChangeRequest(session, id, retry: true);
+    public void Cancel(Guid id) => ChangeRequest(id, retry: false);
+    public void Retry(Guid id) => ChangeRequest(id, retry: true);
 
-    private void ChangeRequest(Guid session, Guid id, bool retry)
+    private void ChangeRequest(Guid id, bool retry)
     {
         lock (_gate)
         {
             using var db = Open();
-            var user = RequireAccess(db, session);
             var message = GetMessage(db, id);
-            if (!Visible(user, message) || message.Incoming) throw new UnauthorizedAccessException("This is not your transmission request.");
+            if (message.Incoming) throw new InvalidOperationException("Select an outgoing transmission request.");
             if (retry)
             {
-                CheckRequester(db, message);
                 if (message.Status is not (HfStatus.Failed or HfStatus.Unconfirmed))
                     throw new InvalidOperationException("Only failed or unconfirmed messages can be retried.");
-                SetStatus(db, message, HfStatus.AwaitingApproval, "", user.Name);
+                SetStatus(db, message, HfStatus.AwaitingApproval, "", Operator);
             }
             else
             {
                 if (message.Status != HfStatus.AwaitingApproval) throw new InvalidOperationException("Only unsent requests can be cancelled.");
-                SetStatus(db, message, HfStatus.Cancelled, "", user.Name);
+                SetStatus(db, message, HfStatus.Cancelled, "", Operator);
             }
         }
     }
 
-    public async Task ProbeAsync(Guid session, bool allowLive, CancellationToken stop)
+    public async Task ProbeAsync(bool allowLive, CancellationToken stop)
     {
         EnterModem();
         try
         {
-            var station = Station(session);
+            var station = Station();
             CheckMode(station, allowLive);
             using var deadline = Deadline(station, stop);
             await _adapter(station, HfSimulation.NoAcknowledgement).ProbeAsync(station, deadline.Token);
@@ -239,18 +157,16 @@ public sealed class HfLink
         finally { _modem.Release(); }
     }
 
-    public async Task<HfStatus> ApproveAndSendAsync(Guid session, Guid id, HfSimulation simulation, bool allowLive, CancellationToken stop)
+    public async Task<HfStatus> ApproveAndSendAsync(Guid id, HfSimulation simulation, bool allowLive, CancellationToken stop)
     {
         EnterModem();
         try
         {
             HfStation station;
             HfMessage message;
-            string actor;
             lock (_gate)
             {
                 using var db = Open();
-                actor = RequireOperator(db, session).Name;
                 station = LoadStation(db);
                 CheckMode(station, allowLive);
                 message = GetMessage(db, id);
@@ -258,9 +174,8 @@ public sealed class HfLink
                     throw new InvalidOperationException("Select a message awaiting approval.");
                 if (message.Simulated != station.Simulation || message.From != station.Callsign)
                     throw new InvalidOperationException("Station or simulation mode changed. Restore it or queue a new message.");
-                CheckRequester(db, message);
                 message = message with { Attempt = Guid.NewGuid(), Sent = null };
-                message = SetStatus(db, message, HfStatus.Sending, "", actor, "Approved and transmission started");
+                message = SetStatus(db, message, HfStatus.Sending, "", Operator, "Approved and transmission started");
             }
             var packet = new HfPacket(HfPacket.Version, "message", id, message.Attempt, message.From, message.To, message.Text);
             using var deadline = Deadline(station, stop);
@@ -275,7 +190,7 @@ public sealed class HfLink
                     lock (_gate)
                     {
                         using var db = Open();
-                        message = SetStatus(db, message with { Sent = DateTimeOffset.UtcNow }, HfStatus.Sent, "Written to local modem.", actor);
+                        message = SetStatus(db, message with { Sent = DateTimeOffset.UtcNow }, HfStatus.Sent, "Written to local modem.", Operator);
                     }
                 }, deadline.Token);
                 bool delivered = response?.Confirms(packet) == true && handedToModem;
@@ -292,28 +207,26 @@ public sealed class HfLink
             {
                 using var db = Open();
                 if (status == HfStatus.Delivered) message = message with { Delivered = DateTimeOffset.UtcNow };
-                SetStatus(db, message, status, detail, actor);
+                SetStatus(db, message, status, detail, Operator);
             }
             return status;
         }
         finally { _modem.Release(); }
     }
 
-    public async Task ReceiveAsync(Guid session, bool allowLive,
+    public async Task ReceiveAsync(bool allowLive,
         Func<HfMessage, CancellationToken, Task<bool>> approveReceipt, CancellationToken stop)
     {
         EnterModem();
         try
         {
             HfStation station;
-            string actor;
             lock (_gate)
             {
                 using var db = Open();
-                actor = RequireOperator(db, session).Name;
                 station = LoadStation(db);
                 CheckMode(station, allowLive);
-                Record(db, actor, "Attended receive window opened");
+                Record(db, Operator, "Attended receive window opened");
             }
             using var deadline = Deadline(station, stop);
             var approved = new HashSet<Guid>();
@@ -340,8 +253,7 @@ public sealed class HfLink
                 lock (_gate)
                 {
                     using var db = Open();
-                    RequireOperator(db, session);
-                    Record(db, actor, "Receipt transmission authorized", packet.Id);
+                    Record(db, Operator, "Receipt transmission authorized", packet.Id);
                 }
                 return packet.Acknowledge();
             }, deadline.Token);
@@ -367,67 +279,6 @@ public sealed class HfLink
         if (!_modem.Wait(0)) throw new InvalidOperationException("A modem operation is already in progress.");
     }
 
-    private static bool Visible(HfUser user, HfMessage message) =>
-        user.Role != HfRole.User || (message.Incoming ? message.To == user.Callsign : message.Requester == user.Name);
-
-    private Guid Issue(Account account)
-    {
-        var token = Guid.NewGuid();
-        _sessions.Add(token, account);
-        return token;
-    }
-
-    private Account Require(SqliteConnection db, Guid session)
-    {
-        if (_sessions.TryGetValue(session, out var original) &&
-            Read<Account>(db, "accounts", original.User.Name) is { } current &&
-            CryptographicOperations.FixedTimeEquals(original.PasswordHash, current.PasswordHash)) return current;
-        throw new UnauthorizedAccessException("Sign in to HFLink.");
-    }
-
-    private HfUser RequireAccess(SqliteConnection db, Guid session)
-    {
-        var user = Require(db, session).User;
-        if (!user.Access && user.Role != HfRole.Administrator) throw new UnauthorizedAccessException("HFLink access is revoked or pending.");
-        return user;
-    }
-
-    private void RequireAdmin(SqliteConnection db, Guid session)
-    {
-        if (Require(db, session).User.Role != HfRole.Administrator) throw new UnauthorizedAccessException("Administrator access is required.");
-    }
-
-    private HfUser RequireOperator(SqliteConnection db, Guid session)
-    {
-        var user = RequireAccess(db, session);
-        if (user.Role != HfRole.Operator) throw new UnauthorizedAccessException("Sign in as a designated operator to approve transmissions.");
-        return user;
-    }
-
-    private HfUser RequireRequester(SqliteConnection db, Guid session)
-    {
-        var user = RequireAccess(db, session);
-        if (!user.Access || !user.MayRequest) throw new UnauthorizedAccessException("Transmit-request permission is required.");
-        return user;
-    }
-
-    private static void CheckRequester(SqliteConnection db, HfMessage message)
-    {
-        var requester = Read<Account>(db, "accounts", message.Requester)?.User;
-        if (requester is null || !requester.Access || !requester.MayRequest || requester.Callsign != message.RequesterCall)
-            throw new UnauthorizedAccessException("The requester’s current permissions or callsign do not allow this transmission.");
-    }
-
-    private static byte[] Hash(string password, byte[] salt) =>
-        Rfc2898DeriveBytes.Pbkdf2(password, salt, 600_000, HashAlgorithmName.SHA256, 32);
-
-    private static Account MakeAccount(HfUser user, string password)
-    {
-        if (password.Length is < 12 or > 256) throw new ArgumentException("Use a password of 12–256 characters.");
-        byte[] salt = RandomNumberGenerator.GetBytes(16);
-        return new(user, salt, Hash(password, salt));
-    }
-
     private SqliteConnection Open()
     {
         var db = new SqliteConnection(_connection);
@@ -435,7 +286,7 @@ public sealed class HfLink
         return db;
     }
 
-    private static HfStation LoadStation(SqliteConnection db) => Read<HfStation>(db, "settings", "station") ?? new();
+    private static HfStation LoadStation(SqliteConnection db) => Read<HfStation>(db, "settings", "station") ?? new(UseBundledMercury: true);
     private static HfMessage GetMessage(SqliteConnection db, Guid id) =>
         Read<HfMessage>(db, "messages", id.ToString("D")) ?? throw new ArgumentException("Outgoing message not found.");
 

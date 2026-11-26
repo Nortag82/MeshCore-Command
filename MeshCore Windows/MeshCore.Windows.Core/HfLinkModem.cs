@@ -6,7 +6,8 @@ using System.Text.RegularExpressions;
 namespace MeshCore.Windows.Core;
 
 public sealed record HfStation(string Callsign = "", string Host = "127.0.0.1",
-    int ControlPort = 8300, int DataPort = 8301, int TimeoutSeconds = 120, bool Simulation = true)
+    int ControlPort = 8300, int DataPort = 8301, int TimeoutSeconds = 120, bool Simulation = true,
+    bool UseBundledMercury = false)
 {
     public static string Call(string value)
     {

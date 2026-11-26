@@ -20,6 +20,7 @@
     <Content Include="../firmware/**/*" Link="firmware/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" Condition="'$(MCC_FIRMWARE_DIR)' == ''" />
     <Content Include="$(MCC_FIRMWARE_DIR)/**/*" Link="firmware/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" Condition="'$(MCC_FIRMWARE_DIR)' != ''" />
     <Content Include="../artifacts/espflash.exe" Link="espflash.exe" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" Condition="Exists('../artifacts/espflash.exe')" />
+    <Content Include="../artifacts/mercury/*" Link="mercury/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
   </ItemGroup>
   <Target Name="RemoveUnusedWebViewWpf" BeforeTargets="ResolveAssemblyReferences">
     <ItemGroup><Reference Remove="@(Reference)" Condition="'%(Reference.Filename)' == 'Microsoft.Web.WebView2.Wpf'" /></ItemGroup>

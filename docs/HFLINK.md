@@ -1,37 +1,31 @@
 # HFLink on native Windows
 
-Experimental HFLink sends openly readable direct messages between two attended stations. Operators are responsible for station identification, frequency, content and their applicable licence conditions. A callsign identifies a station or requester in the app. The licence-check field records the administrator’s assessment. The app provides no licence verification.
+Experimental HFLink sends openly readable direct messages between two attended stations. Operators are responsible for station identification, frequency, content and their applicable licence conditions. HFLink uses the current Windows app profile. The local operator approves each live send.
 
 ## Set up simulation
 
-1. In MeshCore Command for Windows, use **Settings → Check for updates** to install version 2.0.45 or later. Select **HFLink** in the main toolbar. **Back to radio** restores your current radio page and stops any active HFLink operation. A MeshCore board connection is optional.
-2. Select **Sign in** and create a password for the local `admin` account. Use at least 12 characters.
-3. Open **Station settings**, enter an example station callsign such as `M0ABC`, keep **Simulation (no RF)** checked and save. **Check modem** confirms that the simulator is ready.
-4. In **Users and permissions**, create a requester with a callsign, a password, HFLink access and transmit-request permission. Create a second account with the **Designated operator** role and HFLink access. The operator can also request messages if granted that permission. To revoke access, select the account and clear **Approve HFLink access**.
-5. Sign in as the requester. Enter a destination such as `G1XYZ` and up to 512 UTF-8 bytes of text. Choose **Queue for approval**. The request survives a restart. Select it and choose **Cancel request** to withdraw it.
-6. Sign in as the operator. Select the message, select a simulation outcome, and choose **Approve and send**. Confirm the destination and text. **Simulate no receipt** ends as **Unconfirmed**. **Simulate receipt** shows **Delivered to destination station** in a row labelled **Simulation**. The timeout and disconnect outcomes exercise failure handling. Select **Retry** on a failed or unconfirmed message to request fresh approval.
-7. Select **Open receive window** to simulate an inbound message and a duplicate. The first copy appears in history, with an option to approve a receipt. The duplicate is suppressed. Filter history by a callsign or select **Audit log** to see approval and transmission events.
+1. Open **HFLink** in the main toolbar. Open **Station settings**, enter a test callsign such as `M0ABC` and leave **Simulation (no RF)** checked.
+2. Enter a destination such as `G1XYZ` and up to 512 UTF-8 bytes of text. Select **Queue for approval**, then select the row.
+3. Choose a simulation outcome and select **Approve and send**. **Simulate receipt** shows **Delivered to destination station** in a row marked **Simulation**. A missing receipt leaves the message unconfirmed. A failed or unconfirmed message can be queued again with **Retry**.
+4. Use **Open receive window** for a simulated inbound message. **Back to radio** returns to the radio page and stops any active HFLink operation.
 
-## Connect Mercury
+## Set up bundled Mercury
 
-1. Use two stations with native builds that include HFLink and separate Mercury v2 instances. Choose a Mercury-managed PTT backend and set the RF frequency and sideband on each radio.
-2. Reserve Mercury’s ARQ TCP ports for HFLink during the session. The defaults are control `8300` and data `8301`. Set a private host reachable from Windows, preferably `127.0.0.1` when Mercury runs locally. Protect the modem ports from untrusted clients. [Mercury TNC command reference](https://github.com/Rhizomatica/mercury/blob/mercuryv2/docs/TNC.md)
-3. On both stations, sign in as the HFLink administrator. In **Station settings**, enter the transmitting station’s callsign, the host and both ports. Choose a session timeout, clear **Simulation (no RF)** and save. The isolated Windows development preview requires `--enable-experimental-radio` to expose live mode.
-4. Select **Check modem**. HFLink opens both TCP sockets, configures the station callsign, checks a control response and releases the sockets. It attempts one reconnect if TCP setup fails. Session failures after a call starts require a fresh operator approval to try again.
-5. Keep operators present on both ends. On the destination station, sign in as the operator and select **Open receive window**. Mercury can transmit its ARQ responses during this explicit, time-limited window. The operator can stop it early.
-6. Queue the message on the originating station. Its operator selects it and chooses **Approve and send**. The destination operator sees the saved message and can authorize the HFLink receipt during the same session. A declined or missing receipt leaves delivery unconfirmed. If the window expires, establish a new attended session for a retry.
+1. In **Station settings**, enter your own transmitting callsign, select **Use bundled Mercury**, and clear **Simulation (no RF)**. Bundled Mercury uses `127.0.0.1` with ports `8300` and `8301`. Close any standalone Mercury instance using those ports.
+2. In **Mercury settings**, choose the receive and transmit audio devices for your radio and set your PTT method. For a serial RTS interface, choose **serial**, your COM port and **rts**. Set frequency and sideband on the transceiver. [Mercury INI reference](https://github.com/Rhizomatica/mercury/blob/v1.9.25/mercury.ini.example)
+3. Select **Configure firewall** and approve the Windows administrator prompt. This turns on Windows Firewall on all three Windows network profiles and creates an inbound block rule for non-loopback TCP connections to the bundled modem. It creates no inbound allow rule. Managed policy may prevent the rule from applying. HFLink checks effective protection before starting Mercury, and checks it again while Mercury runs.
+4. Select **Check modem**. HFLink starts Mercury and checks the two local TCP ports. **Stop Mercury** closes it. Returning to the radio page or closing MeshCore Command also stops it.
+5. To exchange a message, use two attended stations with compatible Mercury versions. Agree on a clear frequency and the same sideband. The destination operator selects **Open receive window**. The source operator queues the message, selects it, and chooses **Approve and send**. Mercury can transmit its own ARQ control frames during an open receive window. The destination operator can approve the delivery receipt during the session.
 
-### Edit your local Mercury settings
+### Existing external Mercury setups
 
-Sign in as the HFLink administrator and select **Mercury settings**. Open the INI file used by your local Mercury process, or create one with **New INI**. Select your radio interface’s receive and transmit audio devices, then choose the PTT method and its settings. For an RTS-keyed USB serial interface, choose **serial**, its COM port, and **rts**. Choosing Windows audio devices uses Mercury’s WASAPI backend.
-
-Save the settings and restart Mercury with that INI file. HFLink retains a backup beside an edited file. Mercury command-line arguments can override the file, including `-P none` for a no-PTT check. Frequency and sideband stay on the radio. Use **Station settings** separately to tell HFLink which host and ports Mercury is using. For Mercury running on a different computer, configure its file on that computer. [Mercury INI reference](https://github.com/Rhizomatica/mercury/blob/v1.9.25/mercury.ini.example)
+Existing external configurations are preserved. Clear **Use bundled Mercury** in **Station settings** to enter the host and ports of an external modem. If Mercury runs on another PC, configure that modem and its firewall on that PC. The integrated firewall rule applies only to the bundled local Mercury executable. [Mercury TCP interface](https://github.com/Rhizomatica/mercury/blob/mercuryv2/docs/TNC.md)
 
 ## Delivery and storage
 
 **Sent to local modem** records that the data socket accepted a write. **Delivered to destination station** requires an HFLink receipt for the current message and attempt, from the destination callsign on the corresponding ARQ session. Callsign and receipt checks correlate the exchange. They provide no cryptographic authentication. A session interrupted after the local write remains unconfirmed.
 
-HFLink uses bounded, newline-delimited JSON over Mercury’s raw TCP data socket. Message text is stored in `hflink-native.sqlite3` in the active Windows profile’s data directory. The store also holds local password hashes, permissions, station settings and audit events. The audit contains metadata and excludes message bodies. HFLink history and account data are separate from the MeshCore full-backup workflow and from the earlier Python prototype.
+HFLink uses bounded, newline-delimited JSON over Mercury’s raw TCP data socket. Message text is stored in `hflink-native.sqlite3` in the active Windows profile’s data directory. The store also holds station settings and audit events. History from earlier releases stays available. Legacy account records are unused. The audit contains metadata and excludes message bodies. HFLink history and account data are separate from the MeshCore full-backup workflow and from the earlier Python prototype.
 
 The native Windows app runs on .NET 10 with a WinForms host, WebView2 and a loopback bridge for the shared MeshCore interface. MeshCore boards use TCP, USB serial or BLE, with UDP discovery for Wi-Fi. Existing board settings use local profiles, Windows credential storage and WebView2 data. SQLite already supports offline maps. HFLink uses an independent SQLite file and asynchronous modem operations. The native app also integrates GPS, firmware flashing, notifications, offline maps, elevation and release updates.
 
@@ -39,10 +33,14 @@ The modem interface supports replacing Mercury. Routing, relays, unattended oper
 
 ## Verification
 
-Run the no-RF SQLite, permissions, simulation and Mercury TCP loopback checks from the repository root:
+Run the no-RF SQLite, simulation and Mercury TCP loopback checks from the repository root:
 
 ```powershell
 dotnet run --project "MeshCore Windows/MeshCore.Windows.Core.Tests"
 ```
 
 The loopback checks exercise Mercury’s TCP command and data protocol against a fake TNC. A real Mercury and two-radio HF test is still needed.
+
+## Bundled component
+
+The Windows build stages the standalone Rhizomatica Mercury 1.9.25 runtime, pins and verifies the upstream Windows archive and runtime binaries, and includes the upstream Mercury and FreeDV licence files. The [Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.47) includes a source and notices archive for the bundled modem and its dependencies. [Mercury release and source](https://github.com/Rhizomatica/mercury/releases/tag/v1.9.25) · [Mercury source at the pinned commit](https://github.com/Rhizomatica/mercury/tree/33efac4e3089f64f493fde1232b8e96305d15185)

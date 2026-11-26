@@ -1,6 +1,6 @@
 # Native Windows quick start
 
-The [2.0.45 Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.45) includes the integrated HFLink view and Mercury settings editor. It supports new installations and updates from previous native builds. The legacy Python updater can offer the [2.0.43 migration release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). The previous legacy release and its [user manual](USER-MANUAL.md) remain available.
+The [2.0.47 Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.47) includes the integrated HFLink view, bundled Mercury, and its settings editor. It supports new installations and updates from previous native builds. The legacy Python updater can offer the [2.0.43 migration release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). The previous legacy release and its [user manual](USER-MANUAL.md) remain available.
 
 ## Update or install
 
