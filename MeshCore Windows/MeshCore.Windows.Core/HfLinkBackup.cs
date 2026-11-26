@@ -13,7 +13,8 @@ internal static class HfLinkBackup
     internal static string BundledConfig(string root) => Path.Combine(root, "mercury", "mercury.ini");
     internal static string ExternalConfig(string root) => Path.Combine(root, "mercury", "external-mercury.ini");
 
-    private sealed record Snapshot(HfStation? Station, HfMessage[] Messages, HfAudit[] Audit, string[] DeletedIncoming);
+    private sealed record Snapshot(HfStation? Station, HfMessage[] Messages, HfAudit[] Audit, string[] DeletedIncoming,
+        Dictionary<string, HfMessageFormat>? ContactFormats = null);
 
     internal static void Capture(string root, Dictionary<string, byte[]> files)
     {
@@ -28,7 +29,10 @@ internal static class HfLinkBackup
             ReadJson<HfMessage>("SELECT value FROM messages ORDER BY rowid"),
             ReadJson<HfAudit>("SELECT value FROM audit ORDER BY id"),
             ReadColumn(db, transaction, "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'deleted_incoming'").Count != 0
-                ? ReadColumn(db, transaction, "SELECT id FROM deleted_incoming").Keys.ToArray() : []);
+                ? ReadColumn(db, transaction, "SELECT id FROM deleted_incoming").Keys.ToArray() : [],
+            ReadColumn(db, transaction, $"SELECT id, value FROM settings WHERE id GLOB '{HfLink.ContactFormatPrefix}*'")
+                .ToDictionary(entry => entry.Key[HfLink.ContactFormatPrefix.Length..],
+                    entry => JsonSerializer.Deserialize<HfMessageFormat>(entry.Value!)));
         files.Add(History, JsonSerializer.SerializeToUtf8Bytes(snapshot));
         if (settings.GetValueOrDefault("mercury-config-path") is { } external &&
             JsonSerializer.Deserialize<string>(external) is { } config)
@@ -80,11 +84,18 @@ internal static class HfLinkBackup
         var snapshot = JsonSerializer.Deserialize<Snapshot>(bytes) ?? throw new InvalidDataException("HFLink history is missing.");
         if (snapshot.Messages is null || snapshot.Audit is null || snapshot.DeletedIncoming is null ||
             snapshot.Messages.Any(message => message is null || message.Id == Guid.Empty || message.Text is null ||
-                message.From is null || message.To is null || !Enum.IsDefined(message.Status)) ||
+                message.From is null || message.To is null || !Enum.IsDefined(message.Status) || !Enum.IsDefined(message.Format)) ||
+            snapshot.ContactFormats?.Any(entry => !Enum.IsDefined(entry.Value) || !CanonicalCall(entry.Key)) == true ||
             snapshot.Audit.Any(item => item is null || item.Actor is null || item.Event is null) ||
             snapshot.DeletedIncoming.Any(id => id is null || id.Length is < 1 or > 100 || !id.StartsWith("in:", StringComparison.Ordinal)))
             throw new InvalidDataException("Invalid HFLink backup records.");
         return snapshot;
+    }
+
+    private static bool CanonicalCall(string value)
+    {
+        try { return value == HfStation.Call(value); }
+        catch (ArgumentException) { return false; }
     }
 
     internal static byte[] RestoreDatabase(string root, byte[] bytes, string? externalConfig)
@@ -100,6 +111,9 @@ internal static class HfLinkBackup
                 using var transaction = db.BeginTransaction();
                 if (snapshot.Station is not null) Write("INSERT INTO settings (id,value) VALUES ($id,$value)", "station", JsonSerializer.Serialize(snapshot.Station));
                 if (externalConfig is not null) Write("INSERT INTO settings (id,value) VALUES ($id,$value)", "mercury-config-path", JsonSerializer.Serialize(externalConfig));
+                if (snapshot.ContactFormats is not null)
+                    foreach (var entry in snapshot.ContactFormats)
+                        Write("INSERT INTO settings (id,value) VALUES ($id,$value)", HfLink.ContactFormatPrefix + entry.Key, JsonSerializer.Serialize(entry.Value));
                 foreach (var message in snapshot.Messages)
                 {
                     string id = message.Incoming ? HfLink.IncomingKey(message.Simulated, message.To, message.From, message.Id) : message.Id.ToString("D");

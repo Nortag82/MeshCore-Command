@@ -1,6 +1,6 @@
 # Native Windows quick start
 
-The [2.0.53 Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.53) adds the HFLink session status panel and WebView2 setup when the runtime is missing. It supports new installations and updates from previous native builds. The legacy Python updater can offer the [2.0.43 migration release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). The previous legacy release and its [user manual](USER-MANUAL.md) remain available.
+The [2.0.54 Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.54) adds [Mercury ARQ Chat compatibility](HFLINK.md#chat-with-standalone-mercury) to HFLink. It supports new installations and updates from previous native builds. The legacy Python updater can offer the [2.0.43 migration release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). The previous legacy release and its [user manual](USER-MANUAL.md) remain available.
 
 ## Update or install
 

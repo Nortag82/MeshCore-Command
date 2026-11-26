@@ -20,21 +20,64 @@ public sealed record HfStation(string Callsign = "", string Host = "127.0.0.1",
     }
 }
 
+public enum HfMessageFormat { HfLink, MercuryChat }
+
 public sealed record HfPacket(string Protocol, string Type, Guid Id, Guid Attempt, string From, string To, string? Text)
 {
     public const int TextLimit = 512;
     public const int WireLimit = 4096;
     public const string Version = "HFLINK/1";
+    internal const string MercuryChat = "Mercury ARQ Chat";
+    private const int MercuryReceiveLimit = 1024;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    private static readonly UTF8Encoding ChatEncoding = new(false, true);
 
-    public static void ValidateText(string? text)
+    public static void ValidateText(string? text) => ValidateText(text, TextLimit);
+
+    private static void ValidateText(string? text, int limit)
     {
-        if (string.IsNullOrWhiteSpace(text) || Encoding.UTF8.GetByteCount(text) > TextLimit ||
+        if (string.IsNullOrWhiteSpace(text) || ChatEncoding.GetByteCount(text) > limit ||
             text.Any(c => char.IsControl(c) && c is not ('\r' or '\n' or '\t')))
-            throw new ArgumentException("Enter 1–512 UTF-8 bytes of readable text.");
+            throw new ArgumentException($"Enter 1–{limit} UTF-8 bytes of readable text.");
     }
 
-    internal byte[] Encode() => Encoding.UTF8.GetBytes(JsonSerializer.Serialize(this, Json) + "\n");
+    internal static void ValidateChatText(string? text, bool incoming = false)
+    {
+        ValidateText(text, incoming ? MercuryReceiveLimit : TextLimit);
+        if (text!.Contains('\r') || text.Contains('\n') || HasPacketHeader(text))
+            throw new ArgumentException("Enter one plain-text line for Mercury Chat.");
+    }
+
+    internal byte[] Encode() => Protocol == MercuryChat
+        ? ChatEncoding.GetBytes(Text + "\n")
+        : Encoding.UTF8.GetBytes(JsonSerializer.Serialize(this, Json) + "\n");
+
+    internal static HfPacket DecodeIncoming(byte[] line, string peer, string local)
+    {
+        try
+        {
+            string text = ChatEncoding.GetString(line).TrimEnd('\r');
+            if (HasPacketHeader(text)) return Decode(line, peer, local);
+            ValidateChatText(text, incoming: true);
+            return new(MercuryChat, "message", Guid.NewGuid(), Guid.NewGuid(), peer, local, text);
+        }
+        catch (ArgumentException error)
+        {
+            throw new InvalidDataException("Invalid Mercury Chat text.", error);
+        }
+    }
+
+    private static bool HasPacketHeader(string text)
+    {
+        if (!text.AsSpan().TrimStart().StartsWith("{", StringComparison.Ordinal)) return false;
+        if (text.Contains("HFLINK/", StringComparison.OrdinalIgnoreCase)) return true;
+        try
+        {
+            using var document = JsonDocument.Parse(text);
+            return document.RootElement.TryGetProperty("protocol", out _);
+        }
+        catch (JsonException) { return false; }
+    }
 
     internal static HfPacket Decode(byte[] line, string peer, string local)
     {
@@ -57,7 +100,7 @@ public sealed record HfPacket(string Protocol, string Type, Guid Id, Guid Attemp
     public HfPacket Acknowledge() => new(Version, "ack", Id, Attempt, To, From, null);
 
     public bool Confirms(HfPacket message) => Type == "ack" && Protocol == Version && Text is null &&
-        Id == message.Id && Attempt == message.Attempt && From == message.To && To == message.From;
+        message.Protocol == Version && Id == message.Id && Attempt == message.Attempt && From == message.To && To == message.From;
 }
 
 public interface IHfModem
@@ -83,6 +126,11 @@ public sealed class MockHfModem(HfSimulation outcome = HfSimulation.NoAcknowledg
         if (outcome == HfSimulation.Disconnected) throw new IOException("Simulated modem disconnected.");
         if (outcome == HfSimulation.Timeout) throw new TimeoutException("Simulated Mercury session timed out.");
         accepted();
+        if (packet.Protocol == HfPacket.MercuryChat)
+        {
+            report?.Invoke(new("Mercury Chat line submitted (simulation)", Peer: packet.To));
+            return null;
+        }
         report?.Invoke(new("Waiting for simulated receipt", Peer: packet.To));
         await Task.Delay(250, stop);
         return outcome == HfSimulation.Acknowledged ? packet.Acknowledge() : null;
@@ -122,6 +170,16 @@ public sealed class MercuryHfModem(Action<HfModemStatus>? report = null) : IHfMo
             report?.Invoke(new("Sending message to Mercury"));
             await session.Data.WriteAsync(packet.Encode(), stop);
             accepted();
+            if (packet.Protocol == HfPacket.MercuryChat)
+            {
+                report?.Invoke(new("Mercury Chat line queued. Waiting for modem transfer."));
+                await session.WaitForChatTransferAsync(stop);
+                report?.Invoke(new("Mercury transmit buffer clear. Closing chat session."));
+                await session.RequestDisconnectAsync(stop);
+                await session.WaitForDisconnectAsync(stop);
+                dialled = false;
+                return null;
+            }
             report?.Invoke(new("Sent to Mercury. Waiting for receipt."));
             var reply = HfPacket.Decode(await session.ReadPacketAsync(stop), packet.To, station.Callsign);
             if (reply.Confirms(packet)) report?.Invoke(new("Delivery receipt received"));
@@ -146,15 +204,8 @@ public sealed class MercuryHfModem(Action<HfModemStatus>? report = null) : IHfMo
             string peer = await session.ConnectedAsync(null, station.Callsign, stop);
             connected = true;
             report?.Invoke(new("Receiving message", Peer: peer));
-            var packet = HfPacket.Decode(await session.ReadPacketAsync(stop), peer, station.Callsign);
-            var response = await onPacket(packet, stop);
-            if (response is not null)
-            {
-                if (!response.Confirms(packet) || packet.Type != "message") throw new InvalidDataException("Invalid receipt.");
-                report?.Invoke(new("Sending delivery receipt"));
-                await session.Data.WriteAsync(response.Encode(), stop);
-            }
-            await session.EndAsync("DISCONNECT");
+            bool peerClosed = await session.ReceivePacketsAsync(peer, station.Callsign, onPacket, stop);
+            if (!peerClosed) await session.EndAsync("DISCONNECT");
             connected = false;
         }
         finally
@@ -278,10 +329,80 @@ public sealed class MercuryHfModem(Action<HfModemStatus>? report = null) : IHfMo
             }
         }
 
-        private async Task WaitForDisconnectAsync(CancellationToken stop)
+        public async Task WaitForChatTransferAsync(CancellationToken stop)
+        {
+            // The control and data sockets are independent. Wait for Mercury to
+            // report the queued line before accepting BUFFER 0 or disconnecting.
+            bool queued = false;
+            while (true)
+            {
+                string line = await ReadControlAsync(stop);
+                if (line == "DISCONNECTED") throw new IOException("Mercury ended the session before the chat transfer finished.");
+                if (Telemetry(line)?.QueuedBytes is not { } bytes) continue;
+                if (bytes > 0) queued = true;
+                else if (queued) return;
+            }
+        }
+
+        public async Task<bool> ReceivePacketsAsync(string peer, string local,
+            Func<HfPacket, CancellationToken, Task<HfPacket?>> onPacket, CancellationToken stop)
+        {
+            using var race = CancellationTokenSource.CreateLinkedTokenSource(stop);
+            var packets = ReadPacketsAsync(race.Token);
+            var disconnect = WaitForDisconnectAsync(race.Token);
+            try
+            {
+                if (await Task.WhenAny(packets, disconnect) == packets)
+                {
+                    await packets;
+                    return disconnect.IsCompletedSuccessfully;
+                }
+                await disconnect;
+                // The last line may follow the closure event on the separate data socket.
+                try { await packets.WaitAsync(TimeSpan.FromMilliseconds(500), stop); }
+                catch (TimeoutException) { }
+                return true;
+            }
+            finally
+            {
+                await race.CancelAsync();
+                try { await Task.WhenAll(packets, disconnect); }
+                catch (Exception error) when (error is OperationCanceledException or IOException or InvalidDataException) { }
+            }
+
+            async Task ReadPacketsAsync(CancellationToken token)
+            {
+                while (true)
+                {
+                    byte[] line = await ReadLineAsync(Data, (byte)'\n', HfPacket.WireLimit, token);
+                    if (line.Length == 0 || line is [(byte)'\r']) continue;
+                    var packet = HfPacket.DecodeIncoming(line, peer, local);
+                    if (packet.Protocol == HfPacket.MercuryChat)
+                    {
+                        report?.Invoke(new("Mercury Chat line received", Peer: peer));
+                        await onPacket(packet, token);
+                        continue;
+                    }
+                    var response = await onPacket(packet, token);
+                    token.ThrowIfCancellationRequested();
+                    if (response is not null)
+                    {
+                        if (!response.Confirms(packet) || packet.Type != "message") throw new InvalidDataException("Invalid receipt.");
+                        report?.Invoke(new("Sending delivery receipt"));
+                        await Data.WriteAsync(response.Encode(), token);
+                    }
+                    return;
+                }
+            }
+        }
+
+        public async Task WaitForDisconnectAsync(CancellationToken stop)
         {
             while (await ReadControlAsync(stop) != "DISCONNECTED") { }
         }
+
+        public Task RequestDisconnectAsync(CancellationToken stop) =>
+            _control.WriteAsync("DISCONNECT\r"u8.ToArray(), stop).AsTask();
 
         public async Task EndAsync(string command)
         {

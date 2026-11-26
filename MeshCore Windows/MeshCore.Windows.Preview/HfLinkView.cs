@@ -13,6 +13,7 @@ internal sealed class HfLinkView : UserControl
     private readonly TextBox _destination = new() { Width = 110, MaxLength = 15, AccessibleName = "Destination callsign" };
     private readonly TextBox _message = new() { Width = 360, MaxLength = 512, AccessibleName = "Message" };
     private readonly TextBox _filter = new() { Width = 130, MaxLength = 15, AccessibleName = "Filter by callsign" };
+    private readonly ComboBox _format = new() { Name = "hfLinkMessageFormat", DropDownStyle = ComboBoxStyle.DropDownList, Width = 165, AccessibleName = "Format" };
     private readonly ComboBox _simulation = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 160 };
     private readonly Label _bytes = new() { AutoSize = true, Text = "0 / 512 bytes" };
     private readonly DataGridView _history = new()
@@ -25,7 +26,7 @@ internal sealed class HfLinkView : UserControl
     private readonly HfSessionStatus _session = new();
     private readonly RowStyle _waterfallRow = new(SizeType.Absolute, 0);
     private readonly Button _waterfallToggle;
-    private readonly Button _settings, _probe, _send, _queue, _receive, _cancel, _retry, _delete, _audit, _stop, _stopMercury;
+    private readonly Button _settings, _probe, _send, _queue, _receive, _cancel, _retry, _reply, _delete, _audit, _stop, _stopMercury;
     private readonly Action<HfMessage> _received;
     private readonly FlowLayoutPanel _receipt;
     private readonly Label _receiptLabel = new() { AutoSize = true, Anchor = AnchorStyles.Left };
@@ -79,14 +80,22 @@ internal sealed class HfLinkView : UserControl
         layout.Controls.Add(Row(_settings, _audit), 0, 2);
         layout.Controls.Add(_station, 0, 3);
 
+        _format.Items.AddRange(["HFLink", "Mercury ARQ Chat"]);
+        _format.SelectedIndex = 0;
+        _destination.TextChanged += (_, _) =>
+        {
+            try { _format.SelectedIndex = (int)_link.ContactFormat(_destination.Text); }
+            catch (ArgumentException) { _format.SelectedIndex = 0; }
+        };
         _queue = Button("Queue for approval", () =>
         {
-            _link.Queue(_destination.Text, _message.Text);
+            _link.Queue(_destination.Text, _message.Text, (HfMessageFormat)_format.SelectedIndex);
             _message.Clear();
             RefreshView();
             Report("Message is awaiting operator approval.");
         });
-        layout.Controls.Add(Row(FieldLabel(_destination), _destination, FieldLabel(_message), _message, _bytes, _queue), 0, 4);
+        layout.Controls.Add(Row(FieldLabel(_destination), _destination, FieldLabel(_format), _format,
+            FieldLabel(_message), _message, _bytes, _queue), 0, 4);
         _message.TextChanged += (_, _) => _bytes.Text = $"{Encoding.UTF8.GetByteCount(_message.Text)} / 512 bytes";
 
         _probe = AsyncButton("Check modem", () => RunAsync(async token =>
@@ -119,12 +128,19 @@ internal sealed class HfLinkView : UserControl
         _send = AsyncButton("Approve and send", SendAsync);
         _retry = Button("Retry", () => { _link.Retry(Selected().Id); RefreshView(); Report("Retry requires fresh approval."); });
         _cancel = Button("Cancel request", () => { _link.Cancel(Selected().Id); RefreshView(); Report("Request cancelled."); });
+        _reply = Button("Reply", () =>
+        {
+            var incoming = Selected();
+            _destination.Text = incoming.From;
+            _format.SelectedIndex = (int)incoming.Format;
+            _message.Focus();
+        });
         _delete = Button("Delete message", DeleteSelectedMessage);
         _delete.Name = "hfLinkDeleteMessage";
-        var messageActions = Row(FieldLabel(_filter), _filter, _send, _retry, _cancel, _delete);
+        var messageActions = Row(FieldLabel(_filter), _filter, _send, _retry, _cancel, _reply, _delete);
         layout.Controls.Add(messageActions, 0, 7);
         _filter.TextChanged += (_, _) => RefreshView();
-        foreach (var column in new[] { ("Time", 141), ("Mode", 85), ("Direction", 85), ("From", 95), ("To", 95), ("Status", 170) })
+        foreach (var column in new[] { ("Time", 141), ("Mode", 85), ("Format", 125), ("Direction", 85), ("From", 95), ("To", 95), ("Status", 175) })
             _history.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = column.Item1, Width = column.Item2, SortMode = DataGridViewColumnSortMode.NotSortable });
         _history.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Message", AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, SortMode = DataGridViewColumnSortMode.NotSortable });
         _history.CurrentCellChanged += (_, _) => { if (_ready) SetActions(); };
@@ -444,7 +460,7 @@ internal sealed class HfLinkView : UserControl
     private async Task SendAsync()
     {
         var message = Selected();
-        if (!Confirm($"Approve this transmission from {message.From} to {message.To}?\n\n{message.Text}")) return;
+        if (!Confirm($"Approve this {FormatText(message.Format)} transmission from {message.From} to {message.To}?\n\n{message.Text}")) return;
         await RunAsync(async token =>
         {
             await PrepareModemAsync(transmission: true, token);
@@ -460,13 +476,19 @@ internal sealed class HfLinkView : UserControl
         {
             await PrepareModemAsync(transmission: true, token);
             Report("Receive window open. You can return to the radio page while listening.");
-            bool received = false;
+            int received = 0;
             await _link.ReceiveAsync(_allowLive, ApproveReceiptAsync, token, message =>
             {
-                received = true;
+                received++;
+                RefreshView();
                 _received(message);
             });
-            return received ? "Message received. Receive window closed." : "Receive window closed.";
+            return received switch
+            {
+                0 => "Receive window closed.",
+                1 => "Message received. Receive window closed.",
+                _ => $"{received} messages received. Receive window closed."
+            };
         }, receiving: true, sessionPhase: "Opening receive window");
     }
 
@@ -593,7 +615,8 @@ internal sealed class HfLinkView : UserControl
         foreach (var message in _link.Messages().Where(m => filter.Length == 0 || m.From.Contains(filter) || m.To.Contains(filter)))
         {
             int index = _history.Rows.Add(message.Created.ToLocalTime().ToString("g"), message.Simulated ? "Simulation" : "Mercury",
-                message.Incoming ? "Incoming" : "Outgoing", message.From, message.To, StatusText(message.Status), message.Text);
+                FormatText(message.Format), message.Incoming ? "Incoming" : "Outgoing", message.From, message.To,
+                StatusText(message.Status), message.Text);
             _history.Rows[index].Tag = message;
             if (selection?.Id == message.Id && selection.From == message.From) _history.CurrentCell = _history.Rows[index].Cells[0];
         }
@@ -612,6 +635,7 @@ internal sealed class HfLinkView : UserControl
         _stopMercury.Visible = station.UseBundledMercury && !station.Simulation;
         _stopMercury.Enabled = idle && _bundled.Running;
         _queue.Enabled = idle && configured;
+        _format.Enabled = idle;
         _receive.Enabled = _probe.Enabled = idle && configured && liveAllowed;
         _stop.Enabled = !idle;
         _simulation.Visible = station.Simulation;
@@ -619,6 +643,7 @@ internal sealed class HfLinkView : UserControl
         _send.Enabled = idle && configured && liveAllowed && message is { Incoming: false, Status: HfStatus.AwaitingApproval };
         _cancel.Enabled = idle && message is { Incoming: false, Status: HfStatus.AwaitingApproval };
         _retry.Enabled = idle && message is { Incoming: false, Status: HfStatus.Failed or HfStatus.Unconfirmed };
+        _reply.Enabled = idle && configured && message is { Incoming: true };
         _delete.Enabled = idle && message is not null;
         _detail.Text = message is null ? "" : message.Text + Environment.NewLine + message.Detail +
             (message.Incoming ? "" : $"\r\nRequested by {message.Requester} ({message.RequesterCall})\r\nID: {message.Id}");
@@ -652,6 +677,7 @@ internal sealed class HfLinkView : UserControl
     private void Report(string text) { if (!IsDisposed) _status.Text = text; }
     private bool Confirm(string text) => MessageBox.Show(this, text, "HFLink operator approval",
         MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+    private static string FormatText(HfMessageFormat format) => format == HfMessageFormat.MercuryChat ? "Mercury ARQ Chat" : "HFLink";
     private static string StatusText(HfStatus status) => status switch
     {
         HfStatus.AwaitingApproval => "Awaiting operator approval",

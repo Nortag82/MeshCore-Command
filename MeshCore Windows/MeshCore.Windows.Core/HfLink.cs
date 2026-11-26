@@ -6,13 +6,15 @@ namespace MeshCore.Windows.Core;
 public enum HfStatus { AwaitingApproval, Sending, Sent, Delivered, Unconfirmed, Failed, Cancelled, Received }
 public sealed record HfMessage(Guid Id, string From, string To, string Text, string Requester, string RequesterCall,
     DateTimeOffset Created, DateTimeOffset Updated, bool Incoming, bool Simulated, HfStatus Status, string Detail = "",
-    Guid Attempt = default, DateTimeOffset? Sent = null, DateTimeOffset? Delivered = null);
+    Guid Attempt = default, DateTimeOffset? Sent = null, DateTimeOffset? Delivered = null,
+    HfMessageFormat Format = HfMessageFormat.HfLink);
 public sealed record HfAudit(DateTimeOffset Time, string Actor, string Event, Guid? Message);
 
 public sealed class HfLink
 {
     private const string Operator = "local operator";
     internal const string DatabaseName = "hflink-native.sqlite3";
+    internal const string ContactFormatPrefix = "contact-format:";
     private readonly string _connection;
     private readonly object _gate = new();
     private readonly SemaphoreSlim _modem = new(1);
@@ -25,7 +27,8 @@ public sealed class HfLink
         _adapter = adapter ?? ((station, simulation) => station.Simulation ? new MockHfModem(simulation, report) : new MercuryHfModem(report));
         using var db = Open();
         InitializeDatabase(db);
-        foreach (var message in ReadAll<HfMessage>(db, "messages").Where(m => m.Status is HfStatus.Sending or HfStatus.Sent))
+        foreach (var message in ReadAll<HfMessage>(db, "messages").Where(m => m.Status == HfStatus.Sending ||
+            m.Status == HfStatus.Sent && m.Format == HfMessageFormat.HfLink))
             SetStatus(db, message, HfStatus.Unconfirmed, "Previous session ended before delivery was confirmed.", "system");
     }
 
@@ -104,10 +107,25 @@ public sealed class HfLink
         }
     }
 
-    public Guid Queue(string destination, string text)
+    public HfMessageFormat ContactFormat(string destination)
     {
         destination = HfStation.Call(destination);
-        HfPacket.ValidateText(text);
+        lock (_gate)
+        {
+            using var db = Open();
+            return Read<HfMessageFormat>(db, "settings", ContactFormatPrefix + destination);
+        }
+    }
+
+    public Guid Queue(string destination, string text, HfMessageFormat format = HfMessageFormat.HfLink)
+    {
+        destination = HfStation.Call(destination);
+        switch (format)
+        {
+            case HfMessageFormat.HfLink: HfPacket.ValidateText(text); break;
+            case HfMessageFormat.MercuryChat: HfPacket.ValidateChatText(text); break;
+            default: throw new ArgumentOutOfRangeException(nameof(format));
+        }
         lock (_gate)
         {
             using var db = Open();
@@ -116,11 +134,16 @@ public sealed class HfLink
             if (from == destination) throw new ArgumentException("Choose a different destination station.");
             var now = DateTimeOffset.UtcNow;
             if (ReadAll<HfMessage>(db, "messages").Take(200).Any(m => !m.Incoming && m.To == destination &&
-                m.From == from && m.Simulated == station.Simulation && m.Text == text && m.Created > now.AddMinutes(-1) && m.Status != HfStatus.Cancelled))
+                m.From == from && m.Simulated == station.Simulation && m.Format == format && m.Text == text &&
+                m.Created > now.AddMinutes(-1) && m.Status != HfStatus.Cancelled))
                 throw new InvalidOperationException("That message was just queued. Use Retry on the original if needed.");
             var message = new HfMessage(Guid.NewGuid(), from, destination, text, Operator, from,
-                now, now, false, station.Simulation, HfStatus.AwaitingApproval);
-            SaveMessage(db, message, Operator, "Queued for operator approval");
+                now, now, false, station.Simulation, HfStatus.AwaitingApproval, Format: format);
+            using var transaction = db.BeginTransaction();
+            Write(db, "messages", message.Id.ToString("D"), message, transaction);
+            Write(db, "settings", ContactFormatPrefix + destination, format, transaction);
+            Record(db, Operator, "Queued for operator approval", message.Id, transaction);
+            transaction.Commit();
             return message.Id;
         }
     }
@@ -217,7 +240,9 @@ public sealed class HfLink
                 message = message with { Attempt = Guid.NewGuid(), Sent = null };
                 message = SetStatus(db, message, HfStatus.Sending, "", Operator, "Approved and transmission started");
             }
-            var packet = new HfPacket(HfPacket.Version, "message", id, message.Attempt, message.From, message.To, message.Text);
+            bool chat = message.Format == HfMessageFormat.MercuryChat;
+            var packet = new HfPacket(chat ? HfPacket.MercuryChat : HfPacket.Version,
+                "message", id, message.Attempt, message.From, message.To, message.Text);
             using var deadline = Deadline(station, stop);
             bool handedToModem = false;
             HfStatus status;
@@ -230,12 +255,21 @@ public sealed class HfLink
                     lock (_gate)
                     {
                         using var db = Open();
-                        message = SetStatus(db, message with { Sent = DateTimeOffset.UtcNow }, HfStatus.Sent, "Written to local modem.", Operator);
+                        message = SetStatus(db, message with { Sent = DateTimeOffset.UtcNow },
+                            chat ? HfStatus.Sending : HfStatus.Sent, "Written to local modem.", Operator);
                     }
                 }, deadline.Token);
                 bool delivered = response?.Confirms(packet) == true && handedToModem;
-                status = delivered ? HfStatus.Delivered : HfStatus.Unconfirmed;
-                detail = delivered ? "Matching HFLink receipt received from the destination station." : "No matching destination receipt.";
+                if (chat && handedToModem)
+                {
+                    status = HfStatus.Sent;
+                    detail = "Mercury Chat transfer finished. Ask the other station to reply to confirm receipt.";
+                }
+                else
+                {
+                    status = delivered ? HfStatus.Delivered : HfStatus.Unconfirmed;
+                    detail = delivered ? "Matching HFLink receipt received from the destination station." : "No matching destination receipt.";
+                }
             }
             catch (Exception error) when (error is TimeoutException or OperationCanceledException or IOException or System.Net.Sockets.SocketException or InvalidDataException)
             {
@@ -273,8 +307,10 @@ public sealed class HfLink
             var approved = new HashSet<Guid>();
             await _adapter(station, HfSimulation.NoAcknowledgement).ReceiveAsync(station, async (packet, token) =>
             {
-                if (packet.Protocol != HfPacket.Version || packet.Type != "message" || packet.To != station.Callsign) return null;
-                HfPacket.ValidateText(packet.Text);
+                if (packet.Protocol is not (HfPacket.Version or HfPacket.MercuryChat) || packet.Type != "message" || packet.To != station.Callsign) return null;
+                bool chat = packet.Protocol == HfPacket.MercuryChat;
+                if (chat) HfPacket.ValidateChatText(packet.Text, incoming: true);
+                else HfPacket.ValidateText(packet.Text);
                 HfMessage message;
                 bool isNew;
                 string key = IncomingKey(station.Simulation, packet.To, packet.From, packet.Id);
@@ -290,13 +326,14 @@ public sealed class HfLink
                     isNew = existing is null;
                     var now = DateTimeOffset.UtcNow;
                     message = existing is null
-                        ? new(packet.Id, packet.From, packet.To, packet.Text!, "", "", now, now, true, station.Simulation, HfStatus.Received, Attempt: packet.Attempt)
+                        ? new(packet.Id, packet.From, packet.To, packet.Text!, "", "", now, now, true, station.Simulation, HfStatus.Received,
+                            Attempt: packet.Attempt, Format: chat ? HfMessageFormat.MercuryChat : HfMessageFormat.HfLink)
                         : existing with { Attempt = packet.Attempt };
                     Write(db, "messages", key, message);
                     if (existing is null) Record(db, packet.From, "Incoming message stored", packet.Id);
                 }
                 if (isNew) onReceived?.Invoke(message);
-                if (!approved.Add(packet.Attempt) || !await approveReceipt(message, token)) return null;
+                if (chat || !approved.Add(packet.Attempt) || !await approveReceipt(message, token)) return null;
                 token.ThrowIfCancellationRequested();
                 lock (_gate)
                 {

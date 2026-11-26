@@ -58,6 +58,8 @@ internal static class HfLinkChecks
             await LoopbackAsync(wrongReceipt: false);
             await LoopbackAsync(wrongReceipt: true);
             await ReceiveLoopbackAsync();
+            await MercuryChatLoopbackAsync(Path.Combine(directory.FullName, "chat.sqlite3"), receive: false);
+            await MercuryChatLoopbackAsync(Path.Combine(directory.FullName, "chat.sqlite3"), receive: true);
         }
         finally { directory.Delete(recursive: true); }
         Console.WriteLine("HFLink SQLite, bundled station settings, simulation and Mercury loopback checks passed.");
@@ -83,7 +85,7 @@ internal static class HfLinkChecks
         var next = packet with { Id = Guid.NewGuid(), Attempt = Guid.NewGuid() };
         var source = new HfLink(path, (_, _) => new ReplayModem(next));
         await source.ReceiveAsync(false, (_, _) => Task.FromResult(false), default);
-        var outgoing = source.Queue("G1XYZ", "Outgoing example");
+        var outgoing = source.Queue("G1XYZ", "Outgoing example", HfMessageFormat.MercuryChat);
         source.MarkFirewallSetupOffered();
         string bundled = Path.Combine(root, "mercury", "mercury.ini");
         Directory.CreateDirectory(Path.GetDirectoryName(bundled)!);
@@ -98,7 +100,9 @@ internal static class HfLinkChecks
         string destination = Path.Combine(root, "restored");
         BackupRestore.Apply(BackupEnvelope.Decrypt(encrypted, "synthetic password"), destination, new TestCredentials());
         var restored = new HfLink(Path.Combine(destination, "hflink-native.sqlite3"), (_, _) => new ReplayModem(packet));
-        Check(restored.Station().Callsign == "M0ABC" && restored.Messages().Any(message => message.Id == outgoing) &&
+        Check(restored.Station().Callsign == "M0ABC" &&
+            restored.Messages().Any(message => message.Id == outgoing && message.Format == HfMessageFormat.MercuryChat) &&
+            restored.ContactFormat("g1xyz") == HfMessageFormat.MercuryChat &&
             restored.Messages().Any(message => message.Id == next.Id && message.Incoming) &&
             !restored.FirewallSetupOffered(), "Portable backup restores the station and both directions of history");
         Check(File.ReadAllText(Path.Combine(destination, "mercury", "mercury.ini")) == config &&
@@ -242,6 +246,67 @@ internal static class HfLinkChecks
             Check(await ReadAsync(stream, '\r', stop) == command, "Mercury initialisation: " + command);
             await WriteAsync(stream, command.StartsWith("MYCALL") ? "OK\rREGISTERED M0ABC\r" : "OK\r", stop);
         }
+    }
+
+    private static async Task MercuryChatLoopbackAsync(string path, bool receive)
+    {
+        using var control = new TcpListener(IPAddress.Loopback, 0);
+        using var data = new TcpListener(IPAddress.Loopback, 0);
+        control.Start();
+        data.Start();
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var stop = deadline.Token;
+        var link = new HfLink(path);
+        link.SaveStation(new HfStation("M0ABC", ControlPort: ((IPEndPoint)control.LocalEndpoint).Port,
+            DataPort: ((IPEndPoint)data.LocalEndpoint).Port, Simulation: false, UseBundledMercury: false));
+        var server = Task.Run(async () =>
+        {
+            using var ctl = await control.AcceptTcpClientAsync(stop);
+            using var payload = await data.AcceptTcpClientAsync(stop);
+            var c = ctl.GetStream();
+            var d = payload.GetStream();
+            await InitializeAsync(c, stop);
+            if (receive)
+            {
+                Check(await ReadAsync(c, '\r', stop) == "LISTEN ON", "Chat enables the standard receive window");
+                await WriteAsync(c, "OK\rCONNECTED G1XYZ M0ABC 500\r", stop);
+                await WriteAsync(d, "Hello from Mercury\nSecond", stop);
+                await WriteAsync(c, "DISCONNECTED\r", stop);
+                await WriteAsync(d, " line: café\n", stop);
+                Check(await ReadAsync(c, '\r', stop) == "LISTEN OFF", "Chat uses the peer's disconnect and disables listening");
+                Check(!d.DataAvailable, "Chat does not emit an HFLink receipt");
+                await WriteAsync(c, "OK\r", stop);
+            }
+            else
+            {
+                Check(await ReadAsync(c, '\r', stop) == "CONNECT M0ABC G1XYZ", "Chat calls the intended station");
+                await WriteAsync(c, "OK\rCONNECTED M0ABC G1XYZ 2300\rBUFFER 0\r", stop);
+                Check(await ReadAsync(d, '\n', stop) == "Plain text: café", "Outgoing chat matches Mercury Client's UTF-8 line format");
+                await WriteAsync(c, "BUFFER 18\rPTT ON\rPTT OFF\rBUFFER 0\r", stop);
+                Check(await ReadAsync(c, '\r', stop) == "DISCONNECT", "Chat waits for Mercury to drain before disconnecting");
+                await WriteAsync(c, "OK\rDISCONNECTED\r", stop);
+            }
+        }, stop);
+        if (receive)
+        {
+            var received = new List<HfMessage>();
+            await link.ReceiveAsync(true, (_, _) => throw new InvalidOperationException("Chat must not request a receipt."),
+                stop, received.Add);
+            Check(received.Count == 2 && received.All(message => message is { From: "G1XYZ", To: "M0ABC", Format: HfMessageFormat.MercuryChat }) &&
+                received.Select(message => message.Text).SequenceEqual(["Hello from Mercury", "Second line: café"]) &&
+                link.Messages().Count(message => message.Incoming) == 2, "Mercury chat stores each complete line under the session callsign");
+        }
+        else
+        {
+            Check(link.ContactFormat("G1XYZ") == HfMessageFormat.HfLink, "New contacts default to HFLink");
+            var id = link.Queue("G1XYZ", "Plain text: café", HfMessageFormat.MercuryChat);
+            Check(link.ContactFormat("g1xyz") == HfMessageFormat.MercuryChat &&
+                link.ContactFormat("G2XYZ") == HfMessageFormat.HfLink, "Chat preference follows the callsign");
+            Check(await link.ApproveAndSendAsync(id, HfSimulation.Acknowledged, true, stop) == HfStatus.Sent &&
+                new HfLink(path).Messages().Single(message => message.Id == id) is { Status: HfStatus.Sent, Delivered: null },
+                "A chat submission persists without an HFLink delivery receipt");
+        }
+        await server;
     }
 
     private static async Task<string> ReadAsync(Stream stream, char end, CancellationToken stop)

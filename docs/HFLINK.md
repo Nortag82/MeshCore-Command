@@ -17,6 +17,14 @@ Experimental HFLink sends openly readable direct messages between two attended s
 4. Close settings and select **Check modem** to start bundled Mercury and check its TCP ports.
 5. To exchange a message, use two attended stations with compatible Mercury versions. Agree on a clear frequency and the same sideband. The destination operator selects **Open receive window**. The source operator queues the message, selects it and chooses **Approve and send**. Mercury can transmit its own ARQ control frames during an open receive window.
 
+## Chat with standalone Mercury
+
+1. Use compatible Mercury modem versions. MeshCore Command bundles Mercury 1.9.25. Agree on a clear frequency and the same sideband. Your friend opens **Mercury Client**, enters their station callsign, selects **Connect modem**, and leaves the window open to accept your call. [Mercury Client implementation](https://github.com/Rhizomatica/mercury/blob/v1.9.25/gui_interface/mercury-client/client/client.go)
+2. In HFLink, enter your friend’s callsign and set **Format** to **Mercury ARQ Chat**. Type one line, choose **Queue for approval**, select the outgoing row, then choose **Approve and send**. HFLink remembers the format for that callsign as soon as you queue a message.
+3. After your outgoing session ends, choose **Open receive window**. Your friend enters your callsign and chooses **Connect ARQ** in Mercury Client, then uses **Send message** for the reply and **Disconnect ARQ** to finish. Incoming chat lines are saved as **Mercury ARQ Chat** under their callsign. Select an incoming row and choose **Reply** to fill in the callsign and format.
+
+**Sent to local modem** is the final status for a completed Mercury Chat transfer. A reply from your friend confirms they saw your message. Select **HFLink** as the format when chatting with an HFLink station and you want HFLink delivery receipts.
+
 ## Receive while using MeshCore
 
 The **Session status** panel on the right shows the current step and the other station’s callsign. During live use, it shows modem-reported PTT, channel activity, SNR, estimated bitrate, connection bandwidth and queued transmit bytes when Mercury supplies them. **Sent to Mercury** means the local modem accepted the data. **Delivered to destination station** means HFLink received a matching receipt from the other station.
@@ -49,7 +57,7 @@ To remove a received or outgoing message, select its row, choose **Delete messag
 
 **Sent to local modem** records that the data socket accepted a write. **Delivered to destination station** requires an HFLink receipt for the current message and attempt, from the destination callsign on the corresponding ARQ session. Callsign and receipt checks correlate the exchange. They provide no cryptographic authentication. A session interrupted after the local write remains unconfirmed.
 
-HFLink uses bounded, newline-delimited JSON over Mercury’s raw TCP data socket. Message text is stored in `hflink-native.sqlite3` in the active Windows profile’s data directory. The store also holds station settings and audit events. History from earlier releases stays available. Legacy account records are unused. The audit contains metadata and excludes message bodies. The encrypted full app backup includes HFLink history, station settings and saved Mercury configuration. Restore on the destination PC, then check that the audio input, output and PTT port match its hardware.
+The HFLink format uses bounded, newline-delimited JSON over Mercury’s raw TCP data socket. Mercury ARQ Chat uses plain UTF-8 lines on the same socket. Message text is stored in `hflink-native.sqlite3` in the active Windows profile’s data directory. The store also holds station settings, contact formats and audit events. History from earlier releases stays available. Legacy account records are unused. The audit contains metadata and excludes message bodies. The encrypted full app backup includes HFLink history, station settings, contact formats and saved Mercury configuration. Restore on the destination PC, then check that the audio input, output and PTT port match its hardware.
 
 The native Windows app runs on .NET 10 with a WinForms host, WebView2 and a loopback bridge for the shared MeshCore interface. MeshCore boards use TCP, USB serial or BLE, with UDP discovery for Wi-Fi. Existing board settings use local profiles, Windows credential storage and WebView2 data. SQLite already supports offline maps. HFLink uses an independent SQLite file and asynchronous modem operations. The native app also integrates GPS, firmware flashing, notifications, offline maps, elevation and release updates.
 
@@ -67,4 +75,4 @@ The loopback checks exercise Mercury’s TCP command and data protocol against a
 
 ## Bundled component
 
-The Windows build stages the standalone Rhizomatica Mercury 1.9.25 runtime, pins and verifies the upstream Windows archive and runtime binaries, and includes the upstream Mercury and FreeDV licence files. The [Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.53) includes a source and notices archive for the bundled modem and its dependencies. [Mercury release and source](https://github.com/Rhizomatica/mercury/releases/tag/v1.9.25) · [Mercury source at the pinned commit](https://github.com/Rhizomatica/mercury/tree/33efac4e3089f64f493fde1232b8e96305d15185)
+The Windows build stages the standalone Rhizomatica Mercury 1.9.25 runtime, pins and verifies the upstream Windows archive and runtime binaries, and includes the upstream Mercury and FreeDV licence files. The [Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.54) includes a source and notices archive for the bundled modem and its dependencies. [Mercury release and source](https://github.com/Rhizomatica/mercury/releases/tag/v1.9.25) · [Mercury source at the pinned commit](https://github.com/Rhizomatica/mercury/tree/33efac4e3089f64f493fde1232b8e96305d15185)
