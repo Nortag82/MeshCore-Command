@@ -21,6 +21,9 @@ internal sealed class HfLinkView : UserControl
         RowHeadersVisible = false, MultiSelect = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect
     };
     private readonly TextBox _detail = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical };
+    private readonly HfWaterfallView _waterfall = new() { Visible = false };
+    private readonly RowStyle _waterfallRow = new(SizeType.Absolute, 0);
+    private readonly Button _waterfallToggle;
     private readonly Button _settings, _probe, _send, _queue, _receive, _cancel, _retry, _audit, _stop, _stopMercury;
     private readonly Action<HfMessage> _received;
     private readonly FlowLayoutPanel _receipt;
@@ -45,10 +48,16 @@ internal sealed class HfLinkView : UserControl
         Dock = DockStyle.Fill;
         AccessibleName = "HFLink";
         Font = new Font("Segoe UI", 11);
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 11, Padding = new Padding(16), AutoScroll = true };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 12, Padding = new Padding(16), AutoScroll = true };
         Controls.Add(layout);
         for (int row = 0; row < layout.RowCount; row++)
-            layout.RowStyles.Add(row switch { 7 => new RowStyle(SizeType.Percent, 100), 8 => new RowStyle(SizeType.Absolute, 90), _ => new RowStyle(SizeType.AutoSize) });
+            layout.RowStyles.Add(row switch
+            {
+                6 => _waterfallRow,
+                8 => new RowStyle(SizeType.Percent, 100),
+                9 => new RowStyle(SizeType.Absolute, 90),
+                _ => new RowStyle(SizeType.AutoSize)
+            });
         var back = AsyncButton("Back to radio", returnToRadio);
         back.Name = "hfLinkBack";
         var title = new Label { Text = "HFLink", Font = new Font(Font, FontStyle.Bold), Anchor = AnchorStyles.Left, AutoSize = true, Padding = new Padding(8, 0, 0, 0) };
@@ -89,26 +98,29 @@ internal sealed class HfLinkView : UserControl
         _stop = Button("Stop operation", () => _operation?.Cancel());
         _stop.Name = "hfLinkStopOperation";
         _stopMercury = Button("Stop Mercury", () => { _bundled.Stop(); RefreshView(); Report("Bundled Mercury stopped."); });
+        _waterfallToggle = Button("Show waterfall", () => SetWaterfallVisible(!_waterfall.Visible));
+        _waterfallToggle.Name = "hfLinkWaterfallToggle";
         _simulation.Items.AddRange(["Simulate no receipt", "Simulate receipt", "Simulate disconnect", "Simulate timeout"]);
         _simulation.SelectedIndex = 0;
-        layout.Controls.Add(Row(_probe, _receive, _stop, _stopMercury, _simulation), 0, 5);
+        layout.Controls.Add(Row(_probe, _receive, _stop, _stopMercury, _simulation, _waterfallToggle), 0, 5);
+        layout.Controls.Add(_waterfall, 0, 6);
 
         _send = AsyncButton("Approve and send", SendAsync);
         _retry = Button("Retry", () => { _link.Retry(Selected().Id); RefreshView(); Report("Retry requires fresh approval."); });
         _cancel = Button("Cancel request", () => { _link.Cancel(Selected().Id); RefreshView(); Report("Request cancelled."); });
-        layout.Controls.Add(Row(FieldLabel(_filter), _filter, _send, _retry, _cancel), 0, 6);
+        layout.Controls.Add(Row(FieldLabel(_filter), _filter, _send, _retry, _cancel), 0, 7);
         _filter.TextChanged += (_, _) => RefreshView();
         foreach (var column in new[] { ("Time", 141), ("Mode", 85), ("Direction", 85), ("From", 95), ("To", 95), ("Status", 170) })
             _history.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = column.Item1, Width = column.Item2, SortMode = DataGridViewColumnSortMode.NotSortable });
         _history.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Message", AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, SortMode = DataGridViewColumnSortMode.NotSortable });
         _history.CurrentCellChanged += (_, _) => { if (_ready) SetActions(); };
-        layout.Controls.Add(_history, 0, 7);
-        layout.Controls.Add(_detail, 0, 8);
+        layout.Controls.Add(_history, 0, 8);
+        layout.Controls.Add(_detail, 0, 9);
         _receipt = Row(_receiptLabel, Button("Send receipt", () => _receiptDecision?.TrySetResult(true)),
             Button("Decline receipt", () => _receiptDecision?.TrySetResult(false)));
         _receipt.Visible = false;
-        layout.Controls.Add(_receipt, 0, 9);
-        layout.Controls.Add(_status, 0, 10);
+        layout.Controls.Add(_receipt, 0, 10);
+        layout.Controls.Add(_status, 0, 11);
         if (!SystemInformation.HighContrast)
         {
             StyleView(layout);
@@ -163,9 +175,37 @@ internal sealed class HfLinkView : UserControl
 
     private void ConfigureSettings()
     {
+        SetWaterfallVisible(false);
         using var dialog = CreateSettingsDialog();
         dialog.ShowDialog(this);
         EnterView();
+    }
+
+    private void SetWaterfallVisible(bool visible)
+    {
+        _waterfall.Visible = visible;
+        _waterfallRow.Height = visible ? 158 : 0;
+        _waterfallToggle.Text = visible ? "Hide waterfall" : "Show waterfall";
+        if (!visible)
+        {
+            _waterfall.Stop();
+            return;
+        }
+        var station = _link.Station();
+        _waterfall.Start(station.Simulation || !_allowLive, () =>
+        {
+            string? path = station.UseBundledMercury ? _bundled.ConfigPath :
+                _link.MercuryConfigPath() ?? MercurySettingsPanel.FindConfig();
+            if (path is null || !File.Exists(path))
+                throw new InvalidOperationException("Choose a receive input in HFLink Settings → Audio and PTT.");
+            var config = MercurySettingsFile.Open(path);
+            if (!config.Get("main", "sound_system").Equals("wasapi", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Save a Windows audio input in HFLink Settings → Audio and PTT.");
+            string? endpoint = config.Get("main", "input_device", "\0");
+            if (endpoint == "\0")
+                throw new InvalidOperationException("Choose a receive input in HFLink Settings → Audio and PTT.");
+            return endpoint;
+        });
     }
 
     internal Form CreateSettingsDialog()
@@ -366,11 +406,13 @@ internal sealed class HfLinkView : UserControl
     public Task LeaveViewAsync()
     {
         _away = true;
+        SetWaterfallVisible(false);
         return _receiving ? Task.CompletedTask : StopAsync();
     }
 
     public async Task StopAsync()
     {
+        _waterfall.Stop();
         if (_finished is { } finished)
         {
             _operation?.Cancel();

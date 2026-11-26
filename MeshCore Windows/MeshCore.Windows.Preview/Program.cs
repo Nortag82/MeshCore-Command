@@ -1015,9 +1015,23 @@ internal sealed class PreviewWindow : Form
         if (view.Controls.Find("hfLinkSettings", true).SingleOrDefault() is not Button { Text: "Settings" } ||
             view.Controls.Find("hfLinkReceive", true).SingleOrDefault() is not Button { Enabled: true } receive) return false;
         string? gallery = _candidate ? null : Environment.GetEnvironmentVariable("MCC_HFLINK_GALLERY_DIR");
+        if (view.Controls.Find("hfLinkWaterfallToggle", true).SingleOrDefault() is not Button waterfall ||
+            view.Controls.Find("hfLinkWaterfallPlot", true).SingleOrDefault() is not HfWaterfallView plot)
+            return false;
+        var spectrum = new HfWaterfallSpectrum(48000);
+        for (int index = 0; index < 4800; index++)
+            spectrum.Add((float)(0.25 * Math.Sin(2 * Math.PI * 1500 * index / 48000)));
+        if (spectrum.TakeFrame() is not { } frame ||
+            Math.Abs(Array.IndexOf(frame, frame.Max()) * spectrum.BinHz - 1500) > spectrum.BinHz ||
+            Math.Abs(frame.Max() - 20 * Math.Log10(0.25)) > 0.5)
+            return false;
+        waterfall.PerformClick();
+        if (!plot.Visible || waterfall.Text != "Hide waterfall") return false;
+        await Task.Delay(string.IsNullOrEmpty(gallery) ? 250 : 3500);
         if (!string.IsNullOrEmpty(gallery))
         {
             Directory.CreateDirectory(gallery);
+            CaptureControl(view, Path.Combine(gallery, "hflink-waterfall.png"));
             using var settings = view.CreateSettingsDialog();
             settings.Show(this);
             await Task.Yield();
@@ -1026,7 +1040,7 @@ internal sealed class PreviewWindow : Form
         }
         receive.PerformClick();
         back.PerformClick();
-        if (!_web.Visible || view.Visible) return false;
+        if (!_web.Visible || view.Visible || waterfall.Text != "Show waterfall") return false;
         Form? notification = null;
         for (int attempt = 0; attempt < 50 && notification is null; attempt++)
         {

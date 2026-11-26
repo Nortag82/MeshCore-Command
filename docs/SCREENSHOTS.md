@@ -1,10 +1,14 @@
 # MeshCore Command screenshots
 
-The HFLink images show Windows 2.0.48. The other Windows images show 2.0.43, including its earlier candidate banner. The captures use simulated contacts, messages, telemetry and map objects, without connecting a radio or reading a user profile. Map data © OpenStreetMap contributors.
+The waterfall image shows HFLink in Windows 2.0.49. The other HFLink images show 2.0.48, and the remaining Windows images show 2.0.43, including its earlier candidate banner. The captures use simulated signals, contacts, messages, telemetry and map objects. Map data © OpenStreetMap contributors.
 
 The native firmware dialog is not pictured here. The Android images in the README use the HTML from the released Android 0.2.15 APK with a simulated bridge; they are not photographs of a phone or live radio session.
 
 ## HFLink
+
+Select **Show waterfall** to see audio in the tuned receive passband. The example shows simulated signals.
+
+![HFLink waterfall with simulated receive tones across the audio passband](images/native/hflink-waterfall.png)
 
 HFLink has one **Settings** button for the station, audio and PTT, and firewall. With a receive window open, you can return to the radio page and get notified when a message arrives.
 

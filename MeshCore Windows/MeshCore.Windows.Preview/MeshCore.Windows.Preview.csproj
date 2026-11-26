@@ -14,6 +14,8 @@
     <ProjectReference Include="../MeshCore.Windows.Core/MeshCore.Windows.Core.csproj" />
     <ProjectReference Include="../MeshCore.Windows.Bluetooth/MeshCore.Windows.Bluetooth.csproj" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+    <PackageReference Include="NAudio.Wasapi" Version="2.3.0" />
+    <Content Include="../assets/NAudio-LICENSE.txt" Link="NAudio-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <Content Include="../assets/multi_board_shell.html" Link="multi_board_shell.html" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../artifacts/radio.html" Link="radio.html" CopyToOutputDirectory="PreserveNewest" Condition="Exists('../artifacts/radio.html')" />
     <Content Include="../assets/meshcore-command.ico" Link="meshcore-command.ico" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
