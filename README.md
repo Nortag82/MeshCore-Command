@@ -1,6 +1,6 @@
 # MeshCore Command
 
-> **Windows release** 2.0.48 adds desktop receive notifications and a unified settings window for [experimental HFLink](docs/HFLINK.md). For upgrades from the Python app, see the [upgrade notes](MeshCore%20Windows/LEGACY-UPGRADE.md) and back up important data before updating.
+> **Windows release 2.0.48** adds desktop receive alerts and a single settings window for [HFLink](#hflink).
 
 A Windows companion for MeshCore radios, with Wi-Fi, Bluetooth and USB connections, messaging, repeater monitoring, terrain planning and a shared situation map. An experimental Android Bluetooth companion is also included.
 
@@ -22,9 +22,28 @@ MeshCore Command brings messaging, radio management and mapping together in a de
 - **Setup and recovery** — flash supported Wi-Fi boards, discover radios on your network, reboot the selected local radio, and export an encrypted backup of supported PC and radio data.
 - **Android companion** — an experimental Bluetooth app offers messaging, Secure Coms and Situation Map features on Android 12 and newer.
 
-[Download for Windows](#download-for-windows) · [Android test app](#android-test-app) · [Screenshots](docs/SCREENSHOTS.md) · [Windows quick start](docs/NATIVE-TEST-QUICKSTART.md)
+[Download for Windows](#download-for-windows) · [HFLink](#hflink) · [Android test app](#android-test-app) · [Screenshots](docs/SCREENSHOTS.md) · [Windows quick start](docs/NATIVE-TEST-QUICKSTART.md)
 
 Features depend on radio firmware, connectivity and node permissions. Terrain visibility is an estimate, and Secure Coms has not been independently audited. Android and some multi-radio features need further hardware testing.
+
+## HFLink
+
+HFLink is an experimental Windows module for exchanging openly readable direct messages between two amateur HF stations. Mercury is bundled and selected by default for new profiles. Open **HFLink → Settings** to configure your callsign, audio, PTT and firewall. You can try **Simulation (no RF)** without connecting a radio.
+
+Select **Open receive window**, then **Back to radio** to keep listening while using MeshCore. When a message arrives during the window, click the desktop alert to open it in HFLink.
+
+![HFLink receive alert over the MeshCore Command overview during a simulated receive window](docs/images/native/hflink-notification.png)
+
+<details>
+<summary>See the HFLink inbox and settings</summary>
+
+![HFLink inbox with a simulated incoming message and receipt controls](docs/images/native/hflink.png)
+
+![HFLink Settings showing Station, Audio and PTT, and Firewall tabs](docs/images/native/hflink-settings.png)
+
+</details>
+
+[HFLink setup guide](docs/HFLINK.md) · [Full screenshot gallery](docs/SCREENSHOTS.md#hflink)
 
 ## How Secure Coms protects messages and maps
 
@@ -33,8 +52,6 @@ MeshCore already encrypts direct messages. Secure Coms adds a second, independen
 This extra layer protects the contents of secure messages and map updates from a party that can access the MeshCore transport but does not have the Command shared secret. GCM also checks integrity: a modified or unauthenticated secure payload is rejected. Each pair must exchange a randomly generated secret privately and compare the displayed fingerprint through a trusted channel. Compatible Command installations are required at both ends; a standard MeshCore app can display the encrypted `MC1.` payload as text but cannot open it.
 
 There are tradeoffs. Packet routing information and traffic patterns remain observable; ordinary adverts and Public-channel discovery can reveal identifying information. Encryption adds overhead, limiting each secure message to **74 UTF-8 bytes**. A local group sends a separate encrypted message to each member, increasing airtime and delivery time. A radio acknowledgement is not proof the other app decrypted or read a message. **The implementation has not been independently audited and does not provide forward secrecy**: someone who obtains a shared secret may be able to decrypt previously recorded traffic. It also cannot protect plaintext on a compromised endpoint. For key handling, replay protection, map storage and recovery details, see [Secure Coms security and tradeoffs](docs/SECURE-COMS-SECURITY.md).
-
-**Latest Windows release** 2.0.48 adds HFLink receive notifications while you use MeshCore, with bundled Mercury and one HFLink settings window. HFLink simulation works without a modem or radio. Android 0.2.15 remains experimental.
 
 ## Download for Windows
 
