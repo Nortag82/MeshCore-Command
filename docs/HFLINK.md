@@ -49,9 +49,9 @@ The waterfall uses shared-mode Windows audio alongside Mercury. You can view it 
 
 ## Mercury version and updates
 
-HFLink displays the bundled Mercury version beside the station mode. Open **HFLink → Settings → Mercury updates** and select **Check for Mercury updates** to compare it with the latest stable Windows x64 release on Rhizomatica’s GitHub. When the versions match, HFLink verifies that the bundled files and upstream archive checksum match before reporting that Mercury is up to date.
+HFLink displays the installed Mercury version beside the station mode. When you open HFLink with bundled Mercury selected, it checks Rhizomatica’s latest stable Windows x64 release and asks before installing a newer version. You can also select **HFLink → Settings → Mercury updates → Check for Mercury updates** to check and install on demand.
 
-Use MeshCore Command’s **Settings → Check for updates** to install updates that include a newer bundled modem. Use the GitHub release link to view upstream changes. External Mercury installations have their own update process. [Rhizomatica Mercury releases](https://github.com/Rhizomatica/mercury/releases)
+HFLink verifies the archive’s SHA-256 checksum and runs a version check before selecting the new modem. The update keeps your audio, PTT and station settings. If Mercury is running idle, HFLink stops it once the download and checks pass. The next modem operation uses the new version. External Mercury installations have their own update process. [Rhizomatica Mercury releases](https://github.com/Rhizomatica/mercury/releases)
 
 ### Existing external Mercury setups
 
@@ -81,4 +81,4 @@ The loopback checks exercise Mercury’s TCP command and data protocol against a
 
 ## Bundled component
 
-The Windows build stages the standalone Rhizomatica Mercury 1.9.25 runtime, pins and verifies the upstream Windows archive and runtime binaries, and includes the upstream Mercury and FreeDV licence files. The [Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.55) includes a source and notices archive for the bundled modem and its dependencies. [Mercury release and source](https://github.com/Rhizomatica/mercury/releases/tag/v1.9.25) · [Mercury source at the pinned commit](https://github.com/Rhizomatica/mercury/tree/33efac4e3089f64f493fde1232b8e96305d15185)
+The Windows build stages the standalone Rhizomatica Mercury 1.9.25 runtime, pins and verifies the upstream Windows archive and runtime binaries, and includes the upstream Mercury and FreeDV licence files. The [Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.56) includes a source and notices archive for the bundled modem and its dependencies. [Mercury release and source](https://github.com/Rhizomatica/mercury/releases/tag/v1.9.25) · [Mercury source at the pinned commit](https://github.com/Rhizomatica/mercury/tree/33efac4e3089f64f493fde1232b8e96305d15185)

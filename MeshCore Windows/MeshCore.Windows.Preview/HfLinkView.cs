@@ -33,7 +33,10 @@ internal sealed class HfLinkView : UserControl
     private CancellationTokenSource? _operation;
     private TaskCompletionSource? _finished;
     private TaskCompletionSource<bool>? _receiptDecision;
-    private bool _receiving, _away, _checkingFirewall;
+    private bool _receiving, _checkingFirewall, _checkingMercuryUpdate;
+    private bool _away = true;
+    private Version? _offeredMercuryUpdate;
+    private readonly CancellationTokenSource _viewLifetime = new();
     private bool _showWaterfall = true;
     private bool _ready;
 
@@ -325,6 +328,7 @@ internal sealed class HfLinkView : UserControl
         {
             try
             {
+                if (_operation is not null) throw new InvalidOperationException("Wait for the active HFLink operation to finish.");
                 bool simulation = _allowLive ? sim.Checked : station.Simulation;
                 _link.SaveStation(new(call.Text, host.Text, (int)control.Value, (int)data.Value, (int)timeout.Value,
                     simulation, bundled.Checked, bandwidths[bandwidth.SelectedIndex]));
@@ -338,7 +342,7 @@ internal sealed class HfLinkView : UserControl
         };
 
         var firewallStatus = new Label { AutoSize = true, MaximumSize = new Size(565, 0) };
-        var fix = new Button { Text = "Fix firewall", AutoSize = true, Enabled = _allowLive && BundledMercury.Available };
+        var fix = new Button { Text = "Fix firewall", AutoSize = true, Enabled = _allowLive && _bundled.Installed };
         var description = new Label
         {
             AutoSize = true, MaximumSize = new Size(565, 0),
@@ -362,19 +366,19 @@ internal sealed class HfLinkView : UserControl
         return dialog;
     }
 
-    private static void AddMercuryUpdates(TabPage tab, Form dialog)
+    private void AddMercuryUpdates(TabPage tab, Form dialog)
     {
         var localVersion = new Label
         {
             Name = "hfLinkMercuryVersion", AutoSize = true,
-            Text = BundledMercury.Available ? $"Bundled Mercury {BundledMercury.PackageVersion}" : "Bundled Mercury is missing"
+            Text = MercuryVersionText()
         };
         var check = new Button { Name = "hfLinkMercuryUpdateCheck", Text = "Check for Mercury updates", AutoSize = true };
         var status = new Label { AutoSize = true, MaximumSize = new Size(565, 0), Text = "Compare the bundled modem with the latest stable Windows x64 release from Rhizomatica." };
         var instructions = new Label
         {
             AutoSize = true, MaximumSize = new Size(565, 0),
-            Text = "Get bundled modem upgrades through MeshCore Command’s Settings → Check for updates. Update an external modem separately."
+            Text = "HFLink can install updates for its bundled Mercury modem. Updates take effect the next time HFLink starts the modem."
         };
         Uri releasePage = MercuryReleaseClient.ReleasesPage;
         var details = new LinkLabel { Text = "View Mercury releases on GitHub", AutoSize = true };
@@ -405,39 +409,104 @@ internal sealed class HfLinkView : UserControl
                 using var http = UpdaterClient.CreateClient();
                 var latest = await new MercuryReleaseClient(http).CheckAsync(stop);
                 releasePage = latest.ReleasePage;
-                bool available = BundledMercury.Available;
-                if (available) await Task.Run(BundledMercury.VerifyPackageFiles, stop);
                 if (dialog.IsDisposed) return;
-                string result = latest.Version.CompareTo(BundledMercury.PackageVersion) switch
+                if (_link.Station().UseBundledMercury && CanInstallMercury(latest) && _operation is null)
                 {
-                    _ when !available => "Bundled Mercury is missing. Repair it with the MeshCore Command installer.",
-                    > 0 => $"Mercury {latest.Version} is available upstream.",
-                    < 0 => $"Bundled Mercury {BundledMercury.PackageVersion} is newer than the Windows release listed by GitHub.",
-                    _ when latest.ArchiveSha256 is null => "GitHub did not provide the Windows archive checksum.",
-                    _ when !BundledMercury.ArchiveSha256.Equals(latest.ArchiveSha256, StringComparison.OrdinalIgnoreCase) =>
-                        "The upstream Windows archive differs from the verified bundle.",
-                    _ => "Bundled Mercury is up to date."
-                };
+                    _offeredMercuryUpdate = latest.Version;
+                    if (ConfirmMercuryUpdate(dialog, latest))
+                    {
+                        status.Text = $"Downloading and verifying Mercury {latest.Version}…";
+                        await InstallMercuryAsync(latest, stop);
+                        if (dialog.IsDisposed) return;
+                        localVersion.Text = MercuryVersionText();
+                    }
+                }
+                string result = await MercuryUpdateStatusAsync(latest, stop);
+                if (dialog.IsDisposed) return;
                 status.Text = $"Latest stable Windows x64 release · {latest.Version}\r\n{result}";
             }
             catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
-            catch (Exception error) when (error is HttpRequestException or IOException or InvalidDataException or UnauthorizedAccessException or
-                OperationCanceledException or System.Text.Json.JsonException)
+            catch (Exception error) when (IsMercuryUpdateError(error))
             {
-                if (!dialog.IsDisposed) status.Text = $"Could not confirm the latest Mercury version. {error.Message}";
+                if (!dialog.IsDisposed) status.Text = $"Mercury update could not finish. {error.Message}";
             }
             finally { if (!dialog.IsDisposed) check.Enabled = true; }
         };
         tab.Controls.Add(Fields([("", localVersion), ("", check), ("", status), ("", details), ("", instructions)]));
     }
 
+    private string MercuryVersionText() =>
+        _bundled.Installed ? $"Bundled Mercury {_bundled.InstalledVersion}" : "Bundled Mercury is missing";
+
+    private bool CanInstallMercury(MercuryWindowsRelease release) => release.Version > _bundled.InstalledVersion &&
+        release.ArchiveSha256 is not null && release.ArchiveSize is > 0 and <= MercuryReleaseClient.MaximumArchiveBytes;
+
+    private async Task<string> MercuryUpdateStatusAsync(MercuryWindowsRelease latest, CancellationToken stop)
+    {
+        if (!_link.Station().UseBundledMercury) return "External Mercury is selected. Its updates are managed by its own installation.";
+        if (CanInstallMercury(latest)) return $"Mercury {latest.Version} is available to install.";
+        if (!_bundled.Installed) return "Bundled Mercury is missing. Repair it with the MeshCore Command installer.";
+        if (latest.Version < _bundled.InstalledVersion) return $"{MercuryVersionText()} is newer than the Windows release listed by GitHub.";
+        if (latest.ArchiveSha256 is null || latest.Version > _bundled.InstalledVersion)
+            return "GitHub did not provide a usable archive size and checksum.";
+        await Task.Run(_bundled.VerifyInstalledFiles, stop);
+        return _bundled.InstalledArchiveSha256.Equals(latest.ArchiveSha256, StringComparison.OrdinalIgnoreCase)
+            ? "Bundled Mercury is up to date." : "The upstream archive differs from the verified installation.";
+    }
+
+    private bool ConfirmMercuryUpdate(IWin32Window owner, MercuryWindowsRelease latest) =>
+        MessageBox.Show(owner,
+            $"Update bundled Mercury from {_bundled.InstalledVersion} to {latest.Version}? Your station settings will be kept. Mercury will stop if it is running and use the new version the next time it starts.",
+            "Mercury update available", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
+            MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+
+    private Task InstallMercuryAsync(MercuryWindowsRelease latest, CancellationToken stop) => RunAsync(async operation =>
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(operation, stop);
+        using var http = UpdaterClient.CreateClient();
+        await _bundled.InstallUpdateAsync(new MercuryReleaseClient(http), latest, linked.Token);
+        return $"Mercury {latest.Version} installed. HFLink will use it the next time it starts the modem.";
+    }, sessionPhase: $"Updating Mercury to {latest.Version}");
+
+    private async Task CheckMercuryOnOpenAsync()
+    {
+        if (_checkingMercuryUpdate || _away || IsDisposed || !_link.Station().UseBundledMercury) return;
+        _checkingMercuryUpdate = true;
+        var stop = _viewLifetime.Token;
+        try
+        {
+            using var http = UpdaterClient.CreateClient();
+            var latest = await new MercuryReleaseClient(http).CheckAsync(stop);
+            if (stop.IsCancellationRequested || _away || IsDisposed || _operation is not null ||
+                Form.ActiveForm != FindForm() || !_link.Station().UseBundledMercury || !CanInstallMercury(latest) ||
+                latest.Version == _offeredMercuryUpdate) return;
+            _offeredMercuryUpdate = latest.Version;
+            if (ConfirmMercuryUpdate(this, latest)) await InstallMercuryAsync(latest, stop);
+        }
+        catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+        catch (Exception error) when (IsMercuryUpdateError(error))
+        {
+            if (!_away && _operation is null) Report($"Mercury update could not finish. {error.Message}");
+        }
+        finally { _checkingMercuryUpdate = false; }
+    }
+
+    private static bool IsMercuryUpdateError(Exception error) =>
+        error is HttpRequestException or IOException or InvalidDataException or UnauthorizedAccessException or InvalidOperationException or
+            System.ComponentModel.Win32Exception or OperationCanceledException or System.Text.Json.JsonException or Microsoft.Data.Sqlite.SqliteException;
+
     public void EnterView()
     {
+        bool opening = _away;
         _away = false;
         RefreshView();
         if (_showWaterfall && !_waterfall.Visible) SetWaterfallVisible(true);
-        if (!_allowLive || _checkingFirewall || _operation is not null || !BundledMercury.Available) return;
-        BeginInvoke(async () => await OfferFirewallSetupAsync());
+        if (!_allowLive || _operation is not null) return;
+        BeginInvoke(async () =>
+        {
+            if (_bundled.Installed) await OfferFirewallSetupAsync();
+            if (opening) await CheckMercuryOnOpenAsync();
+        });
     }
 
     private async Task OfferFirewallSetupAsync()
@@ -576,6 +645,7 @@ internal sealed class HfLinkView : UserControl
     {
         if (disposing)
         {
+            if (!IsDisposed) { _viewLifetime.Cancel(); _viewLifetime.Dispose(); }
             _operation?.Cancel();
             _bundled.Dispose();
         }
@@ -626,7 +696,7 @@ internal sealed class HfLinkView : UserControl
         _history.Rows.Clear();
         var station = _link.Station();
         string mode = station.Simulation ? "simulation" : station.UseBundledMercury ? "bundled Mercury" : "external Mercury";
-        string bundledVersion = station.UseBundledMercury && BundledMercury.Available ? $"   Mercury {BundledMercury.PackageVersion}" : "";
+        string bundledVersion = station.UseBundledMercury && _bundled.Installed ? $"   Mercury {_bundled.InstalledVersion}" : "";
         string arqLimit = station.ArqBandwidthHz == 0 ? "" : $"   ARQ limit {station.ArqBandwidthHz} Hz";
         _station.Text = $"Station: {(station.Callsign.Length == 0 ? "not configured" : station.Callsign)}   Mode: {mode}{bundledVersion}{arqLimit}";
         var filter = _filter.Text.Trim().ToUpperInvariant();

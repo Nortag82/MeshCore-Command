@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
@@ -24,13 +25,19 @@ internal sealed class BundledMercury(string dataDirectory) : IDisposable
     ];
     private static readonly int[] Ports = [8300, 8301, 8100];
     private readonly string _directory = Path.Combine(dataDirectory, "mercury");
+    private InstalledUpdate? _update = ReadUpdate(Path.Combine(dataDirectory, "mercury"));
     private Process? _process;
     private SafeFileHandle? _job;
     private CancellationTokenSource? _monitor;
     public event Action<string>? ModemStopped;
     private string Runtime => Path.Combine(_directory, "runtime");
     private string Executable => Path.Combine(Runtime, "mercury.exe");
+    private const string UpdateMarkerName = "installed.txt";
+    private string UpdateMarker => Path.Combine(_directory, UpdateMarkerName);
     public static bool Available => File.Exists(Path.Combine(Payload, "mercury.exe"));
+    public bool Installed => _update is not null || Available;
+    public Version InstalledVersion => _update?.Version ?? PackageVersion;
+    public string InstalledArchiveSha256 => _update?.Sha256 ?? ArchiveSha256;
     public bool Running => _process is { HasExited: false };
     public string ConfigPath => Path.Combine(_directory, "mercury.ini");
 
@@ -42,7 +49,7 @@ internal sealed class BundledMercury(string dataDirectory) : IDisposable
 
     public Task ConfigureFirewallAsync(CancellationToken stop)
     {
-        StageRuntime();
+        if (!Running) StageRuntime();
         return MercuryFirewall.ConfigureAsync(Executable, stop);
     }
 
@@ -159,6 +166,11 @@ internal sealed class BundledMercury(string dataDirectory) : IDisposable
 
     private void StageRuntime()
     {
+        if (_update is { } update)
+        {
+            ExtractUpdate(UpdateArchive(_directory, update), update, Runtime);
+            return;
+        }
         VerifyFiles(Payload);
         Directory.CreateDirectory(Runtime);
         foreach (var file in PayloadFiles)
@@ -168,6 +180,121 @@ internal sealed class BundledMercury(string dataDirectory) : IDisposable
                 File.Copy(Path.Combine(Payload, file.Name), destination, overwrite: true);
         }
         VerifyFiles(Runtime);
+    }
+
+    public async Task InstallUpdateAsync(MercuryReleaseClient client, MercuryWindowsRelease release, CancellationToken stop)
+    {
+        if (release.Version <= InstalledVersion || release.ArchiveSha256 is not { } hash)
+            throw new InvalidOperationException("Choose a newer Mercury release with a verified checksum.");
+        Directory.CreateDirectory(_directory);
+        string temporary = Path.Combine(_directory, $".update-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(temporary);
+        string archive = Path.Combine(temporary, "mercury.zip");
+        string marker = Path.Combine(temporary, UpdateMarkerName);
+        var update = new InstalledUpdate(release.Version, hash.ToUpperInvariant());
+        try
+        {
+            await client.DownloadAsync(release, archive, stop);
+            await Task.Run(() => ExtractUpdate(archive, update, temporary), stop);
+            await VerifyVersionAsync(temporary, release.Version, stop);
+            await File.WriteAllTextAsync(marker, $"{update.Version} {update.Sha256}", stop);
+            stop.ThrowIfCancellationRequested();
+            Stop();
+            File.Move(archive, UpdateArchive(_directory, update), overwrite: true);
+            File.Move(marker, UpdateMarker, overwrite: true);
+            var previous = _update;
+            _update = update;
+            if (previous is not null && previous.Sha256 != update.Sha256)
+                TryDelete(UpdateArchive(_directory, previous));
+        }
+        finally
+        {
+            TryDelete(archive);
+            TryDelete(marker);
+            foreach (var file in PayloadFiles) TryDelete(Path.Combine(temporary, file.Name));
+            try { Directory.Delete(temporary); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        }
+    }
+
+    private sealed record InstalledUpdate(Version Version, string Sha256);
+
+    private static string UpdateArchive(string directory, InstalledUpdate update) =>
+        Path.Combine(directory, $"package-{update.Sha256}.zip");
+
+    private static InstalledUpdate? ReadUpdate(string directory)
+    {
+        try
+        {
+            string marker = Path.Combine(directory, UpdateMarkerName);
+            var file = new FileInfo(marker);
+            if (!file.Exists || file.Length > 1024) return null;
+            string[] fields = File.ReadAllText(marker).Split(' ');
+            if (fields.Length != 2 || !Version.TryParse(fields[0], out var version) || version <= PackageVersion ||
+                fields[1].Length != 64 || !fields[1].All(Uri.IsHexDigit)) return null;
+            var update = new InstalledUpdate(version, fields[1]);
+            return File.Exists(UpdateArchive(directory, update)) ? update : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
+    }
+
+    public void VerifyInstalledFiles()
+    {
+        if (_update is { } update)
+        {
+            using var archive = OpenVerifiedArchive(UpdateArchive(_directory, update), update);
+        }
+        else VerifyPackageFiles();
+    }
+
+    private static FileStream OpenVerifiedArchive(string path, InstalledUpdate update)
+    {
+        var archive = File.OpenRead(path);
+        try
+        {
+            if (archive.Length > MercuryReleaseClient.MaximumArchiveBytes ||
+                !Convert.ToHexString(SHA256.HashData(archive)).Equals(update.Sha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("The installed Mercury archive failed its SHA-256 check.");
+            archive.Position = 0;
+            return archive;
+        }
+        catch
+        {
+            archive.Dispose();
+            throw;
+        }
+    }
+
+    private static void ExtractUpdate(string path, InstalledUpdate update, string destination)
+    {
+        using var stream = OpenVerifiedArchive(path, update);
+        using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
+        Directory.CreateDirectory(destination);
+        string root = $"mercury-{update.Version}/";
+        byte[] buffer = new byte[81920];
+        foreach (var file in PayloadFiles)
+        {
+            var entries = archive.Entries.Where(entry => entry.FullName.Equals(root + file.Name, StringComparison.OrdinalIgnoreCase)).ToArray();
+            if (entries.Length != 1 || entries[0].Length is <= 0 or > MercuryReleaseClient.MaximumArchiveBytes)
+                throw new InvalidDataException($"The Mercury archive does not contain a supported {file.Name}.");
+            using var input = entries[0].Open();
+            using var output = File.Create(Path.Combine(destination, file.Name));
+            long remaining = entries[0].Length;
+            while (remaining > 0)
+            {
+                int count = (int)Math.Min(remaining, buffer.Length);
+                input.ReadExactly(buffer.AsSpan(0, count));
+                output.Write(buffer.AsSpan(0, count));
+                remaining -= count;
+            }
+            if (input.ReadByte() != -1) throw new InvalidDataException("An extracted Mercury file exceeds its declared size.");
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try { File.Delete(path); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
     }
 
     private static bool Matches(string path, string hash)
@@ -189,16 +316,22 @@ internal sealed class BundledMercury(string dataDirectory) : IDisposable
     public static async Task VerifyPackageAsync()
     {
         VerifyPackageFiles();
-        var start = StartInfo(Path.Combine(Payload, "mercury.exe"), Payload, "-V");
+        await VerifyVersionAsync(Payload, PackageVersion, CancellationToken.None);
+    }
+
+    private static async Task VerifyVersionAsync(string directory, Version version, CancellationToken stop)
+    {
+        var start = StartInfo(Path.Combine(directory, "mercury.exe"), directory, "-V");
         start.RedirectStandardOutput = true;
         using var process = Process.Start(start) ?? throw new IOException("Bundled Mercury could not run.");
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stop);
+        deadline.CancelAfter(TimeSpan.FromSeconds(10));
         var output = process.StandardOutput.ReadToEndAsync(deadline.Token);
         try
         {
             await process.WaitForExitAsync(deadline.Token);
             if (process.ExitCode != 0 ||
-                !(await output).StartsWith($"Rhizomatica Mercury Version {PackageVersion} (", StringComparison.Ordinal))
+                !(await output).StartsWith($"Rhizomatica Mercury Version {version} (", StringComparison.Ordinal))
                 throw new IOException("Bundled Mercury version check failed.");
         }
         finally { if (!process.HasExited) process.Kill(); }

@@ -56,10 +56,26 @@ if (args.Contains("--live-mercury-release-test"))
 await HfLinkChecks.RunAsync();
 using (var http = new HttpClient(new MercuryReleaseTestHandler()))
 {
-    var mercury = await new MercuryReleaseClient(http).CheckAsync();
+    var client = new MercuryReleaseClient(http);
+    var mercury = await client.CheckAsync();
     Check(mercury is { Version: { Major: 1, Minor: 9, Build: 25 }, ArchiveSha256: MercuryReleaseTestHandler.ArchiveChecksum } &&
-        mercury.ReleasePage.AbsoluteUri == "https://github.com/Rhizomatica/mercury/releases/tag/v1.9.25",
+        mercury.ReleasePage.AbsoluteUri == "https://github.com/Rhizomatica/mercury/releases/tag/v1.9.25" &&
+        mercury.ArchiveUrl.AbsoluteUri == MercuryReleaseTestHandler.ArchiveUrl && mercury.ArchiveSize == 3,
         "Mercury checks the newest stable release with an uploaded Windows x64 archive");
+    string path = Path.Combine(Path.GetTempPath(), $"mcc-mercury-download-{Guid.NewGuid():N}.zip");
+    try
+    {
+        var bytes = new byte[] { 1, 2, 3 };
+        string digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes));
+        await client.DownloadAsync(mercury with { ArchiveSha256 = digest }, path, default);
+        Check(File.ReadAllBytes(path).SequenceEqual(bytes), "Mercury downloads the verified Windows archive");
+        File.Delete(path);
+        await ThrowsAsync<InvalidDataException>(() => client.DownloadAsync(mercury, path, default));
+        File.Delete(path);
+        await ThrowsAsync<InvalidDataException>(() => client.DownloadAsync(mercury with { ArchiveSha256 = null }, path, default));
+        Check(!File.Exists(path), "Mercury rejects an unverified download");
+    }
+    finally { File.Delete(path); }
 }
 var output = CompanionFrames.EncodeOutgoing(new byte[] { 1, 2, 3 });
 {
@@ -929,9 +945,12 @@ sealed class BogusHelperHandler : HttpMessageHandler
 sealed class MercuryReleaseTestHandler : HttpMessageHandler
 {
     public const string ArchiveChecksum = "7cf95ef0dd5f589c6d9224e481452029a7435d820b80ecc6d1258ed1f532df6e";
+    public const string ArchiveUrl = "https://github.com/Rhizomatica/mercury/releases/download/v1.9.25/mercury-1.9.25-w64-33efac4e.zip";
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
+        if (request.RequestUri?.AbsoluteUri == ArchiveUrl)
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([1, 2, 3]) });
         if (request.RequestUri?.AbsoluteUri != "https://api.github.com/repos/Rhizomatica/mercury/releases?per_page=30")
             throw new InvalidOperationException("Unexpected Mercury releases endpoint.");
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
@@ -941,7 +960,7 @@ sealed class MercuryReleaseTestHandler : HttpMessageHandler
                   {"tag_name":"v1.9.24","published_at":"2026-01-01","assets":[{"state":"uploaded","name":"mercury-1.9.24-w64-1b13fab1.zip"}]},
                   {"tag_name":"v2.0.0","prerelease":true,"published_at":"2026-01-01","assets":[{"state":"uploaded","name":"mercury-2.0.0-w64-1234567.zip"}]},
                   {"tag_name":"v1.9.26","published_at":"2026-01-01","assets":[{"state":"uploaded","name":"mercury-1.9.26-linux.zip"}]},
-                  {"tag_name":"v1.9.25","published_at":"2026-01-01","assets":[{"state":"uploaded","name":"mercury-1.9.25-w64-33efac4e.zip","digest":"sha256:{{ArchiveChecksum}}"}]}
+                  {"tag_name":"v1.9.25","published_at":"2026-01-01","assets":[{"state":"uploaded","name":"mercury-1.9.25-w64-33efac4e.zip","size":3,"digest":"sha256:{{ArchiveChecksum}}"}]}
                 ]
                 """),
             RequestMessage = request
