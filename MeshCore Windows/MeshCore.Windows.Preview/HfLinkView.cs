@@ -11,7 +11,7 @@ internal sealed class HfLinkView : UserControl
     private readonly Label _status = new() { AutoSize = true, Text = "Ready." };
     private readonly Label _station = new() { AutoSize = true };
     private readonly TextBox _destination = new() { Width = 110, MaxLength = 15, AccessibleName = "Destination callsign" };
-    private readonly TextBox _message = new() { Width = 360, MaxLength = 512, AccessibleName = "Message" };
+    private readonly TextBox _message = new() { Width = 360, MaxLength = HfPacket.TextLimit, AccessibleName = "Message" };
     private readonly TextBox _filter = new() { Width = 130, MaxLength = 15, AccessibleName = "Filter by callsign" };
     private readonly ComboBox _format = new() { Name = "hfLinkMessageFormat", DropDownStyle = ComboBoxStyle.DropDownList, Width = 165, AccessibleName = "Format" };
     private readonly ComboBox _simulation = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 160 };
@@ -96,7 +96,8 @@ internal sealed class HfLinkView : UserControl
         });
         layout.Controls.Add(Row(FieldLabel(_destination), _destination, FieldLabel(_format), _format,
             FieldLabel(_message), _message, _bytes, _queue), 0, 4);
-        _message.TextChanged += (_, _) => _bytes.Text = $"{Encoding.UTF8.GetByteCount(_message.Text)} / 512 bytes";
+        _message.TextChanged += (_, _) => UpdateMessageBytes();
+        _format.SelectedIndexChanged += (_, _) => UpdateMessageBytes();
 
         _probe = AsyncButton("Check modem", () => RunAsync(async token =>
         {
@@ -160,6 +161,14 @@ internal sealed class HfLinkView : UserControl
         }
         _ready = true;
         RefreshView();
+    }
+
+    private void UpdateMessageBytes()
+    {
+        int limit = (HfMessageFormat)_format.SelectedIndex == HfMessageFormat.MercuryChat
+            ? HfPacket.MercuryChatTextLimit : HfPacket.TextLimit;
+        _message.MaxLength = limit;
+        _bytes.Text = $"{Encoding.UTF8.GetByteCount(_message.Text)} / {limit} bytes";
     }
 
     private static void StyleView(Control container)
@@ -270,6 +279,13 @@ internal sealed class HfLinkView : UserControl
         var control = Number(station.ControlPort, 1, 65535);
         var data = Number(station.DataPort, 1, 65535);
         var timeout = Number(station.TimeoutSeconds, 5, 600);
+        int[] bandwidths = [0, 500, 2300, 2750];
+        var bandwidth = new ComboBox
+        {
+            Name = "hfLinkArqBandwidth", AccessibleName = "ARQ bandwidth", DropDownStyle = ComboBoxStyle.DropDownList, Width = 255
+        };
+        bandwidth.Items.AddRange(["Use modem setting", "500 Hz (narrow)", "2300 Hz", "2750 Hz"]);
+        bandwidth.SelectedIndex = Math.Max(0, Array.IndexOf(bandwidths, station.ArqBandwidthHz));
         var bundled = new CheckBox { Text = "Use bundled Mercury", Checked = station.UseBundledMercury, AutoSize = true };
         void SetExternalFields() => host.Enabled = control.Enabled = data.Enabled = !bundled.Checked;
         bundled.CheckedChanged += (_, _) => SetExternalFields();
@@ -278,7 +294,7 @@ internal sealed class HfLinkView : UserControl
         var stationStatus = new Label { AutoSize = true, MaximumSize = new Size(560, 0) };
         var save = new Button { Text = "Save station", AutoSize = true };
         var form = Fields([("Station callsign", call), ("Modem", bundled), ("External Mercury host", host), ("Control port", control),
-            ("Data port", data), ("Session timeout in seconds", timeout), ("Mode", sim), ("", save), ("", stationStatus)]);
+            ("Data port", data), ("ARQ bandwidth", bandwidth), ("Session timeout in seconds", timeout), ("Mode", sim), ("", save), ("", stationStatus)]);
         stationTab.Controls.Add(form);
         bool? modemMode = null;
         void LoadModem()
@@ -310,7 +326,8 @@ internal sealed class HfLinkView : UserControl
             try
             {
                 bool simulation = _allowLive ? sim.Checked : station.Simulation;
-                _link.SaveStation(new(call.Text, host.Text, (int)control.Value, (int)data.Value, (int)timeout.Value, simulation, bundled.Checked));
+                _link.SaveStation(new(call.Text, host.Text, (int)control.Value, (int)data.Value, (int)timeout.Value,
+                    simulation, bundled.Checked, bandwidths[bandwidth.SelectedIndex]));
                 station = _link.Station();
                 _bundled.Stop();
                 RefreshView();
@@ -610,7 +627,8 @@ internal sealed class HfLinkView : UserControl
         var station = _link.Station();
         string mode = station.Simulation ? "simulation" : station.UseBundledMercury ? "bundled Mercury" : "external Mercury";
         string bundledVersion = station.UseBundledMercury && BundledMercury.Available ? $"   Mercury {BundledMercury.PackageVersion}" : "";
-        _station.Text = $"Station: {(station.Callsign.Length == 0 ? "not configured" : station.Callsign)}   Mode: {mode}{bundledVersion}";
+        string arqLimit = station.ArqBandwidthHz == 0 ? "" : $"   ARQ limit {station.ArqBandwidthHz} Hz";
+        _station.Text = $"Station: {(station.Callsign.Length == 0 ? "not configured" : station.Callsign)}   Mode: {mode}{bundledVersion}{arqLimit}";
         var filter = _filter.Text.Trim().ToUpperInvariant();
         foreach (var message in _link.Messages().Where(m => filter.Length == 0 || m.From.Contains(filter) || m.To.Contains(filter)))
         {

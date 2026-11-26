@@ -1096,6 +1096,8 @@ internal sealed class PreviewWindow : Form
         using var settings = view.CreateSettingsDialog();
         if (settings.Controls.Find("hfLinkMercuryVersion", true).SingleOrDefault() is not Label version ||
             version.Text != $"Bundled Mercury {BundledMercury.PackageVersion}" ||
+            settings.Controls.Find("hfLinkArqBandwidth", true).SingleOrDefault() is not ComboBox { SelectedIndex: 0 } bandwidth ||
+            !bandwidth.Items.Cast<string>().SequenceEqual(["Use modem setting", "500 Hz (narrow)", "2300 Hz", "2750 Hz"]) ||
             settings.Controls.Find("hfLinkMercuryUpdateCheck", true).SingleOrDefault() is not Button) return false;
         if (!string.IsNullOrEmpty(gallery))
         {

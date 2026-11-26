@@ -15,6 +15,13 @@ internal static class HfLinkChecks
             var link = new HfLink(path);
             CheckMercurySettings(link, directory.FullName);
             Check(link.Station().UseBundledMercury, "New stations default to bundled Mercury");
+            Check(link.Station().ArqBandwidthHz == 0, "New stations leave the modem bandwidth setting intact");
+            try
+            {
+                link.SaveStation(new HfStation("M0ABC", ArqBandwidthHz: 1000));
+                throw new InvalidOperationException("An unsupported bandwidth was saved.");
+            }
+            catch (ArgumentException) { }
             Check(!link.FirewallSetupOffered(), "An unopened profile has no firewall prompt record");
             link.MarkFirewallSetupOffered();
             Check(new HfLink(path).FirewallSetupOffered(), "The first firewall prompt is recorded across restarts");
@@ -70,7 +77,7 @@ internal static class HfLinkChecks
         var packet = new HfPacket(HfPacket.Version, "message", Guid.NewGuid(), Guid.NewGuid(), "G1XYZ", "M0ABC", "Received example");
         var modem = new ReplayModem(packet);
         var link = new HfLink(path, (_, _) => modem);
-        link.SaveStation(new HfStation("M0ABC"));
+        link.SaveStation(new HfStation("M0ABC", ArqBandwidthHz: 500));
         int notifications = 0;
         await link.ReceiveAsync(false, (_, _) => Task.FromResult(false), default, _ => notifications++);
         link.DeleteMessage(link.Messages().Single());
@@ -100,7 +107,7 @@ internal static class HfLinkChecks
         string destination = Path.Combine(root, "restored");
         BackupRestore.Apply(BackupEnvelope.Decrypt(encrypted, "synthetic password"), destination, new TestCredentials());
         var restored = new HfLink(Path.Combine(destination, "hflink-native.sqlite3"), (_, _) => new ReplayModem(packet));
-        Check(restored.Station().Callsign == "M0ABC" &&
+        Check(restored.Station() is { Callsign: "M0ABC", ArqBandwidthHz: 500 } &&
             restored.Messages().Any(message => message.Id == outgoing && message.Format == HfMessageFormat.MercuryChat) &&
             restored.ContactFormat("g1xyz") == HfMessageFormat.MercuryChat &&
             restored.Messages().Any(message => message.Id == next.Id && message.Incoming) &&
@@ -159,7 +166,7 @@ internal static class HfLinkChecks
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var stop = deadline.Token;
         var station = new HfStation("M0ABC", ControlPort: ((IPEndPoint)control.LocalEndpoint).Port,
-            DataPort: ((IPEndPoint)data.LocalEndpoint).Port, Simulation: false);
+            DataPort: ((IPEndPoint)data.LocalEndpoint).Port, Simulation: false, ArqBandwidthHz: wrongReceipt ? 2750 : 0);
         var requested = new HfPacket(HfPacket.Version, "message", Guid.NewGuid(), Guid.NewGuid(), station.Callsign, "G1XYZ", "Loopback");
         var metrics = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var updates = new List<HfModemStatus>();
@@ -169,7 +176,7 @@ internal static class HfLinkChecks
             using var payload = await data.AcceptTcpClientAsync(stop);
             var c = ctl.GetStream();
             var d = payload.GetStream();
-            await InitializeAsync(c, stop);
+            await InitializeAsync(c, stop, station.ArqBandwidthHz);
             Check(await ReadAsync(c, '\r', stop) == "CONNECT M0ABC G1XYZ", "Mercury CONNECT ordering");
             await WriteAsync(c, "OK\rCONNECTED M0ABC G1XYZ 2300\r", stop);
             var actual = JsonSerializer.Deserialize<HfPacket>(await ReadAsync(d, '\n', stop), new JsonSerializerOptions(JsonSerializerDefaults.Web));
@@ -239,12 +246,17 @@ internal static class HfLinkChecks
             updates.Any(update => update.Phase == "Sending delivery receipt"), "Receive status follows the validated modem session");
     }
 
-    private static async Task InitializeAsync(NetworkStream stream, CancellationToken stop)
+    private static async Task InitializeAsync(NetworkStream stream, CancellationToken stop, int bandwidth = 0)
     {
         foreach (string command in new[] { "LISTEN OFF", "PUBLIC OFF", "MYCALL M0ABC" })
         {
             Check(await ReadAsync(stream, '\r', stop) == command, "Mercury initialisation: " + command);
             await WriteAsync(stream, command.StartsWith("MYCALL") ? "OK\rREGISTERED M0ABC\r" : "OK\r", stop);
+        }
+        if (bandwidth != 0)
+        {
+            Check(await ReadAsync(stream, '\r', stop) == $"BW{bandwidth}", "Mercury bandwidth is applied before connecting or listening");
+            await WriteAsync(stream, "OK\r", stop);
         }
     }
 
@@ -256,23 +268,27 @@ internal static class HfLinkChecks
         data.Start();
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var stop = deadline.Token;
-        var link = new HfLink(path);
+        var updates = new List<HfModemStatus>();
+        var link = new HfLink(path, report: updates.Add);
+        int bandwidth = receive ? 2300 : 500;
+        const string prefix = "Plain text: café ";
+        string chat = prefix + new string('x', HfPacket.MercuryChatTextLimit - Encoding.UTF8.GetByteCount(prefix));
         link.SaveStation(new HfStation("M0ABC", ControlPort: ((IPEndPoint)control.LocalEndpoint).Port,
-            DataPort: ((IPEndPoint)data.LocalEndpoint).Port, Simulation: false, UseBundledMercury: false));
+            DataPort: ((IPEndPoint)data.LocalEndpoint).Port, Simulation: false, UseBundledMercury: false, ArqBandwidthHz: bandwidth));
         var server = Task.Run(async () =>
         {
             using var ctl = await control.AcceptTcpClientAsync(stop);
             using var payload = await data.AcceptTcpClientAsync(stop);
             var c = ctl.GetStream();
             var d = payload.GetStream();
-            await InitializeAsync(c, stop);
+            await InitializeAsync(c, stop, bandwidth);
             if (receive)
             {
                 Check(await ReadAsync(c, '\r', stop) == "LISTEN ON", "Chat enables the standard receive window");
                 await WriteAsync(c, "OK\rCONNECTED G1XYZ M0ABC 500\r", stop);
-                await WriteAsync(d, "Hello from Mercury\nSecond", stop);
+                await WriteAsync(d, "Hello from Mercury\rSecond", stop);
                 await WriteAsync(c, "DISCONNECTED\r", stop);
-                await WriteAsync(d, " line: café\n", stop);
+                await WriteAsync(d, " line: café\r\n  \nLast line", stop);
                 Check(await ReadAsync(c, '\r', stop) == "LISTEN OFF", "Chat uses the peer's disconnect and disables listening");
                 Check(!d.DataAvailable, "Chat does not emit an HFLink receipt");
                 await WriteAsync(c, "OK\r", stop);
@@ -280,9 +296,9 @@ internal static class HfLinkChecks
             else
             {
                 Check(await ReadAsync(c, '\r', stop) == "CONNECT M0ABC G1XYZ", "Chat calls the intended station");
-                await WriteAsync(c, "OK\rCONNECTED M0ABC G1XYZ 2300\rBUFFER 0\r", stop);
-                Check(await ReadAsync(d, '\n', stop) == "Plain text: café", "Outgoing chat matches Mercury Client's UTF-8 line format");
-                await WriteAsync(c, "BUFFER 18\rPTT ON\rPTT OFF\rBUFFER 0\r", stop);
+                await WriteAsync(c, "OK\rCONNECTED M0ABC G1XYZ 500\rBUFFER 0\r", stop);
+                Check(await ReadAsync(d, '\n', stop) == chat, "Outgoing 1024-byte chat matches Mercury Client's UTF-8 line format");
+                await WriteAsync(c, "BUFFER 1025\rPTT ON\rPTT OFF\rBUFFER 0\r", stop);
                 Check(await ReadAsync(c, '\r', stop) == "DISCONNECT", "Chat waits for Mercury to drain before disconnecting");
                 await WriteAsync(c, "OK\rDISCONNECTED\r", stop);
             }
@@ -292,14 +308,14 @@ internal static class HfLinkChecks
             var received = new List<HfMessage>();
             await link.ReceiveAsync(true, (_, _) => throw new InvalidOperationException("Chat must not request a receipt."),
                 stop, received.Add);
-            Check(received.Count == 2 && received.All(message => message is { From: "G1XYZ", To: "M0ABC", Format: HfMessageFormat.MercuryChat }) &&
-                received.Select(message => message.Text).SequenceEqual(["Hello from Mercury", "Second line: café"]) &&
-                link.Messages().Count(message => message.Incoming) == 2, "Mercury chat stores each complete line under the session callsign");
+            Check(received.Count == 3 && received.All(message => message is { From: "G1XYZ", To: "M0ABC", Format: HfMessageFormat.MercuryChat }) &&
+                received.Select(message => message.Text).SequenceEqual(["Hello from Mercury", "Second line: café", "Last line"]) &&
+                link.Messages().Count(message => message.Incoming) == 3, "Mercury chat stores CR, CRLF and trailing lines under the session callsign");
         }
         else
         {
             Check(link.ContactFormat("G1XYZ") == HfMessageFormat.HfLink, "New contacts default to HFLink");
-            var id = link.Queue("G1XYZ", "Plain text: café", HfMessageFormat.MercuryChat);
+            var id = link.Queue("G1XYZ", chat, HfMessageFormat.MercuryChat);
             Check(link.ContactFormat("g1xyz") == HfMessageFormat.MercuryChat &&
                 link.ContactFormat("G2XYZ") == HfMessageFormat.HfLink, "Chat preference follows the callsign");
             Check(await link.ApproveAndSendAsync(id, HfSimulation.Acknowledged, true, stop) == HfStatus.Sent &&
@@ -307,6 +323,8 @@ internal static class HfLinkChecks
                 "A chat submission persists without an HFLink delivery receipt");
         }
         await server;
+        Check(updates.Any(update => update is { Phase: "Connected", Bandwidth: 500 }),
+            "Session status uses the negotiated bandwidth");
     }
 
     private static async Task<string> ReadAsync(Stream stream, char end, CancellationToken stop)

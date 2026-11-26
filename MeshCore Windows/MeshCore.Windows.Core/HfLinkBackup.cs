@@ -83,6 +83,7 @@ internal static class HfLinkBackup
     {
         var snapshot = JsonSerializer.Deserialize<Snapshot>(bytes) ?? throw new InvalidDataException("HFLink history is missing.");
         if (snapshot.Messages is null || snapshot.Audit is null || snapshot.DeletedIncoming is null ||
+            (snapshot.Station is { } station && !HfStation.ValidArqBandwidth(station.ArqBandwidthHz)) ||
             snapshot.Messages.Any(message => message is null || message.Id == Guid.Empty || message.Text is null ||
                 message.From is null || message.To is null || !Enum.IsDefined(message.Status) || !Enum.IsDefined(message.Format)) ||
             snapshot.ContactFormats?.Any(entry => !Enum.IsDefined(entry.Value) || !CanonicalCall(entry.Key)) == true ||

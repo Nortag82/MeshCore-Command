@@ -91,6 +91,8 @@ public sealed class HfLink
 
     public void SaveStation(HfStation station)
     {
+        if (!HfStation.ValidArqBandwidth(station.ArqBandwidthHz))
+            throw new ArgumentException("Choose a supported Mercury ARQ bandwidth.");
         if (station.UseBundledMercury) station = station with { Host = "127.0.0.1", ControlPort = 8300, DataPort = 8301 };
         string host = station.Host.Trim();
         if (Uri.CheckHostName(host) == UriHostNameType.Unknown || host.Length > 253 ||
@@ -309,7 +311,7 @@ public sealed class HfLink
             {
                 if (packet.Protocol is not (HfPacket.Version or HfPacket.MercuryChat) || packet.Type != "message" || packet.To != station.Callsign) return null;
                 bool chat = packet.Protocol == HfPacket.MercuryChat;
-                if (chat) HfPacket.ValidateChatText(packet.Text, incoming: true);
+                if (chat) HfPacket.ValidateChatText(packet.Text);
                 else HfPacket.ValidateText(packet.Text);
                 HfMessage message;
                 bool isNew;

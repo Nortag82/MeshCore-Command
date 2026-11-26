@@ -8,8 +8,10 @@ namespace MeshCore.Windows.Core;
 
 public sealed record HfStation(string Callsign = "", string Host = "127.0.0.1",
     int ControlPort = 8300, int DataPort = 8301, int TimeoutSeconds = 120, bool Simulation = true,
-    bool UseBundledMercury = true)
+    bool UseBundledMercury = true, int ArqBandwidthHz = 0)
 {
+    public static bool ValidArqBandwidth(int hz) => hz is 0 or 500 or 2300 or 2750;
+
     public static string Call(string value)
     {
         string call = value.Trim().ToUpperInvariant();
@@ -25,10 +27,10 @@ public enum HfMessageFormat { HfLink, MercuryChat }
 public sealed record HfPacket(string Protocol, string Type, Guid Id, Guid Attempt, string From, string To, string? Text)
 {
     public const int TextLimit = 512;
+    public const int MercuryChatTextLimit = 1024;
     public const int WireLimit = 4096;
     public const string Version = "HFLINK/1";
     internal const string MercuryChat = "Mercury ARQ Chat";
-    private const int MercuryReceiveLimit = 1024;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static readonly UTF8Encoding ChatEncoding = new(false, true);
 
@@ -41,9 +43,9 @@ public sealed record HfPacket(string Protocol, string Type, Guid Id, Guid Attemp
             throw new ArgumentException($"Enter 1–{limit} UTF-8 bytes of readable text.");
     }
 
-    internal static void ValidateChatText(string? text, bool incoming = false)
+    internal static void ValidateChatText(string? text)
     {
-        ValidateText(text, incoming ? MercuryReceiveLimit : TextLimit);
+        ValidateText(text, MercuryChatTextLimit);
         if (text!.Contains('\r') || text.Contains('\n') || HasPacketHeader(text))
             throw new ArgumentException("Enter one plain-text line for Mercury Chat.");
     }
@@ -52,13 +54,14 @@ public sealed record HfPacket(string Protocol, string Type, Guid Id, Guid Attemp
         ? ChatEncoding.GetBytes(Text + "\n")
         : Encoding.UTF8.GetBytes(JsonSerializer.Serialize(this, Json) + "\n");
 
-    internal static HfPacket DecodeIncoming(byte[] line, string peer, string local)
+    internal static HfPacket? DecodeIncoming(byte[] line, string peer, string local, bool terminated)
     {
         try
         {
-            string text = ChatEncoding.GetString(line).TrimEnd('\r');
-            if (HasPacketHeader(text)) return Decode(line, peer, local);
-            ValidateChatText(text, incoming: true);
+            string text = ChatEncoding.GetString(line);
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            if (HasPacketHeader(text)) return terminated ? Decode(line, peer, local) : null;
+            ValidateText(text, MercuryChatTextLimit);
             return new(MercuryChat, "message", Guid.NewGuid(), Guid.NewGuid(), peer, local, text);
         }
         catch (ArgumentException error)
@@ -217,6 +220,8 @@ public sealed class MercuryHfModem(Action<HfModemStatus>? report = null) : IHfMo
 
     private async Task<Session> OpenAsync(HfStation station, CancellationToken stop)
     {
+        if (!HfStation.ValidArqBandwidth(station.ArqBandwidthHz))
+            throw new ArgumentOutOfRangeException(nameof(station), "Choose a supported Mercury ARQ bandwidth.");
         // One reconnect before any RF command, for a restarted or momentarily busy TNC.
         for (int attempt = 0; ; attempt++)
         {
@@ -232,6 +237,8 @@ public sealed class MercuryHfModem(Action<HfModemStatus>? report = null) : IHfMo
                 await session.CommandAsync("LISTEN OFF", deadline.Token);
                 await session.CommandAsync("PUBLIC OFF", deadline.Token);
                 await session.CommandAsync($"MYCALL {station.Callsign}", deadline.Token);
+                if (station.ArqBandwidthHz != 0)
+                    await session.CommandAsync("BW" + station.ArqBandwidthHz.ToString(CultureInfo.InvariantCulture), deadline.Token);
                 return session;
             }
             catch (Exception error) when (error is SocketException or IOException or OperationCanceledException)
@@ -348,8 +355,8 @@ public sealed class MercuryHfModem(Action<HfModemStatus>? report = null) : IHfMo
             Func<HfPacket, CancellationToken, Task<HfPacket?>> onPacket, CancellationToken stop)
         {
             using var race = CancellationTokenSource.CreateLinkedTokenSource(stop);
-            var packets = ReadPacketsAsync(race.Token);
             var disconnect = WaitForDisconnectAsync(race.Token);
+            var packets = ReadPacketsAsync(race.Token);
             try
             {
                 if (await Task.WhenAny(packets, disconnect) == packets)
@@ -372,26 +379,49 @@ public sealed class MercuryHfModem(Action<HfModemStatus>? report = null) : IHfMo
 
             async Task ReadPacketsAsync(CancellationToken token)
             {
-                while (true)
+                var line = new byte[HfPacket.WireLimit];
+                var next = new byte[1];
+                int length = 0;
+                try
                 {
-                    byte[] line = await ReadLineAsync(Data, (byte)'\n', HfPacket.WireLimit, token);
-                    if (line.Length == 0 || line is [(byte)'\r']) continue;
-                    var packet = HfPacket.DecodeIncoming(line, peer, local);
+                    while (true)
+                    {
+                        if (await Data.ReadAsync(next, token) == 0)
+                        {
+                            if (disconnect.IsCompletedSuccessfully) break;
+                            throw new IOException("Mercury closed its data socket during the session.");
+                        }
+                        if (next[0] is (byte)'\r' or (byte)'\n')
+                        {
+                            int frameLength = length;
+                            length = 0;
+                            if (frameLength > 0 && await HandleLineAsync(frameLength, terminated: true, token)) return;
+                            continue;
+                        }
+                        if (length == line.Length) throw new InvalidDataException("Mercury input exceeded its frame limit.");
+                        line[length++] = next[0];
+                    }
+                }
+                catch (OperationCanceledException) when (disconnect.IsCompletedSuccessfully && !stop.IsCancellationRequested) { }
+                // Some chat clients omit the final line ending. Flush it only on peer disconnect.
+                if (length > 0) await HandleLineAsync(length, terminated: false, stop);
+
+                async Task<bool> HandleLineAsync(int count, bool terminated, CancellationToken lineToken)
+                {
+                    if (HfPacket.DecodeIncoming(line[..count], peer, local, terminated) is not { } packet) return false;
                     if (packet.Protocol == HfPacket.MercuryChat)
                     {
                         report?.Invoke(new("Mercury Chat line received", Peer: peer));
-                        await onPacket(packet, token);
-                        continue;
+                        await onPacket(packet, lineToken);
+                        return false;
                     }
-                    var response = await onPacket(packet, token);
-                    token.ThrowIfCancellationRequested();
-                    if (response is not null)
-                    {
-                        if (!response.Confirms(packet) || packet.Type != "message") throw new InvalidDataException("Invalid receipt.");
-                        report?.Invoke(new("Sending delivery receipt"));
-                        await Data.WriteAsync(response.Encode(), token);
-                    }
-                    return;
+                    var response = await onPacket(packet, lineToken);
+                    if (response is null || disconnect.IsCompletedSuccessfully) return true;
+                    lineToken.ThrowIfCancellationRequested();
+                    if (!response.Confirms(packet) || packet.Type != "message") throw new InvalidDataException("Invalid receipt.");
+                    report?.Invoke(new("Sending delivery receipt"));
+                    await Data.WriteAsync(response.Encode(), lineToken);
+                    return true;
                 }
             }
         }
