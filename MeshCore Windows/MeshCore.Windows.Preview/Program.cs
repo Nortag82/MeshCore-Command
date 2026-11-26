@@ -1107,6 +1107,8 @@ internal sealed class PreviewWindow : Form
             settings.Close();
         }
         receive.PerformClick();
+        if (view.Controls.Find("hfLinkSessionPhase", true).SingleOrDefault() is not Label { Text: "Listening (simulation)" })
+            return false;
         back.PerformClick();
         if (!_web.Visible || view.Visible || waterfall.Text != "Show waterfall") return false;
         Form? notification = null;

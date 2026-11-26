@@ -22,6 +22,7 @@ internal sealed class HfLinkView : UserControl
     };
     private readonly TextBox _detail = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical };
     private readonly HfWaterfallView _waterfall = new() { Visible = false };
+    private readonly HfSessionStatus _session = new();
     private readonly RowStyle _waterfallRow = new(SizeType.Absolute, 0);
     private readonly Button _waterfallToggle;
     private readonly Button _settings, _probe, _send, _queue, _receive, _cancel, _retry, _delete, _audit, _stop, _stopMercury;
@@ -37,7 +38,7 @@ internal sealed class HfLinkView : UserControl
 
     public HfLinkView(string directory, bool allowLive, Func<Task> returnToRadio, Action<HfMessage> received)
     {
-        _link = new HfLink(Path.Combine(directory, "hflink-native.sqlite3"));
+        _link = new HfLink(Path.Combine(directory, "hflink-native.sqlite3"), report: _session.Update);
         _allowLive = allowLive;
         _received = received;
         _bundled = new BundledMercury(directory);
@@ -49,7 +50,9 @@ internal sealed class HfLinkView : UserControl
         Dock = DockStyle.Fill;
         AccessibleName = "HFLink";
         Font = new Font("Segoe UI", 11);
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 12, Padding = new Padding(16), AutoScroll = true };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 12, Padding = new Padding(16), AutoScroll = true };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 232));
         Controls.Add(layout);
         for (int row = 0; row < layout.RowCount; row++)
             layout.RowStyles.Add(row switch
@@ -93,7 +96,7 @@ internal sealed class HfLinkView : UserControl
             return _link.Station().Simulation
                 ? "Simulator ready. No RF is used."
                 : "Mercury responded. TCP ports released after the check.";
-        }));
+        }, sessionPhase: "Checking modem"));
         _receive = AsyncButton("Open receive window", ReceiveAsync);
         _receive.Name = "hfLinkReceive";
         _stop = Button("Stop operation", () => _operation?.Cancel());
@@ -110,13 +113,16 @@ internal sealed class HfLinkView : UserControl
         _simulation.SelectedIndex = 0;
         layout.Controls.Add(Row(_probe, _receive, _stop, _stopMercury, _simulation, _waterfallToggle), 0, 5);
         layout.Controls.Add(_waterfall, 0, 6);
+        layout.Controls.Add(_session, 1, 0);
+        layout.SetRowSpan(_session, 7);
 
         _send = AsyncButton("Approve and send", SendAsync);
         _retry = Button("Retry", () => { _link.Retry(Selected().Id); RefreshView(); Report("Retry requires fresh approval."); });
         _cancel = Button("Cancel request", () => { _link.Cancel(Selected().Id); RefreshView(); Report("Request cancelled."); });
         _delete = Button("Delete message", DeleteSelectedMessage);
         _delete.Name = "hfLinkDeleteMessage";
-        layout.Controls.Add(Row(FieldLabel(_filter), _filter, _send, _retry, _cancel, _delete), 0, 7);
+        var messageActions = Row(FieldLabel(_filter), _filter, _send, _retry, _cancel, _delete);
+        layout.Controls.Add(messageActions, 0, 7);
         _filter.TextChanged += (_, _) => RefreshView();
         foreach (var column in new[] { ("Time", 141), ("Mode", 85), ("Direction", 85), ("From", 95), ("To", 95), ("Status", 170) })
             _history.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = column.Item1, Width = column.Item2, SortMode = DataGridViewColumnSortMode.NotSortable });
@@ -129,6 +135,8 @@ internal sealed class HfLinkView : UserControl
         _receipt.Visible = false;
         layout.Controls.Add(_receipt, 0, 10);
         layout.Controls.Add(_status, 0, 11);
+        foreach (Control control in new Control[] { messageActions, _history, _detail, _receipt, _status })
+            layout.SetColumnSpan(control, 2);
         if (!SystemInformation.HighContrast)
         {
             StyleView(layout);
@@ -441,7 +449,7 @@ internal sealed class HfLinkView : UserControl
         {
             await PrepareModemAsync(transmission: true, token);
             return StatusText(await _link.ApproveAndSendAsync(message.Id, (HfSimulation)_simulation.SelectedIndex, _allowLive, token));
-        });
+        }, sessionPhase: $"Preparing to send to {message.To}");
     }
 
     private async Task ReceiveAsync()
@@ -452,12 +460,17 @@ internal sealed class HfLinkView : UserControl
         {
             await PrepareModemAsync(transmission: true, token);
             Report("Receive window open. You can return to the radio page while listening.");
-            await _link.ReceiveAsync(_allowLive, ApproveReceiptAsync, token, _received);
-            return "Receive window closed.";
-        }, receiving: true);
+            bool received = false;
+            await _link.ReceiveAsync(_allowLive, ApproveReceiptAsync, token, message =>
+            {
+                received = true;
+                _received(message);
+            });
+            return received ? "Message received. Receive window closed." : "Receive window closed.";
+        }, receiving: true, sessionPhase: "Opening receive window");
     }
 
-    private async Task RunAsync(Func<CancellationToken, Task<string>> action, bool receiving = false)
+    private async Task RunAsync(Func<CancellationToken, Task<string>> action, bool receiving = false, string? sessionPhase = null)
     {
         if (_operation is not null) return;
         using var operation = new CancellationTokenSource();
@@ -465,19 +478,33 @@ internal sealed class HfLinkView : UserControl
         _finished = finished;
         _operation = operation;
         _receiving = receiving;
+        if (sessionPhase is not null) _session.Start(sessionPhase);
         try
         {
             Report("Modem operation in progress…");
             var pending = action(operation.Token);
             RefreshView();
-            Report(await pending);
+            string outcome = await pending;
+            Report(outcome);
+            if (sessionPhase is not null) _session.Update(new(outcome));
         }
-        catch (OperationCanceledException) { Report(operation.IsCancellationRequested ? "Modem operation stopped." : "Mercury operation timed out."); }
+        catch (OperationCanceledException)
+        {
+            string outcome = operation.IsCancellationRequested ? "Modem operation stopped." : "Mercury operation timed out.";
+            Report(outcome);
+            if (sessionPhase is not null) _session.Update(new(outcome));
+        }
+        catch (Exception error)
+        {
+            if (sessionPhase is not null) _session.Update(new(error is Microsoft.Data.Sqlite.SqliteException ? "HFLink storage operation failed." : error.Message));
+            throw;
+        }
         finally
         {
             _operation = null;
             _finished = null;
             _receiving = false;
+            if (sessionPhase is not null) _session.Finish();
             try
             {
                 if (receiving && _away) _bundled.Stop();
@@ -525,6 +552,7 @@ internal sealed class HfLinkView : UserControl
         _receiptDecision = decision;
         _receiptLabel.Text = $"Send delivery receipt to {message.From}?";
         _receipt.Visible = true;
+        _session.Update(new("Message saved. Receipt awaiting approval.", Peer: message.From));
         try { return await decision.Task.WaitAsync(deadline) && !deadline.IsCancellationRequested; }
         catch (OperationCanceledException) when (deadline.IsCancellationRequested) { return false; }
         finally

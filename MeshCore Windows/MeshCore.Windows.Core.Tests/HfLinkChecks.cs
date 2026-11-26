@@ -157,6 +157,8 @@ internal static class HfLinkChecks
         var station = new HfStation("M0ABC", ControlPort: ((IPEndPoint)control.LocalEndpoint).Port,
             DataPort: ((IPEndPoint)data.LocalEndpoint).Port, Simulation: false);
         var requested = new HfPacket(HfPacket.Version, "message", Guid.NewGuid(), Guid.NewGuid(), station.Callsign, "G1XYZ", "Loopback");
+        var metrics = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var updates = new List<HfModemStatus>();
         var server = Task.Run(async () =>
         {
             using var ctl = await control.AcceptTcpClientAsync(stop);
@@ -168,6 +170,8 @@ internal static class HfLinkChecks
             await WriteAsync(c, "OK\rCONNECTED M0ABC G1XYZ 2300\r", stop);
             var actual = JsonSerializer.Deserialize<HfPacket>(await ReadAsync(d, '\n', stop), new JsonSerializerOptions(JsonSerializerDefaults.Web));
             Check(actual == requested, "Mercury data socket payload");
+            await WriteAsync(c, "PTT ON\rSN -3.5\rBUFFER 128\rBITRATE (3) 420 BPS\rBITRATE (3) invalid BPS\rBUSY ON\rPTT OFF\r", stop);
+            await metrics.Task.WaitAsync(stop);
             var receipt = requested.Acknowledge();
             if (wrongReceipt) receipt = receipt with { Attempt = Guid.NewGuid() };
             await WriteAsync(d, JsonSerializer.Serialize(receipt, new JsonSerializerOptions(JsonSerializerDefaults.Web)) + "\n", stop);
@@ -175,9 +179,19 @@ internal static class HfLinkChecks
             await WriteAsync(c, "OK\rDISCONNECTED\r", stop);
         }, stop);
         bool accepted = false;
-        var result = await new MercuryHfModem().SendAsync(station, requested, () => accepted = true, stop);
+        var result = await new MercuryHfModem(update =>
+        {
+            updates.Add(update);
+            if (update.Keyed == false) metrics.TrySetResult();
+        }).SendAsync(station, requested, () => accepted = true, stop);
         await server;
         Check(accepted && result?.Confirms(requested) == !wrongReceipt, "Receipt must correlate with the current send attempt");
+        Check(updates.Any(update => update is { Phase: "Connected", Peer: "G1XYZ", Bandwidth: 2300 }) &&
+            updates.Any(update => update.Snr == -3.5) && updates.Any(update => update.QueuedBytes == 128) &&
+            updates.Count(update => update.Bitrate == 420) == 1 && updates.Any(update => update.Busy == true) &&
+            updates.Any(update => update.Keyed == true) &&
+            updates.Any(update => update.Phase == "Delivery receipt received") == !wrongReceipt,
+            "Mercury reports session metrics while waiting for the receipt");
     }
 
     private static async Task ReceiveLoopbackAsync()
@@ -209,12 +223,16 @@ internal static class HfLinkChecks
             Check(await ReadAsync(c, '\r', stop) == "LISTEN OFF", "Receiver disables listening");
             await WriteAsync(c, "OK\r", stop);
         }, stop);
-        await new MercuryHfModem().ReceiveAsync(station, (packet, _) =>
+        var updates = new List<HfModemStatus>();
+        await new MercuryHfModem(updates.Add).ReceiveAsync(station, (packet, _) =>
         {
             Check(packet == incoming, "Incoming Mercury packet");
             return Task.FromResult<HfPacket?>(packet.Acknowledge());
         }, stop);
         await server;
+        Check(updates.Any(update => update.Phase == "Listening for a call") &&
+            updates.Any(update => update is { Peer: "G1XYZ", Bandwidth: 500 }) &&
+            updates.Any(update => update.Phase == "Sending delivery receipt"), "Receive status follows the validated modem session");
     }
 
     private static async Task InitializeAsync(NetworkStream stream, CancellationToken stop)

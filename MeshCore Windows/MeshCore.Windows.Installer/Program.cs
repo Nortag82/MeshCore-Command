@@ -269,6 +269,7 @@ internal static class Program
                     CreateNoWindow = true, Arguments = "--installer-test --integration-test" }) ?? throw new IOException("Installed test app did not start.");
                 if (!app.WaitForExit(60000)) { app.Kill(entireProcessTree: true); throw new TimeoutException("Installed test app did not finish."); }
                 if (app.ExitCode != 0) throw new IOException("Installed test app did not pass its integration test.");
+                TestWebView2Prerequisite(Path.Combine(root, "webview2-ui"));
             }
             catch { Environment.ExitCode = 1; }
             finally
@@ -283,7 +284,11 @@ internal static class Program
         }
         if (args.Contains("--update"))
         {
-            try { LegacyUpgradeAsync(args).GetAwaiter().GetResult(); }
+            try
+            {
+                WebView2Prerequisite.RequireInstalled();
+                LegacyUpgradeAsync(args).GetAwaiter().GetResult();
+            }
             catch (Exception error)
             {
                 MessageBox.Show("The native upgrade could not finish. Your previous app and data were retained.\n\n" + error.Message,
@@ -297,6 +302,7 @@ internal static class Program
             try
             {
                 var handoff = ParseHandoff(args);
+                WebView2Prerequisite.RequireInstalled();
                 string root = InstallRoot;
                 UpdateAsync(root, handoff.Pid, handoff.Start, launch: true).GetAwaiter().GetResult();
                 try { EnsureStartMenuShortcut(root); }
@@ -311,6 +317,43 @@ internal static class Program
         }
         ApplicationConfiguration.Initialize();
         Application.Run(new InstallerWindow());
+    }
+
+    private static void TestWebView2Prerequisite(string root)
+    {
+        WebView2Prerequisite.VerifyEmbedded();
+        Version? detected = WebView2Prerequisite.FindInstalledVersion((hive, view) => (hive, view) switch
+        {
+            (Microsoft.Win32.RegistryHive.LocalMachine, Microsoft.Win32.RegistryView.Registry32) => "0.0.0.0",
+            (Microsoft.Win32.RegistryHive.CurrentUser, Microsoft.Win32.RegistryView.Default) => "123.0.4.5",
+            _ => throw new InvalidOperationException("Unexpected WebView2 registry lookup.")
+        });
+        if (detected != new Version(123, 0, 4, 5) ||
+            WebView2Prerequisite.FindInstalledVersion((_, _) => "invalid") is not null)
+            throw new IOException("WebView2 prerequisite detection failed.");
+
+        ApplicationConfiguration.Initialize();
+        Version? installed = null;
+        int attempts = 0;
+        using var setup = new InstallerWindow(root, () => installed, () =>
+        {
+            if (++attempts == 1) throw new IOException("Synthetic network failure.");
+            installed = detected;
+            return Task.CompletedTask;
+        }) { Opacity = 0, ShowInTaskbar = false };
+        setup.Show();
+        var install = (Button)setup.Controls.Find("installCommand", true).Single();
+        var webview = (Button)setup.Controls.Find("installWebView2", true).Single();
+        var status = (Label)setup.Controls.Find("webView2Status", true).Single();
+        if (install.Enabled || !webview.Visible || !status.Text.Contains("required", StringComparison.Ordinal))
+            throw new IOException("Setup did not highlight the missing prerequisite.");
+        webview.PerformClick();
+        if (install.Enabled || !status.Text.Contains("Synthetic network failure.", StringComparison.Ordinal))
+            throw new IOException("Setup did not retain the prerequisite gate after a failed install.");
+        webview.PerformClick();
+        if (!install.Enabled || webview.Visible || !status.Text.Contains("123.0.4.5", StringComparison.Ordinal))
+            throw new IOException("Setup did not enable installation after detecting WebView2.");
+        setup.Close();
     }
 
     private static async Task TestCopiedLegacyUpgradeAsync(string[] args)
@@ -598,35 +641,71 @@ internal sealed class InstallerTestReleaseHandler(string executable, string vers
 internal sealed class InstallerWindow : Form
 {
     private readonly Label _status = new() { AutoSize = true, MaximumSize = new Size(450, 0), Text = "Install MeshCore Command for this Windows account. HFLink and Mercury are included." };
-    private readonly Button _install = new() { Text = "Install", AutoSize = true };
+    private readonly Button _install = new() { Name = "installCommand", Text = "Install", AutoSize = true };
     private readonly Button _launch = new() { Text = "Open MeshCore Command", AutoSize = true, Visible = false };
-    private bool _busy;
-    public InstallerWindow()
+    private readonly Label _runtimeStatus = new() { Name = "webView2Status", AutoSize = true, MaximumSize = new Size(450, 0) };
+    private readonly Button _installRuntime = new() { Name = "installWebView2", Text = "Install WebView2", AutoSize = true };
+    private readonly Button _checkRuntime = new() { Text = "Check again", AutoSize = true };
+    private readonly LinkLabel _runtimeDownload = new() { Text = "Microsoft’s WebView2 download page", AutoSize = true };
+    private readonly FlowLayoutPanel _runtimeActions = new() { AutoSize = true, WrapContents = false };
+    private readonly Func<Version?> _findRuntime;
+    private bool _busy, _installed;
+    private string? _runtimeError;
+
+    public InstallerWindow() : this(Program.InstallRoot, WebView2Prerequisite.FindInstalledVersion, WebView2Prerequisite.InstallAsync) { }
+
+    internal InstallerWindow(string root, Func<Version?> findRuntime, Func<Task> installRuntime)
     {
-        Text = "MeshCore Command Setup"; Width = 520; Height = 250; StartPosition = FormStartPosition.CenterScreen;
+        _findRuntime = findRuntime;
+        Text = "MeshCore Command Setup"; Width = 520; Height = 340; StartPosition = FormStartPosition.CenterScreen;
         MaximizeBox = false;
-        var layout = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(18), WrapContents = false };
+        var layout = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(18), WrapContents = false, AutoScroll = true };
         layout.Controls.Add(new Label { Text = $"MeshCore Command {Program.Version}", AutoSize = true, Font = new Font(SystemFonts.DefaultFont.FontFamily, 16, FontStyle.Bold) });
-        layout.Controls.Add(_status); layout.Controls.Add(_install); layout.Controls.Add(_launch); Controls.Add(layout);
-        AcceptButton = _install;
-        _install.Click += async (_, _) => {
-            if (_busy) return;
-            _busy = true; _install.Enabled = false;
+        _runtimeActions.Controls.AddRange([_installRuntime, _checkRuntime]);
+        layout.Controls.AddRange([_status, _runtimeStatus, _runtimeActions, _runtimeDownload, _install, _launch]);
+        Controls.Add(layout);
+        _runtimeStatus.Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold);
+        _checkRuntime.Click += (_, _) => RefreshPrerequisite();
+        Activated += (_, _) => { if (!_busy) RefreshPrerequisite(); };
+        _runtimeDownload.LinkClicked += (_, _) =>
+        {
             try
             {
-                await Program.InstallAsync(Program.InstallRoot, new Progress<string>(message => _status.Text = message));
+                using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(WebView2Prerequisite.DownloadPage)
+                    { UseShellExecute = true });
+            }
+            catch (Exception error) { _runtimeError = error.Message; RefreshPrerequisite(); }
+        };
+        _installRuntime.Click += async (_, _) =>
+        {
+            if (_busy || RefreshPrerequisite()) return;
+            _busy = true;
+            _runtimeError = null;
+            RefreshPrerequisite();
+            _runtimeStatus.Text = "Installing Microsoft Edge WebView2 Runtime…";
+            try { await installRuntime(); }
+            catch (Exception error) { _runtimeError = error.Message; }
+            finally { _busy = false; RefreshPrerequisite(); }
+        };
+        _install.Click += async (_, _) => {
+            if (_busy || !RefreshPrerequisite()) return;
+            _busy = true; RefreshPrerequisite();
+            try
+            {
+                await Program.InstallAsync(root, new Progress<string>(message => _status.Text = message));
                 ShowLaunch();
-                try { Program.EnsureStartMenuShortcut(Program.InstallRoot); }
+                try { Program.EnsureStartMenuShortcut(root); }
                 catch (Exception error) { _status.Text = "MeshCore Command is installed. Windows could not create a Start menu shortcut. " + error.Message; }
             }
             catch (Exception error) { _status.Text = error.Message; }
-            finally { _busy = false; _install.Enabled = _install.Visible; }
+            finally { _busy = false; RefreshPrerequisite(); }
         };
         _launch.Click += (_, _) => {
+            if (_busy || !RefreshPrerequisite()) return;
             try
             {
-                var start = new System.Diagnostics.ProcessStartInfo(Path.Combine(Program.InstallRoot, Program.LauncherName))
-                    { WorkingDirectory = Program.InstallRoot, UseShellExecute = false };
+                var start = new System.Diagnostics.ProcessStartInfo(Path.Combine(root, Program.LauncherName))
+                    { WorkingDirectory = root, UseShellExecute = false };
                 start.ArgumentList.Add(PreviewShortcut.Arguments);
                 using var process = System.Diagnostics.Process.Start(start) ?? throw new IOException("MeshCore Command could not be started.");
                 Close();
@@ -636,9 +715,9 @@ internal sealed class InstallerWindow : Form
         FormClosing += (_, e) => { if (_busy) { e.Cancel = true; _status.Text = "Please wait for installation to finish."; } };
         try
         {
-            string current = VersionedInstall.ResolveCurrent(Program.InstallRoot);
+            string current = VersionedInstall.ResolveCurrent(root);
             if (Version.TryParse(Path.GetFileName(Path.GetDirectoryName(current)), out var installed) &&
-                File.Exists(Path.Combine(Program.InstallRoot, Program.LauncherName)))
+                File.Exists(Path.Combine(root, Program.LauncherName)))
             {
                 if (installed >= Version.Parse(Program.Version))
                 {
@@ -653,12 +732,28 @@ internal sealed class InstallerWindow : Form
             }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException or ArgumentException) { }
+        RefreshPrerequisite();
     }
 
     private void ShowLaunch()
     {
+        _installed = true;
         _install.Visible = false;
         _launch.Visible = true;
-        AcceptButton = _launch;
+    }
+
+    private bool RefreshPrerequisite()
+    {
+        Version? version = _findRuntime();
+        bool available = version is not null;
+        _runtimeStatus.Text = available ? $"Microsoft Edge WebView2 Runtime {version} is installed." :
+            "Microsoft Edge WebView2 Runtime is required." + Environment.NewLine +
+            (_runtimeError ?? "Select Install WebView2 to download it from Microsoft. Internet access is required.");
+        _runtimeStatus.ForeColor = available || SystemInformation.HighContrast ? SystemColors.ControlText : Color.DarkRed;
+        _runtimeActions.Visible = _runtimeDownload.Visible = !available;
+        _installRuntime.Enabled = _checkRuntime.Enabled = _runtimeDownload.Enabled = !_busy;
+        _install.Enabled = _launch.Enabled = available && !_busy;
+        AcceptButton = available ? (_installed ? _launch : _install) : _installRuntime;
+        return available;
     }
 }

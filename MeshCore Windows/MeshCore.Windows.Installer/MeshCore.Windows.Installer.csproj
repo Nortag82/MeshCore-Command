@@ -18,5 +18,6 @@
     <ProjectReference Include="..\MeshCore.Windows.Core\MeshCore.Windows.Core.csproj" />
     <EmbeddedResource Include="..\artifacts\installer-payload.zip" LogicalName="InstallerPayload" />
     <EmbeddedResource Include="..\artifacts\installer-launcher.exe" LogicalName="InstallerLauncher" />
+    <EmbeddedResource Include="..\artifacts\MicrosoftEdgeWebview2Setup.exe" LogicalName="WebView2Bootstrapper" />
   </ItemGroup>
 </Project>

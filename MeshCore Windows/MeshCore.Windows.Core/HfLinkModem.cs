@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
@@ -68,31 +69,39 @@ public interface IHfModem
 
 public enum HfSimulation { NoAcknowledgement, Acknowledged, Disconnected, Timeout }
 
-public sealed class MockHfModem(HfSimulation outcome = HfSimulation.NoAcknowledgement) : IHfModem
+public sealed record HfModemStatus(string? Phase = null, string? Peer = null, bool? Keyed = null,
+    bool? Busy = null, double? Snr = null, int? Bitrate = null, int? Bandwidth = null, int? QueuedBytes = null);
+
+public sealed class MockHfModem(HfSimulation outcome = HfSimulation.NoAcknowledgement, Action<HfModemStatus>? report = null) : IHfModem
 {
     public Task ProbeAsync(HfStation station, CancellationToken stop) => Task.CompletedTask;
 
     public async Task<HfPacket?> SendAsync(HfStation station, HfPacket packet, Action accepted, CancellationToken stop)
     {
+        report?.Invoke(new("Calling (simulation)", Peer: packet.To));
         await Task.Delay(200, stop);
         if (outcome == HfSimulation.Disconnected) throw new IOException("Simulated modem disconnected.");
         if (outcome == HfSimulation.Timeout) throw new TimeoutException("Simulated Mercury session timed out.");
         accepted();
+        report?.Invoke(new("Waiting for simulated receipt", Peer: packet.To));
+        await Task.Delay(250, stop);
         return outcome == HfSimulation.Acknowledged ? packet.Acknowledge() : null;
     }
 
     public async Task ReceiveAsync(HfStation station, Func<HfPacket, CancellationToken, Task<HfPacket?>> onPacket, CancellationToken stop)
     {
+        report?.Invoke(new("Listening (simulation)"));
         await Task.Delay(TimeSpan.FromSeconds(2), stop);
         string peer = station.Callsign == "N0SIM" ? "N1SIM" : "N0SIM";
         var packet = new HfPacket(HfPacket.Version, "message", Guid.NewGuid(), Guid.NewGuid(), peer, station.Callsign,
             "Simulated incoming HFLink message");
-        await onPacket(packet, stop);
+        report?.Invoke(new("Receiving simulated message", Peer: peer));
+        if (await onPacket(packet, stop) is not null) report?.Invoke(new("Simulated receipt sent", Peer: peer));
         await onPacket(packet, stop);
     }
 }
 
-public sealed class MercuryHfModem : IHfModem
+public sealed class MercuryHfModem(Action<HfModemStatus>? report = null) : IHfModem
 {
     public async Task ProbeAsync(HfStation station, CancellationToken stop)
     {
@@ -107,11 +116,15 @@ public sealed class MercuryHfModem : IHfModem
         try
         {
             dialled = true;
+            report?.Invoke(new("Calling station", Peer: packet.To));
             await session.CommandAsync($"CONNECT {station.Callsign} {packet.To}", stop);
             await session.ConnectedAsync(station.Callsign, packet.To, stop);
+            report?.Invoke(new("Sending message to Mercury"));
             await session.Data.WriteAsync(packet.Encode(), stop);
             accepted();
+            report?.Invoke(new("Sent to Mercury. Waiting for receipt."));
             var reply = HfPacket.Decode(await session.ReadPacketAsync(stop), packet.To, station.Callsign);
+            if (reply.Confirms(packet)) report?.Invoke(new("Delivery receipt received"));
             await session.EndAsync("DISCONNECT");
             dialled = false;
             return reply;
@@ -129,13 +142,16 @@ public sealed class MercuryHfModem : IHfModem
         try
         {
             await session.CommandAsync("LISTEN ON", stop);
+            report?.Invoke(new("Listening for a call"));
             string peer = await session.ConnectedAsync(null, station.Callsign, stop);
             connected = true;
+            report?.Invoke(new("Receiving message", Peer: peer));
             var packet = HfPacket.Decode(await session.ReadPacketAsync(stop), peer, station.Callsign);
             var response = await onPacket(packet, stop);
             if (response is not null)
             {
                 if (!response.Confirms(packet) || packet.Type != "message") throw new InvalidDataException("Invalid receipt.");
+                report?.Invoke(new("Sending delivery receipt"));
                 await session.Data.WriteAsync(response.Encode(), stop);
             }
             await session.EndAsync("DISCONNECT");
@@ -148,7 +164,7 @@ public sealed class MercuryHfModem : IHfModem
         }
     }
 
-    private static async Task<Session> OpenAsync(HfStation station, CancellationToken stop)
+    private async Task<Session> OpenAsync(HfStation station, CancellationToken stop)
     {
         // One reconnect before any RF command, for a restarted or momentarily busy TNC.
         for (int attempt = 0; ; attempt++)
@@ -161,7 +177,7 @@ public sealed class MercuryHfModem : IHfModem
             {
                 await control.ConnectAsync(station.Host, station.ControlPort, deadline.Token);
                 await data.ConnectAsync(station.Host, station.DataPort, deadline.Token);
-                var session = new Session(control, data);
+                var session = new Session(control, data, report);
                 await session.CommandAsync("LISTEN OFF", deadline.Token);
                 await session.CommandAsync("PUBLIC OFF", deadline.Token);
                 await session.CommandAsync($"MYCALL {station.Callsign}", deadline.Token);
@@ -178,13 +194,42 @@ public sealed class MercuryHfModem : IHfModem
         }
     }
 
-    private sealed class Session(TcpClient control, TcpClient data) : IDisposable
+    private sealed class Session(TcpClient control, TcpClient data, Action<HfModemStatus>? report) : IDisposable
     {
         private readonly NetworkStream _control = control.GetStream();
         public NetworkStream Data { get; } = data.GetStream();
 
-        private async Task<string> ReadControlAsync(CancellationToken stop) =>
-            Encoding.ASCII.GetString(await ReadLineAsync(_control, (byte)'\r', 1024, stop)).Trim();
+        private async Task<string> ReadControlAsync(CancellationToken stop)
+        {
+            string line = Encoding.ASCII.GetString(await ReadLineAsync(_control, (byte)'\r', 1024, stop)).Trim();
+            if (report is not null && Telemetry(line) is { } status) report(status);
+            return line;
+        }
+
+        private static HfModemStatus? Telemetry(string line)
+        {
+            switch (line)
+            {
+                case "PTT ON": return new(Keyed: true);
+                case "PTT OFF": return new(Keyed: false);
+                case "BUSY ON": return new(Busy: true);
+                case "BUSY OFF": return new(Busy: false);
+            }
+            if (line.StartsWith("SN ", StringComparison.Ordinal) &&
+                double.TryParse(line.AsSpan(3), NumberStyles.Float, CultureInfo.InvariantCulture, out double snr) && double.IsFinite(snr))
+                return new(Snr: snr);
+            if (line.StartsWith("BUFFER ", StringComparison.Ordinal) &&
+                int.TryParse(line.AsSpan(7), NumberStyles.None, CultureInfo.InvariantCulture, out int queued))
+                return new(QueuedBytes: queued);
+            if (line.StartsWith("BITRATE (", StringComparison.Ordinal) && line.EndsWith(" BPS", StringComparison.Ordinal))
+            {
+                int end = line.IndexOf(") ", StringComparison.Ordinal);
+                if (end >= 10 && end + 2 < line.Length - 4 &&
+                    int.TryParse(line.AsSpan(end + 2, line.Length - 4 - end - 2), NumberStyles.None, CultureInfo.InvariantCulture, out int bitrate))
+                    return new(Bitrate: bitrate);
+            }
+            return null;
+        }
 
         public async Task CommandAsync(string command, CancellationToken stop, Func<string, bool>? match = null)
         {
@@ -208,6 +253,8 @@ public sealed class MercuryHfModem : IHfModem
                 if (parts.Length != 4 || parts[2] != expectedDestination ||
                     (expectedSource is not null && parts[1] != expectedSource) || parts[3] is not ("500" or "2300" or "2750"))
                     throw new InvalidDataException("Mercury reported an unexpected HF session.");
+                string peer = HfStation.Call(expectedSource is null ? parts[1] : parts[2]);
+                report?.Invoke(new("Connected", Peer: peer, Bandwidth: int.Parse(parts[3], CultureInfo.InvariantCulture)));
                 return HfStation.Call(parts[1]);
             }
         }

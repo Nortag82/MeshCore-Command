@@ -18,11 +18,11 @@ public sealed class HfLink
     private readonly SemaphoreSlim _modem = new(1);
     private readonly Func<HfStation, HfSimulation, IHfModem> _adapter;
 
-    public HfLink(string path, Func<HfStation, HfSimulation, IHfModem>? adapter = null)
+    public HfLink(string path, Func<HfStation, HfSimulation, IHfModem>? adapter = null, Action<HfModemStatus>? report = null)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         _connection = new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString();
-        _adapter = adapter ?? ((station, simulation) => station.Simulation ? new MockHfModem(simulation) : new MercuryHfModem());
+        _adapter = adapter ?? ((station, simulation) => station.Simulation ? new MockHfModem(simulation, report) : new MercuryHfModem(report));
         using var db = Open();
         InitializeDatabase(db);
         foreach (var message in ReadAll<HfMessage>(db, "messages").Where(m => m.Status is HfStatus.Sending or HfStatus.Sent))

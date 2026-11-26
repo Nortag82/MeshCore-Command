@@ -35,6 +35,7 @@ try {
     } finally { $zip.Dispose() }
 } finally { $stream.Dispose() }
 $output = Join-Path $artifacts 'installer-publish'
+& (Join-Path $nativeDir 'Fetch-WebView2.ps1')
 & $dotnet publish (Join-Path $nativeDir 'MeshCore.Windows.Installer') -c Release -r win-x64 --self-contained true -o $output -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --verbosity quiet
 if ($LASTEXITCODE -ne 0) { throw 'Installer build failed.' }
 $installer = Join-Path $output 'MeshCore.Command.Windows.Setup.exe'

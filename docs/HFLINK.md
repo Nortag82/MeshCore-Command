@@ -19,6 +19,8 @@ Experimental HFLink sends openly readable direct messages between two attended s
 
 ## Receive while using MeshCore
 
+The **Session status** panel on the right shows the current step and the other station’s callsign. During live use, it shows modem-reported PTT, channel activity, SNR, estimated bitrate, connection bandwidth and queued transmit bytes when Mercury supplies them. **Sent to Mercury** means the local modem accepted the data. **Delivered to destination station** means HFLink received a matching receipt from the other station.
+
 Select **Back to radio** after opening the receive window. The window stays open for the configured timeout or until the receive session ends. MeshCore Command shows a desktop notification for a new incoming message while you are on the radio page or the app is minimized. Click the notification to return to HFLink. If the session is still open, you can select **Send receipt** or **Decline receipt** there. The message is saved as soon as it arrives.
 
 Use **Stop operation** in HFLink to end the receive window early. Closing MeshCore Command also ends it. **Stop Mercury** is available when the bundled modem is running and idle.
@@ -65,4 +67,4 @@ The loopback checks exercise Mercury’s TCP command and data protocol against a
 
 ## Bundled component
 
-The Windows build stages the standalone Rhizomatica Mercury 1.9.25 runtime, pins and verifies the upstream Windows archive and runtime binaries, and includes the upstream Mercury and FreeDV licence files. The [Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.51) includes a source and notices archive for the bundled modem and its dependencies. [Mercury release and source](https://github.com/Rhizomatica/mercury/releases/tag/v1.9.25) · [Mercury source at the pinned commit](https://github.com/Rhizomatica/mercury/tree/33efac4e3089f64f493fde1232b8e96305d15185)
+The Windows build stages the standalone Rhizomatica Mercury 1.9.25 runtime, pins and verifies the upstream Windows archive and runtime binaries, and includes the upstream Mercury and FreeDV licence files. The [Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.53) includes a source and notices archive for the bundled modem and its dependencies. [Mercury release and source](https://github.com/Rhizomatica/mercury/releases/tag/v1.9.25) · [Mercury source at the pinned commit](https://github.com/Rhizomatica/mercury/tree/33efac4e3089f64f493fde1232b8e96305d15185)

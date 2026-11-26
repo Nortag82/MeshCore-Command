@@ -1,10 +1,14 @@
 # MeshCore Command screenshots
 
-The waterfall image shows HFLink in Windows 2.0.49. The other HFLink images show 2.0.48, and the remaining Windows images show 2.0.43, including its earlier candidate banner. The captures use simulated signals, contacts, messages, telemetry and map objects. Map data © OpenStreetMap contributors.
+The session status image shows HFLink in Windows 2.0.53. The waterfall image shows 2.0.49, the other HFLink images show 2.0.48, and the remaining Windows images show 2.0.43. The captures use simulated signals, contacts, messages, telemetry and map objects. Map data © OpenStreetMap contributors.
 
 The native firmware dialog is not pictured here. The Android images in the README use the HTML from the released Android 0.2.15 APK with a simulated bridge; they are not photographs of a phone or live radio session.
 
 ## HFLink
+
+The right-hand panel shows the session stage and modem reports as they arrive. This simulated receive has saved a message and is waiting for receipt approval.
+
+![HFLink session status during a simulated receive](images/native/hflink-session-status.png)
 
 Select **Show waterfall** to see audio in the tuned receive passband. The example shows simulated signals.
 

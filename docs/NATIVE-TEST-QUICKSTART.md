@@ -1,10 +1,10 @@
 # Native Windows quick start
 
-The [2.0.51 Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.51) introduces the standard MeshCore Command Setup and an encrypted full app backup that includes HFLink and Mercury settings. It supports new installations and updates from previous native builds. The legacy Python updater can offer the [2.0.43 migration release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). The previous legacy release and its [user manual](USER-MANUAL.md) remain available.
+The [2.0.53 Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.53) adds the HFLink session status panel and WebView2 setup when the runtime is missing. It supports new installations and updates from previous native builds. The legacy Python updater can offer the [2.0.43 migration release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). The previous legacy release and its [user manual](USER-MANUAL.md) remain available.
 
 ## Update or install
 
-On a new PC, open **MeshCore Command Setup**, choose **Install**, then **Open MeshCore Command**. Setup creates a Start menu shortcut and the app prepares a new profile on first launch.
+On a new PC, open **MeshCore Command Setup**, choose **Install**, then **Open MeshCore Command**. Setup creates a Start menu shortcut and the app prepares a new profile on first launch. If Setup shows **Install WebView2**, select it first. Setup includes Microsoft’s bootstrapper, which downloads the runtime over the internet. For offline installation, use Microsoft’s standalone installer on the link in Setup, then choose **Check again**. [Microsoft WebView2 downloads](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download)
 
 Back up important settings first. On the old app, choose **Check for updates** and accept the update; on the native app, use the update control in **Settings**. Finish sending messages and close other native Command windows first. A downloaded installer can also be run separately. Windows WebView2 and internet access are required.
 
