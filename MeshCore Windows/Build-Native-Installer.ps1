@@ -37,12 +37,11 @@ try {
 $output = Join-Path $artifacts 'installer-publish'
 & $dotnet publish (Join-Path $nativeDir 'MeshCore.Windows.Installer') -c Release -r win-x64 --self-contained true -o $output -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --verbosity quiet
 if ($LASTEXITCODE -ne 0) { throw 'Installer build failed.' }
-$installer = Join-Path $output 'MeshCore.Command.Native.Preview.Setup.exe'
+$installer = Join-Path $output 'MeshCore.Command.Windows.Setup.exe'
 if ((Get-Item -LiteralPath $installer).VersionInfo.FileVersion -ne "$nativeVersion.0") { throw 'Installer version does not match the native version.' }
 if ((Get-Item -LiteralPath $installer).Length -gt 200MB) { throw 'Installer exceeds the native updater download limit.' }
 $test = Start-Process -FilePath $installer -ArgumentList '--test-install' -WindowStyle Hidden -Wait -PassThru
 if ($test.ExitCode -ne 0) { throw 'Isolated installer test failed.' }
 $updateTest = Start-Process -FilePath $installer -ArgumentList '--test-update' -WindowStyle Hidden -Wait -PassThru
 if ($updateTest.ExitCode -ne 0) { throw 'Isolated updater handoff test failed.' }
-Write-Output "Native preview installer built and tested: $installer"
-Write-Output 'This is an isolated development preview, not a production release.'
+Write-Output "MeshCore Command Windows installer built and tested: $installer"

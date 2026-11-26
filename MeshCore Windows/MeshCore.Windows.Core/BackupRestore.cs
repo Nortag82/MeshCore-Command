@@ -36,6 +36,19 @@ public static class BackupRestore
         try
         {
             if (backup.Files.TryGetValue("devices.json", out var devices)) Write(Path.Combine(root, "devices.json"), devices);
+            string mercuryDirectory = Path.Combine(root, "mercury");
+            if ((backup.Files.ContainsKey(HfLinkBackup.Mercury) || backup.Files.ContainsKey(HfLinkBackup.ExternalMercury)) &&
+                Directory.Exists(mercuryDirectory) && (File.GetAttributes(mercuryDirectory) & FileAttributes.ReparsePoint) != 0)
+                throw new IOException("The Mercury configuration directory cannot be a link.");
+            if (backup.Files.TryGetValue(HfLinkBackup.Mercury, out var mercury)) Write(HfLinkBackup.BundledConfig(root), mercury);
+            string? externalConfig = null;
+            if (backup.Files.TryGetValue(HfLinkBackup.ExternalMercury, out var external))
+            {
+                externalConfig = HfLinkBackup.ExternalConfig(root);
+                Write(externalConfig, external);
+            }
+            if (backup.Files.TryGetValue(HfLinkBackup.History, out var hfLink))
+                Write(Path.Combine(root, HfLink.DatabaseName), HfLinkBackup.RestoreDatabase(root, hfLink, externalConfig));
             foreach (var (property, filename) in new[] { ("boardProfiles", "boards.json"), ("serialProfiles", "serial-boards.json") })
                 if (backup.Manifest.TryGetProperty(property, out var profiles) && profiles.ValueKind == JsonValueKind.String)
                     Write(Path.Combine(root, filename), System.Text.Encoding.UTF8.GetBytes(profiles.GetString()!));

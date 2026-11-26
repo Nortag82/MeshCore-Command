@@ -53,7 +53,7 @@ internal static class HfLinkChecks
             reopened.DeleteMessage(reopened.Messages().Single(message => message.Id == id));
             Check(new HfLink(path).Messages().All(message => message.Id != id) &&
                 reopened.Messages().Any(message => message.Id == cancelled), "Deleting a sent message preserves other messages");
-            await CheckDeletedReceiveAsync(Path.Combine(directory.FullName, "deleted-receive.sqlite3"));
+            await CheckDeletedReceiveAsync(Path.Combine(directory.FullName, "backup-source", "hflink-native.sqlite3"));
 
             await LoopbackAsync(wrongReceipt: false);
             await LoopbackAsync(wrongReceipt: true);
@@ -78,6 +78,33 @@ internal static class HfLinkChecks
         Check(reopened.Messages().Count == 0 && notifications == 1, "The sender's retry does not restore a deleted message");
         Check(reopened.Audit().Any(item => item.Event == "Received message deleted" && item.Message == packet.Id),
             "A deletion records metadata in the audit log");
+
+        string root = Path.GetDirectoryName(path)!;
+        var next = packet with { Id = Guid.NewGuid(), Attempt = Guid.NewGuid() };
+        var source = new HfLink(path, (_, _) => new ReplayModem(next));
+        await source.ReceiveAsync(false, (_, _) => Task.FromResult(false), default);
+        var outgoing = source.Queue("G1XYZ", "Outgoing example");
+        source.MarkFirewallSetupOffered();
+        string bundled = Path.Combine(root, "mercury", "mercury.ini");
+        Directory.CreateDirectory(Path.GetDirectoryName(bundled)!);
+        const string config = "[ptt]\r\nmethod = serial\r\ndevice = COM5\r\n";
+        File.WriteAllText(bundled, config);
+        string external = Path.Combine(root, "external.ini");
+        File.WriteAllText(external, "[main]\r\ninput_device = example\r\n");
+        source.SaveMercuryConfig(MercurySettingsFile.Open(external));
+        byte[] archive = BackupSnapshot.Create(root, new Dictionary<string, string> { ["message-storage"] = "MeshCore history" },
+            new Dictionary<string, string>());
+        byte[] encrypted = BackupEnvelope.Encrypt(archive, "synthetic password");
+        string destination = Path.Combine(root, "restored");
+        BackupRestore.Apply(BackupEnvelope.Decrypt(encrypted, "synthetic password"), destination, new TestCredentials());
+        var restored = new HfLink(Path.Combine(destination, "hflink-native.sqlite3"), (_, _) => new ReplayModem(packet));
+        Check(restored.Station().Callsign == "M0ABC" && restored.Messages().Any(message => message.Id == outgoing) &&
+            restored.Messages().Any(message => message.Id == next.Id && message.Incoming) &&
+            !restored.FirewallSetupOffered(), "Portable backup restores the station and both directions of history");
+        Check(File.ReadAllText(Path.Combine(destination, "mercury", "mercury.ini")) == config &&
+            restored.MercuryConfigPath() == Path.Combine(destination, "mercury", "external-mercury.ini") &&
+            File.ReadAllText(restored.MercuryConfigPath()!) == File.ReadAllText(external), "Portable backup restores both Mercury configurations");
+        await restored.ReceiveAsync(false, (_, _) => throw new InvalidOperationException("A restored deletion was not preserved."), default);
     }
 
     private sealed class ReplayModem(HfPacket packet) : IHfModem

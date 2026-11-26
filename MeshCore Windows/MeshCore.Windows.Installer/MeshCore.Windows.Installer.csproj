@@ -6,7 +6,10 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>MeshCore.Command.Native.Preview.Setup</AssemblyName>
+    <AssemblyName>MeshCore.Command.Windows.Setup</AssemblyName>
+    <AssemblyTitle>MeshCore Command Setup</AssemblyTitle>
+    <Product>MeshCore Command</Product>
+    <ApplicationIcon>..\assets\meshcore-command.ico</ApplicationIcon>
     <Version>$(MccVersion)</Version>
     <AssemblyVersion>$(MccVersion).0</AssemblyVersion>
     <FileVersion>$(MccVersion).0</FileVersion>

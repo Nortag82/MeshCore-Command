@@ -165,7 +165,7 @@ internal static class Program
         void Record(string category, Exception exception) { try { diagnostics.Record(category, exception); } catch { /* Logging must not cause another crash. */ } }
         Application.ThreadException += (_, eventArgs) => {
             Record("thread", eventArgs.Exception);
-            MessageBox.Show("The native preview encountered an unexpected error and must close. A diagnostic entry was saved.", "MeshCore Command preview", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show("MeshCore Command encountered an unexpected error and must close. A diagnostic entry was saved.", "MeshCore Command", MessageBoxButtons.OK, MessageBoxIcon.Error);
             Application.Exit();
         };
         AppDomain.CurrentDomain.UnhandledException += (_, eventArgs) => { if (eventArgs.ExceptionObject is Exception error) Record("unhandled", error); };
@@ -273,7 +273,7 @@ internal static class Program
                 }
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
-            { MessageBox.Show("The native candidate cannot open this profile. Another native instance may be running.\n\n" + error.Message, "MeshCore Command", MessageBoxButtons.OK, MessageBoxIcon.Error); Environment.ExitCode = 1; }
+            { MessageBox.Show("MeshCore Command cannot open this profile. Another instance may be running.\n\n" + error.Message, "MeshCore Command", MessageBoxButtons.OK, MessageBoxIcon.Error); Environment.ExitCode = 1; }
             return;
         }
         string? integrationIp = args.Contains("--integration-wifi-test") ? args.FirstOrDefault(value => value.StartsWith("--ip=", StringComparison.Ordinal))?[5..] : null;
@@ -409,13 +409,12 @@ internal sealed class PreviewWindow : Form
         _profiles = new BoardProfiles(Path.Combine(_dataDirectory, "boards.json"));
         _serialProfiles = new BoardProfiles(Path.Combine(_dataDirectory, "serial-boards.json"), allowSerial: true);
         if (experimentalRadio) _warning.Text = "DEVELOPMENT PREVIEW — experimental radio access enabled; your production data is not loaded";
-        if (candidate) _warning.Text = "EARLY NATIVE CANDIDATE — separate profile and credentials; changes are not merged";
-        Text = "MeshCore Command — native development preview";
+        Text = candidate ? "MeshCore Command" : "MeshCore Command — development preview";
         Width = 1280; Height = 800; MinimumSize = new Size(800, 500);
         if (_smokeTest) { Opacity = 0; ShowInTaskbar = false; }
         _content.Controls.Add(_web);
         Controls.Add(_content);
-        if (_updater is null) Controls.Add(_warning);
+        if (!candidate) Controls.Add(_warning);
         Shown += async (_, _) => await InitialiseAsync();
         FormClosing += async (_, e) => {
             if (_closing) return;
@@ -446,16 +445,11 @@ internal sealed class PreviewWindow : Form
         {
             byte[] shell = await File.ReadAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "multi_board_shell.html"));
             string radio = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "radio.html"));
-            string mapConfig = Path.Combine(_dataDirectory, "offline-map.json");
-            if (File.Exists(mapConfig))
-            {
-                try { using var saved = JsonDocument.Parse(await File.ReadAllTextAsync(mapConfig)); _offlineMap.Select(saved.RootElement.GetProperty("path").GetString()!); }
-                catch (Exception error) when (error is IOException or JsonException or InvalidDataException or InvalidOperationException or KeyNotFoundException or Microsoft.Data.Sqlite.SqliteException) { }
-            }
+            await LoadOfflineMapAsync();
             // The preview uses an isolated port; a migrated candidate keeps its profile's original origin.
             _elevationHttp.DefaultRequestHeaders.UserAgent.ParseAdd("MeshCoreCommandNativePreview/1.0");
             _tray.Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "meshcore-command.ico"));
-            _tray.Text = "MeshCore Command preview"; _tray.Visible = !_smokeTest;
+            _tray.Text = "MeshCore Command"; _tray.Visible = !_smokeTest;
             _tray.DoubleClick += (_, _) => RestoreAndActivate();
             _downloads = new OfflineDownloads(_elevationHttp, Path.Combine(_dataDirectory, "offline-maps"), _offlineMap, path => {
                 Directory.CreateDirectory(_dataDirectory);
@@ -525,6 +519,58 @@ internal sealed class PreviewWindow : Form
                     flash.onclick=async()=>{const result=await window.pywebview.api.open_firmware();if(result.error)alert(result.error)};
                     const hf=document.createElement('button');hf.id='open-hflink';hf.type='button';hf.textContent='HFLink';flash.after(hf);
                     hf.onclick=async()=>{const result=await window.pywebview.api.open_hflink();if(result.error)alert(result.error)};
+                    const settingsButton=document.createElement('button');
+                    settingsButton.id='native-app-settings';settingsButton.type='button';settingsButton.textContent='Settings';
+                    document.getElementById('disconnect').after(settingsButton);
+                    const appSettings=document.createElement('dialog');
+                    appSettings.setAttribute('aria-labelledby','native-app-settings-title');
+                    appSettings.innerHTML='<h2 id="native-app-settings-title">MeshCore Command Settings</h2><p>Back up this PC’s settings, saved boards, messages, Secure Coms, maps, HFLink and Mercury in an encrypted file.</p><label>Backup password<input id="native-backup-password" type="password" autocomplete="off" minlength="12" placeholder="At least 12 characters"></label><div class="row"><button type="button" id="native-backup-export">Export full backup</button><button type="button" id="native-backup-import">Restore backup</button><button type="button" id="native-backup-close">Close</button></div><p id="native-backup-status" role="status"></p>';
+                    document.body.append(appSettings);
+                    const password=document.getElementById('native-backup-password'),backupStatus=document.getElementById('native-backup-status');
+                    const exportBackup=document.getElementById('native-backup-export'),importBackup=document.getElementById('native-backup-import'),closeSettings=document.getElementById('native-backup-close');
+                    const backupButtons=[exportBackup,importBackup,closeSettings];
+                    const snapshot=()=>Object.fromEntries(Object.entries(localStorage));
+                    function checked(result){if(result.error)throw Error(result.error);return result}
+                    async function runBackup(operation){
+                        if(password.value.length<12){backupStatus.textContent='Enter a backup password of at least 12 characters.';password.focus();return}
+                        backupButtons.forEach(button=>button.disabled=true);
+                        try{await operation(password.value)}
+                        catch(error){backupStatus.textContent=error.message||'Backup operation could not finish.'}
+                        finally{password.value='';backupButtons.forEach(button=>button.disabled=false)}
+                    }
+                    settingsButton.onclick=()=>{backupStatus.textContent='';appSettings.showModal()};
+                    closeSettings.onclick=()=>appSettings.close();
+                    appSettings.addEventListener('close',()=>{password.value=''});
+                    appSettings.addEventListener('cancel',event=>{if(closeSettings.disabled)event.preventDefault()});
+                    exportBackup.onclick=()=>runBackup(async(pass)=>{
+                        backupStatus.textContent='Preparing encrypted backup…';
+                        const result=checked(await window.pywebview.api.export_full_backup(snapshot(),pass,null));
+                        backupStatus.textContent=result.cancelled?'Export cancelled.':'Full app backup saved.';
+                    });
+                    importBackup.onclick=()=>runBackup(async(pass)=>{
+                        backupStatus.textContent='Checking the backup and saving encrypted recovery…';
+                        const api=window.pywebview.api,result=checked(await api.prepare_full_restore(snapshot(),pass,true));
+                        if(result.cancelled){backupStatus.textContent='Restore cancelled.';return}
+                        if(result.legacy_secure)throw Error('To restore an older Secure Coms backup, use the Encrypted backup section in the radio’s Settings page.');
+                        if(!confirm('Restore this backup on this PC? Matching app data will be replaced. An encrypted recovery backup of your current data was saved.')){
+                            await api.cancel_full_restore();backupStatus.textContent='Restore cancelled.';return;
+                        }
+                        const previous=[];
+                        try{
+                            for(const [key,value] of Object.entries(result.storage)){
+                                previous.push([key,localStorage.getItem(key)]);
+                                localStorage.setItem(key,value);
+                            }
+                            checked(await api.commit_full_restore(true));
+                        }catch(error){
+                            let rollbackFailed=false;
+                            for(const [key,value] of previous.reverse())try{if(value===null)localStorage.removeItem(key);else localStorage.setItem(key,value)}catch{rollbackFailed=true}
+                            await api.cancel_full_restore();
+                            throw Error(error.message+(rollbackFailed?' Some settings could not be rolled back.':'')+' Recovery backup: '+result.recovery);
+                        }
+                        alert('App backup restored. Recovery backup saved to:\n'+result.recovery);
+                        location.reload();
+                    });
                     const scan=document.createElement('details');scan.innerHTML='<summary>Find a radio on Wi-Fi</summary><label>Subnet<input id="native-subnet" placeholder="192.168.1.0/24"></label><button type="button" id="native-wifi-scan">Scan network</button><span id="native-scan-status" role="status"></span><label>Discovered radios<select id="native-scan-results"><option value="">Scan for a radio</option></select></label>';wifi.append(scan);
                     scan.addEventListener('toggle',async()=>{if(scan.open&&!document.getElementById('native-subnet').value){const info=await window.pywebview.api.default_network();document.getElementById('native-subnet').value=info.network||''}});
                     document.getElementById('native-scan-results').onchange=e=>{if(e.target.value)document.getElementById('wifi-address').value=e.target.value};
@@ -600,6 +646,15 @@ internal sealed class PreviewWindow : Form
                                 string version = JsonSerializer.Serialize(typeof(PreviewWindow).Assembly.GetName().Version?.ToString(3));
                                 string branding = await _web.CoreWebView2.ExecuteScriptAsync("(()=>{const d=document.querySelector('iframe')?.contentDocument;return !!d?.querySelector('.brand')?.textContent.includes('MeshCore Command') && !!d?.getElementById('desktop-build')?.textContent.includes(" + version + ")})()");
                                 if (branding != "true") Environment.ExitCode = 1;
+                            }
+                            if (_integrationIp is null && Environment.ExitCode == 0)
+                            {
+                                string settingsReady = await _web.CoreWebView2.ExecuteScriptAsync("""
+                                    (()=>{const b=document.getElementById('native-app-settings');if(b?.previousElementSibling?.id!=='disconnect')return false;
+                                    b.click();const opened=document.getElementById('native-backup-export')?.closest('dialog')?.open;
+                                    document.getElementById('native-backup-close')?.click();return opened===true;})()
+                                    """);
+                                if (settingsReady != "true") Environment.ExitCode = 1;
                             }
                             if (_integrationIp is null && Environment.ExitCode == 0)
                             {
@@ -756,7 +811,7 @@ internal sealed class PreviewWindow : Form
                 };
             _web.Source = new Uri(_server.Origin + "/");
         }
-        catch (Exception error) { if (_smokeTest) { Environment.ExitCode = 1; File.WriteAllText(Path.Combine(Path.GetTempPath(), "mcc-preview-test-error.txt"), error.ToString()); } else MessageBox.Show(this, error.Message, "Preview could not start", MessageBoxButtons.OK, MessageBoxIcon.Error); Close(); }
+        catch (Exception error) { if (_smokeTest) { Environment.ExitCode = 1; File.WriteAllText(Path.Combine(Path.GetTempPath(), "mcc-preview-test-error.txt"), error.ToString()); } else MessageBox.Show(this, error.Message, "MeshCore Command could not start", MessageBoxButtons.OK, MessageBoxIcon.Error); Close(); }
     }
 
     private async Task HandleRequestAsync(string message)
@@ -901,7 +956,8 @@ internal sealed class PreviewWindow : Form
                     }
                     break;
                 case "prepare_full_restore":
-                    _pendingRestore = null; EnsureSingleBoard();
+                    _pendingRestore = null;
+                    EnsureBackupRestoreReady(args.GetArrayLength() > 2 && args[2].ValueKind == JsonValueKind.True);
                     using (var dialog = new OpenFileDialog { Filter = "MeshCore backups|*.mccfull;*.mccbackup", CheckFileExists = true })
                     {
                         if (dialog.ShowDialog(this) != DialogResult.OK) { result = new { cancelled = true }; break; }
@@ -924,12 +980,16 @@ internal sealed class PreviewWindow : Form
                     }
                     break;
                 case "commit_full_restore":
-                    EnsureSingleBoard();
+                    EnsureBackupRestoreReady(args.GetArrayLength() > 0 && args[0].ValueKind == JsonValueKind.True);
                     if (_pendingRestore is null) throw new InvalidOperationException("No restore is ready.");
                     byte[] pending = _pendingRestore; _pendingRestore = null;
+                    if (_hfLinkView is not null) await _hfLinkView.StopAsync();
                     BackupRestore.Apply(pending, _dataDirectory, _credentials);
+                    _hfLinkView?.Dispose();
+                    _hfLinkView = null;
                     _profiles = new BoardProfiles(Path.Combine(_dataDirectory, "boards.json"));
                     _serialProfiles = new BoardProfiles(Path.Combine(_dataDirectory, "serial-boards.json"), allowSerial: true);
+                    await LoadOfflineMapAsync();
                     result = new { ok = true }; break;
                 case "cancel_full_restore": _pendingRestore = null; result = new { ok = true }; break;
                 case "save_pc_recovery": result = new { recovery = await SaveRecoveryAsync(Storage(args[0]), Arg(1), null) }; break;
@@ -962,7 +1022,7 @@ internal sealed class PreviewWindow : Form
                 case "minimize": WindowState = FormWindowState.Minimized; result = new { ok = true }; break;
                 case "toggle_fullscreen": ToggleFullScreen(); result = new { ok = true }; break;
                 case "close": result = new { ok = true }; BeginInvoke(Close); break;
-                default: result = new { error = "This feature is not implemented in the development preview." }; break;
+                default: result = new { error = "This feature is unavailable in this version of MeshCore Command." }; break;
             }
         }
         catch (Exception error) { result = new { error = error.Message }; }
@@ -1176,6 +1236,28 @@ internal sealed class PreviewWindow : Form
     private void EnsureSingleBoard()
     {
         if (_boards.Count > 1) throw new InvalidOperationException("Disconnect the other boards before restoring a backup.");
+    }
+
+    private void EnsureBackupRestoreReady(bool appBackup)
+    {
+        if (appBackup && _boards.Count != 0)
+            throw new InvalidOperationException("Disconnect all boards before restoring a full app backup.");
+        EnsureSingleBoard();
+        if (_firmwareDialog?.IsBusy == true || _downloads?.Status.Status == "running")
+            throw new InvalidOperationException("Wait for firmware flashing and map downloads to finish before restoring a backup.");
+    }
+
+    private async Task LoadOfflineMapAsync()
+    {
+        string mapConfig = Path.Combine(_dataDirectory, "offline-map.json");
+        if (!File.Exists(mapConfig)) return;
+        try
+        {
+            using var saved = JsonDocument.Parse(await File.ReadAllTextAsync(mapConfig));
+            _offlineMap.Select(saved.RootElement.GetProperty("path").GetString()!);
+        }
+        catch (Exception error) when (error is IOException or JsonException or InvalidDataException or InvalidOperationException or
+            KeyNotFoundException or Microsoft.Data.Sqlite.SqliteException) { }
     }
 
     private static Dictionary<string, string> Storage(JsonElement value)

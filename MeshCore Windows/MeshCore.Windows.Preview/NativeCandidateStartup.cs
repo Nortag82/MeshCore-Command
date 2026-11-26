@@ -2,12 +2,11 @@ using MeshCore.Windows.Core;
 
 namespace MeshCore.Windows.Preview;
 
-/// <summary>Explicit development-only entry point for an existing installation's copied data.</summary>
+/// <summary>Prepares the Windows app profile before opening MeshCore Command.</summary>
 internal sealed class NativeCandidateStartup : Form
 {
-    private readonly Label _status = new() { AutoSize = true, MaximumSize = new Size(440, 0), Text = "Preparing a separate copy of your existing profile. This may take several minutes." };
+    private readonly Label _status = new() { AutoSize = true, MaximumSize = new Size(440, 0), Text = "Preparing your MeshCore Command profile…" };
     private readonly Button _close = new() { Text = "Close", AutoSize = true, Visible = false };
-    private readonly Button _fresh = new() { Text = "Create empty profile", Name = "candidate-create-empty", AutoSize = true, Visible = false };
     private readonly string _registry, _oldProfile, _oldData;
     private readonly int _port;
     private readonly ICredentialStore _credentials;
@@ -24,13 +23,12 @@ internal sealed class NativeCandidateStartup : Form
         _oldData = oldData ?? Path.Combine(local, "MeshCore Command Data");
         _port = port;
         _credentials = credentials ?? (hidden ? new PreviewCredentials() : new WindowsBackupCredentials());
-        Text = "MeshCore Command — native candidate"; Width = 510; Height = 190; StartPosition = FormStartPosition.CenterScreen;
+        Text = "MeshCore Command"; Width = 510; Height = 190; StartPosition = FormStartPosition.CenterScreen;
         if (hidden) { Opacity = 0; ShowInTaskbar = false; }
         var layout = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(18), WrapContents = false };
-        layout.Controls.Add(_status); layout.Controls.Add(_fresh); layout.Controls.Add(_close); Controls.Add(layout);
+        layout.Controls.Add(_status); layout.Controls.Add(_close); Controls.Add(layout);
         _close.Click += (_, _) => Close();
-        _fresh.Click += async (_, _) => await CreateEmptyAsync();
-        FormClosing += (_, e) => { if (_working) { e.Cancel = true; _status.Text = "Please wait until the profile copy finishes."; } };
+        FormClosing += (_, e) => { if (_working) { e.Cancel = true; _status.Text = "Please wait until the profile is ready."; } };
         Shown += async (_, _) => await PrepareAsync();
     }
 
@@ -40,37 +38,23 @@ internal sealed class NativeCandidateStartup : Form
         {
             if (!File.Exists(Path.Combine(_registry, "current.json")) && !Directory.Exists(_oldProfile) && !Directory.Exists(_oldData))
             {
-                _working = false;
-                _status.Text = "No previous Command data was found. You can create an empty profile and import a backup later.";
-                _fresh.Visible = true; _close.Visible = true; return;
+                Directory.CreateDirectory(_registry);
+                _ = await CredentialRecovery.CreateAsync(_registry, _credentials);
+                Profile = await NativeProfileRegistry.CreateEmptyAsync(_registry, _port);
             }
-            Profile = await NativeProfileRegistry.PrepareAsync(_registry, _oldProfile, _oldData, _port,
-                beforeCommit: async token => { _ = await CredentialRecovery.CreateAsync(_registry, _credentials, token); });
+            else
+            {
+                Profile = await NativeProfileRegistry.PrepareAsync(_registry, _oldProfile, _oldData, _port,
+                    beforeCommit: async token => { _ = await CredentialRecovery.CreateAsync(_registry, _credentials, token); });
+            }
             _working = false; Close();
         }
         catch (Exception error)
         {
             _working = false;
-            _status.Text = "Could not prepare the candidate profile. Your existing data was not changed. Close the current app before retrying. " + error.Message;
+            _status.Text = "Could not prepare the MeshCore Command profile. Your existing data was not changed. " + error.Message;
             _close.Visible = true;
         }
     }
 
-    private async Task CreateEmptyAsync()
-    {
-        if (_working) return;
-        _working = true; _fresh.Enabled = false; _close.Enabled = false;
-        try
-        {
-            Directory.CreateDirectory(_registry);
-            _ = await CredentialRecovery.CreateAsync(_registry, _credentials);
-            Profile = await NativeProfileRegistry.CreateEmptyAsync(_registry, _port);
-            _working = false; Close();
-        }
-        catch (Exception error)
-        {
-            _working = false; _fresh.Enabled = true; _close.Enabled = true;
-            _status.Text = "Could not create the empty profile. " + error.Message;
-        }
-    }
 }

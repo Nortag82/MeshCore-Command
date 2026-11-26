@@ -63,9 +63,12 @@ public static class BackupArchive
         foreach (var entry in zip.Entries)
         {
             var name = entry.FullName;
-            if (name != "manifest.json" && name != "devices.json" && !MapName.IsMatch(name)) throw new InvalidDataException("Invalid backup file name.");
+            if (name is not ("manifest.json" or "devices.json" or HfLinkBackup.History or HfLinkBackup.Mercury or HfLinkBackup.ExternalMercury) &&
+                !MapName.IsMatch(name)) throw new InvalidDataException("Invalid backup file name.");
             if (files.ContainsKey(name)) throw new InvalidDataException("Duplicate backup file.");
             if (entry.Length < 0 || entry.Length > UncompressedLimit - total) throw new InvalidDataException("Backup contents are too large.");
+            if (name is HfLinkBackup.Mercury or HfLinkBackup.ExternalMercury && entry.Length > HfLinkBackup.MaxIniBytes)
+                throw new InvalidDataException("Mercury configuration exceeds the backup size limit.");
             total += entry.Length;
             using var input = entry.Open();
             using var output = new MemoryStream();
@@ -106,6 +109,13 @@ public static class BackupArchive
                 catch (JsonException error) { throw new InvalidDataException("Invalid saved board profiles.", error); }
             }
         if (files.TryGetValue("devices.json", out byte[]? devices)) { using var ignored = JsonDocument.Parse(devices); }
+        if (files.TryGetValue(HfLinkBackup.History, out var hfLink)) HfLinkBackup.ValidateHistory(hfLink);
+        if (files.TryGetValue(HfLinkBackup.Mercury, out var mercury)) HfLinkBackup.ValidateIni(mercury);
+        if (files.TryGetValue(HfLinkBackup.ExternalMercury, out var external))
+        {
+            if (hfLink is null) throw new InvalidDataException("External Mercury configuration has no associated HFLink profile.");
+            HfLinkBackup.ValidateIni(external);
+        }
         return new ValidatedBackup(root.Clone(), files);
     }
 }

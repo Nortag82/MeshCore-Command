@@ -12,6 +12,7 @@ public sealed record HfAudit(DateTimeOffset Time, string Actor, string Event, Gu
 public sealed class HfLink
 {
     private const string Operator = "local operator";
+    internal const string DatabaseName = "hflink-native.sqlite3";
     private readonly string _connection;
     private readonly object _gate = new();
     private readonly SemaphoreSlim _modem = new(1);
@@ -23,15 +24,18 @@ public sealed class HfLink
         _connection = new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString();
         _adapter = adapter ?? ((station, simulation) => station.Simulation ? new MockHfModem(simulation) : new MercuryHfModem());
         using var db = Open();
+        InitializeDatabase(db);
+        foreach (var message in ReadAll<HfMessage>(db, "messages").Where(m => m.Status is HfStatus.Sending or HfStatus.Sent))
+            SetStatus(db, message, HfStatus.Unconfirmed, "Previous session ended before delivery was confirmed.", "system");
+    }
+
+    internal static void InitializeDatabase(SqliteConnection db) =>
         Execute(db, """
             CREATE TABLE IF NOT EXISTS settings (id TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS deleted_incoming (id TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
             """);
-        foreach (var message in ReadAll<HfMessage>(db, "messages").Where(m => m.Status is HfStatus.Sending or HfStatus.Sent))
-            SetStatus(db, message, HfStatus.Unconfirmed, "Previous session ended before delivery was confirmed.", "system");
-    }
 
     public HfStation Station()
     {
@@ -331,7 +335,7 @@ public sealed class HfLink
     }
 
     private static HfStation LoadStation(SqliteConnection db) => Read<HfStation>(db, "settings", "station") ?? new();
-    private static string IncomingKey(bool simulation, string to, string from, Guid id) => $"in:{simulation}:{to}:{from}:{id:D}";
+    internal static string IncomingKey(bool simulation, string to, string from, Guid id) => $"in:{simulation}:{to}:{from}:{id:D}";
     private static HfMessage GetMessage(SqliteConnection db, Guid id) =>
         Read<HfMessage>(db, "messages", id.ToString("D")) ?? throw new ArgumentException("Outgoing message not found.");
 

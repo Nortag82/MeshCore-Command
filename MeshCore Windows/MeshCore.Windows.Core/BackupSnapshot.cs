@@ -11,9 +11,10 @@ public static class BackupSnapshot
     {
         string root = Path.GetFullPath(directory);
         var files = new Dictionary<string, byte[]>(StringComparer.Ordinal);
-        long total = 0;
         string devices = Path.Combine(root, "devices.json");
-        if (File.Exists(devices)) { var bytes = File.ReadAllBytes(devices); files.Add("devices.json", bytes); total += bytes.LongLength; }
+        if (File.Exists(devices)) files.Add("devices.json", File.ReadAllBytes(devices));
+        HfLinkBackup.Capture(root, files);
+        long total = files.Values.Sum(file => file.LongLength);
         string mapDirectory = Path.Combine(root, "offline-maps");
         var maps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (Directory.Exists(mapDirectory))

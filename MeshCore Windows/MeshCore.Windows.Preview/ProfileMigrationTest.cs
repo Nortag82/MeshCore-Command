@@ -155,12 +155,8 @@ internal sealed class ProfileMigrationTest : Form
                 var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 freshStartup.FormClosed += (_, _) => closed.TrySetResult();
                 freshStartup.Show();
-                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-                while (freshStartup.Working) await Task.Delay(50, deadline.Token);
-                if (freshStartup.Profile is not null || !freshStartup.Status.Contains("No previous", StringComparison.Ordinal)) throw new InvalidDataException("Fresh setup was not offered explicitly.");
-                ((Button)freshStartup.Controls.Find("candidate-create-empty", true).Single()).PerformClick();
                 await closed.Task.WaitAsync(TimeSpan.FromSeconds(15));
-                fresh = freshStartup.Profile ?? throw new InvalidDataException("Fresh profile was not created.");
+                fresh = freshStartup.Profile ?? throw new InvalidDataException("First launch did not create a fresh profile.");
             }
             using (var freshApp = new PreviewWindow(false, false, false, true, null, 0, fresh.WebView, fresh.Data, seedHistory: true, port: fresh.Port))
             {
