@@ -34,6 +34,7 @@ internal sealed class HfLinkView : UserControl
     private CancellationTokenSource? _operation;
     private TaskCompletionSource? _finished;
     private TaskCompletionSource<bool>? _receiptDecision;
+    private HfHeardStationsWindow? _heardStationsWindow;
     private bool _receiving, _checkingFirewall, _checkingMercuryUpdate;
     private bool _away = true;
     private Version? _offeredMercuryUpdate;
@@ -84,7 +85,9 @@ internal sealed class HfLinkView : UserControl
         _settings = Button("Settings", ConfigureSettings);
         _settings.Name = "hfLinkSettings";
         _audit = Button("Audit log", ShowAudit);
-        layout.Controls.Add(Row(_settings, _audit), 0, 2);
+        var heard = Button("Heard stations", ShowHeardStations);
+        heard.Name = "hfLinkHeardStations";
+        layout.Controls.Add(Row(_settings, heard, _audit), 0, 2);
         layout.Controls.Add(_station, 0, 3);
 
         _format.Items.AddRange(["HFLink", "Mercury ARQ Chat", "Mercury Broadcast"]);
@@ -744,6 +747,7 @@ internal sealed class HfLinkView : UserControl
         _ready = false;
         _history.Rows.Clear();
         var station = _link.Station();
+        _heardStationsWindow?.SetStations(_link.HeardStations(station.Simulation));
         _broadcastLimit = MercuryBroadcast.TextLimit(station.Callsign, station.BroadcastMode);
         UpdateMessageBytes();
         string mode = station.Simulation ? "simulation" : station.UseBundledMercury ? "bundled Mercury" : "external Mercury";
@@ -801,6 +805,35 @@ internal sealed class HfLinkView : UserControl
         Report("Message deleted.");
     }
 
+    private void ShowHeardStations()
+    {
+        bool simulated = _link.Station().Simulation;
+        using var window = new HfHeardStationsWindow(simulated);
+        window.SetStations(_link.HeardStations(simulated));
+        _heardStationsWindow = window;
+        try
+        {
+            if (window.ShowDialog(this) != DialogResult.OK || window.SelectedCallsign is not { } callsign) return;
+            if (window.DraftFormat is not { } format)
+            {
+                _filter.Text = callsign;
+                _history.Focus();
+                return;
+            }
+            _destination.Text = callsign;
+            _format.SelectedIndex = (int)format;
+            if (format == HfMessageFormat.MercuryBroadcast)
+            {
+                string prefix = callsign + ", ";
+                if (!_message.Text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    _message.Text = prefix + _message.Text;
+            }
+            _message.SelectionStart = _message.TextLength;
+            _message.Focus();
+        }
+        finally { _heardStationsWindow = null; }
+    }
+
     private void ShowAudit()
     {
         using var audit = new Form { Text = "HFLink audit", Size = new Size(860, 480), StartPosition = FormStartPosition.CenterParent };
@@ -817,7 +850,7 @@ internal sealed class HfLinkView : UserControl
     private void Report(string text) { if (!IsDisposed) _status.Text = text; }
     private bool Confirm(string text) => MessageBox.Show(this, text, "HFLink operator approval",
         MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
-    private static string FormatText(HfMessageFormat format) => format switch
+    internal static string FormatText(HfMessageFormat format) => format switch
     {
         HfMessageFormat.MercuryChat => "Mercury ARQ Chat",
         HfMessageFormat.MercuryBroadcast => "Mercury Broadcast",

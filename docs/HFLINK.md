@@ -39,6 +39,12 @@ The setting is a maximum. Mercury negotiates the lower bandwidth offered by the 
 
 The broadcast mode determines how much text fits in one frame. The byte limit includes room for your callsign and the framing. ARQ bandwidth applies to direct connections. Use one client on the external modem’s broadcast port at a time.
 
+## Heard stations
+
+Select **Heard stations** in HFLink to see callsigns from decoded incoming messages, with the latest reception time and message format. The window updates while HFLink listens. Select a callsign and choose **Reply by broadcast** to address a public draft, **Message via ARQ** to compose a direct Mercury ARQ Chat message, or **View history** to filter the message list by callsign. For an ARQ connection, the other station must be listening for calls.
+
+HFLink fills the list from existing received history on first use. Heard stations stay in the list when their messages are deleted and are included in the encrypted app backup. Simulation has its own list. Callsigns come from received traffic and are unverified.
+
 ## Receive while using MeshCore
 
 The **Session status** panel on the right shows the current step and the other station’s callsign. During live use, it shows modem-reported PTT, channel activity, SNR, estimated bitrate, connection bandwidth and queued transmit bytes when Mercury supplies them. **Sent to Mercury** means the local modem accepted the data. **Delivered to destination station** means HFLink received a matching receipt from the other station.
@@ -89,4 +95,4 @@ The loopback checks exercise Mercury’s TCP command and data protocol against a
 
 ## Bundled component
 
-The Windows build stages the standalone Rhizomatica Mercury 1.9.25 runtime, pins and verifies the upstream Windows archive and runtime binaries, and includes the upstream Mercury and FreeDV licence files. The [Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.58) includes a source and notices archive for the bundled modem and its dependencies. [Mercury release and source](https://github.com/Rhizomatica/mercury/releases/tag/v1.9.25) · [Mercury source at the pinned commit](https://github.com/Rhizomatica/mercury/tree/33efac4e3089f64f493fde1232b8e96305d15185)
+The Windows build stages the standalone Rhizomatica Mercury 1.9.25 runtime, pins and verifies the upstream Windows archive and runtime binaries, and includes the upstream Mercury and FreeDV licence files. The [Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.59) includes a source and notices archive for the bundled modem and its dependencies. [Mercury release and source](https://github.com/Rhizomatica/mercury/releases/tag/v1.9.25) · [Mercury source at the pinned commit](https://github.com/Rhizomatica/mercury/tree/33efac4e3089f64f493fde1232b8e96305d15185)

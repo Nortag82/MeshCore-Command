@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using MeshCore.Windows.Core;
 using System.Net;
 using System.Net.Sockets;
@@ -61,6 +62,7 @@ internal static class HfLinkChecks
             Check(new HfLink(path).Messages().All(message => message.Id != id) &&
                 reopened.Messages().Any(message => message.Id == cancelled), "Deleting a sent message preserves other messages");
             await CheckDeletedReceiveAsync(Path.Combine(directory.FullName, "backup-source", "hflink-native.sqlite3"));
+            CheckHeardStationsMigration(Path.Combine(directory.FullName, "legacy-contacts.sqlite3"));
 
             await LoopbackAsync(wrongReceipt: false);
             await LoopbackAsync(wrongReceipt: true);
@@ -87,11 +89,13 @@ internal static class HfLinkChecks
         await reopened.ReceiveAsync(false, (_, _) => throw new InvalidOperationException("Deleted message should not prompt for a receipt."),
             default, _ => notifications++);
         Check(reopened.Messages().Count == 0 && notifications == 1, "The sender's retry does not restore a deleted message");
+        Check(reopened.HeardStations(true).Single() is { Callsign: "G1XYZ" } &&
+            reopened.HeardStations(false).Count == 0, "Deleting a message retains the station in the simulation contact list");
         Check(reopened.Audit().Any(item => item.Event == "Received message deleted" && item.Message == packet.Id),
             "A deletion records metadata in the audit log");
 
         string root = Path.GetDirectoryName(path)!;
-        var next = packet with { Id = Guid.NewGuid(), Attempt = Guid.NewGuid() };
+        var next = packet with { Id = Guid.NewGuid(), Attempt = Guid.NewGuid(), From = "G2XYZ" };
         var source = new HfLink(path, (_, _) => new ReplayModem(next));
         await source.ReceiveAsync(false, (_, _) => Task.FromResult(false), default);
         var outgoing = source.Queue("G1XYZ", "Outgoing example", HfMessageFormat.MercuryChat);
@@ -117,7 +121,41 @@ internal static class HfLinkChecks
         Check(File.ReadAllText(Path.Combine(destination, "mercury", "mercury.ini")) == config &&
             restored.MercuryConfigPath() == Path.Combine(destination, "mercury", "external-mercury.ini") &&
             File.ReadAllText(restored.MercuryConfigPath()!) == File.ReadAllText(external), "Portable backup restores both Mercury configurations");
+        Check(restored.HeardStations(true).Select(contact => contact.Callsign).Order().SequenceEqual(["G1XYZ", "G2XYZ"]),
+            "Portable backup restores heard stations even after their messages were deleted");
         await restored.ReceiveAsync(false, (_, _) => throw new InvalidOperationException("A restored deletion was not preserved."), default);
+    }
+
+    private static void CheckHeardStationsMigration(string path)
+    {
+        var timestamp = DateTimeOffset.UtcNow.AddDays(-1);
+        var first = new HfMessage(Guid.NewGuid(), "G1XYZ", "M0ABC", "Old message", "", "", timestamp, timestamp, true, false,
+            HfStatus.Received);
+        var latest = first with
+        {
+            Id = Guid.NewGuid(), Created = timestamp.AddHours(1), To = MercuryBroadcast.Destination, Format = HfMessageFormat.MercuryBroadcast
+        };
+        var outgoing = first with { Id = Guid.NewGuid(), From = "M0ABC", To = "G2XYZ", Incoming = false };
+        using (var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString()))
+        {
+            db.Open();
+            using var command = db.CreateCommand();
+            command.CommandText = "CREATE TABLE messages (id TEXT PRIMARY KEY, value TEXT NOT NULL)";
+            command.ExecuteNonQuery();
+            command.CommandText = "INSERT INTO messages (id, value) VALUES ($id, $value)";
+            var id = command.Parameters.AddWithValue("$id", "");
+            var value = command.Parameters.AddWithValue("$value", "");
+            foreach (var message in new[] { first, latest, outgoing })
+            {
+                id.Value = message.Id.ToString("D");
+                value.Value = JsonSerializer.Serialize(message);
+                command.ExecuteNonQuery();
+            }
+        }
+        var contact = new HfLink(path).HeardStations(false).Single();
+        Check(contact.Callsign == "G1XYZ" && contact.LastFormat == HfMessageFormat.MercuryBroadcast &&
+            contact.LastHeard.ToUnixTimeMilliseconds() == latest.Created.ToUnixTimeMilliseconds(),
+            "An existing installation backfills last heard from received messages only");
     }
 
     private sealed class ReplayModem(HfPacket packet) : IHfModem
@@ -360,6 +398,8 @@ internal static class HfLinkChecks
                 await b.WriteAsync("G1XYZ: Café on the air\n"u8.ToArray(), stop);
                 await b.WriteAsync(new byte[] { 0xc0, 0x00 }, stop);
                 await b.WriteAsync("G2XYZ: Second station\n"u8.ToArray(), stop);
+                await b.WriteAsync(new byte[] { 0xc0, 0x00 }, stop);
+                await b.WriteAsync("G1XYZ: Second message\n"u8.ToArray(), stop);
                 await b.WriteAsync(new byte[] { 0xc0 }, stop);
                 var eof = new byte[1];
                 Check(await b.ReadAsync(eof, stop) == 0, "Broadcast listener closes without sending a receipt");
@@ -381,13 +421,17 @@ internal static class HfLinkChecks
                     listen.Token, message =>
                     {
                         received.Add(message);
-                        if (received.Count == 2) listen.Cancel();
+                        if (received.Count == 3) listen.Cancel();
                     }, broadcast: true);
             }
             catch (OperationCanceledException) when (listen.IsCancellationRequested && !stop.IsCancellationRequested) { }
-            Check(received.Select(message => message.Text).SequenceEqual(["Café on the air", "Second station"]) &&
+            Check(received.Select(message => message.Text).SequenceEqual(["Café on the air", "Second station", "Second message"]) &&
                 received.All(message => message is { To: MercuryBroadcast.Destination, Format: HfMessageFormat.MercuryBroadcast, Status: HfStatus.Received }),
                 "HFLink ignores binary and malformed frames and stores broadcasts from both senders");
+            var contacts = new HfLink(path).HeardStations(false);
+            Check(contacts.Select(contact => contact.Callsign).Order().SequenceEqual(["G1XYZ", "G2XYZ"]) &&
+                contacts.All(contact => contact.LastFormat == HfMessageFormat.MercuryBroadcast),
+                "Repeated received broadcasts update one persistent entry per callsign");
         }
         else
         {

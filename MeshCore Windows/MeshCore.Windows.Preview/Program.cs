@@ -1080,6 +1080,7 @@ internal sealed class PreviewWindow : Form
     private async Task<bool> CheckHfLinkReceiveAsync(HfLinkView view, Button back)
     {
         if (view.Controls.Find("hfLinkSettings", true).SingleOrDefault() is not Button { Text: "Settings" } ||
+            view.Controls.Find("hfLinkHeardStations", true).SingleOrDefault() is not Button { Enabled: true } ||
             view.Controls.Find("hfLinkReceive", true).SingleOrDefault() is not Button { Enabled: true } receive ||
             view.Controls.Find("hfLinkReceiveBroadcast", true).SingleOrDefault() is not Button { Enabled: true } ||
             view.Controls.Find("hfLinkMessageFormat", true).SingleOrDefault() is not ComboBox format ||
@@ -1149,6 +1150,13 @@ internal sealed class PreviewWindow : Form
         var fixture = new HfLink(Path.Combine(_hfLinkTestDirectory!, "hflink-native.sqlite3"));
         var incoming = fixture.Messages().Where(message => message.Incoming).ToArray();
         if (incoming.Length != 1) return false;
+        using (var heard = new HfHeardStationsWindow(simulated: true))
+        {
+            heard.SetStations(fixture.HeardStations(simulated: true));
+            if (heard.Controls.Find("hfLinkHeardStationsList", true).SingleOrDefault() is not DataGridView grid ||
+                grid.Rows.Count != 1 || grid.Rows[0].Cells[0].Value is not string callsign || callsign != incoming[0].From)
+                return false;
+        }
         ShowHfLink();
         view.SelectMessage(incoming[0], clearFilter: true);
         if (!string.IsNullOrEmpty(gallery))

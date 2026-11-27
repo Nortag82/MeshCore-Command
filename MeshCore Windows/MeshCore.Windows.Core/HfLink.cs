@@ -9,12 +9,14 @@ public sealed record HfMessage(Guid Id, string From, string To, string Text, str
     Guid Attempt = default, DateTimeOffset? Sent = null, DateTimeOffset? Delivered = null,
     HfMessageFormat Format = HfMessageFormat.HfLink);
 public sealed record HfAudit(DateTimeOffset Time, string Actor, string Event, Guid? Message);
+public sealed record HfHeardStation(string Callsign, DateTimeOffset LastHeard, HfMessageFormat LastFormat, bool Simulated);
 
 public sealed class HfLink
 {
     private const string Operator = "local operator";
     internal const string DatabaseName = "hflink-native.sqlite3";
     internal const string ContactFormatPrefix = "contact-format:";
+    private const string HeardStationsSeeded = "heard-stations-seeded";
     private readonly string _connection;
     private readonly object _gate = new();
     private readonly SemaphoreSlim _modem = new(1);
@@ -27,6 +29,7 @@ public sealed class HfLink
         _adapter = adapter ?? ((station, simulation) => station.Simulation ? new MockHfModem(simulation, report) : new MercuryHfModem(report));
         using var db = Open();
         InitializeDatabase(db);
+        SeedHeardStations(db);
         foreach (var message in ReadAll<HfMessage>(db, "messages").Where(m => m.Status == HfStatus.Sending ||
             m.Status == HfStatus.Sent && m.Format == HfMessageFormat.HfLink))
             SetStatus(db, message, HfStatus.Unconfirmed, "Previous session ended before delivery was confirmed.", "system");
@@ -38,7 +41,71 @@ public sealed class HfLink
             CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS deleted_incoming (id TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS heard_stations (
+                callsign TEXT NOT NULL, simulated INTEGER NOT NULL, last_heard INTEGER NOT NULL, format INTEGER NOT NULL,
+                PRIMARY KEY (callsign, simulated));
             """);
+
+    private static void SeedHeardStations(SqliteConnection db)
+    {
+        if (Read<bool>(db, "settings", HeardStationsSeeded)) return;
+        var messages = ReadAll<HfMessage>(db, "messages").Where(message => message.Incoming)
+            .GroupBy(message => (message.From, message.Simulated))
+            .Select(group => group.MaxBy(message => message.Created)!).ToArray();
+        using var transaction = db.BeginTransaction();
+        foreach (var message in messages)
+        {
+            string callsign;
+            try { callsign = HfStation.Call(message.From); }
+            catch (ArgumentException) { continue; }
+            RememberStation(db, new(callsign, message.Created, message.Format, message.Simulated), transaction);
+        }
+        Write(db, "settings", HeardStationsSeeded, true, transaction);
+        transaction.Commit();
+    }
+
+    public IReadOnlyList<HfHeardStation> HeardStations(bool simulated)
+    {
+        lock (_gate)
+        {
+            using var db = Open();
+            return ReadHeardStations(db, simulated: simulated);
+        }
+    }
+
+    internal static HfHeardStation[] ReadHeardStations(SqliteConnection db, SqliteTransaction? transaction = null, bool? simulated = null)
+    {
+        using var command = db.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT callsign, simulated, last_heard, format FROM heard_stations
+            WHERE $simulated IS NULL OR simulated = $simulated
+            ORDER BY last_heard DESC, callsign
+            """;
+        command.Parameters.AddWithValue("$simulated", simulated.HasValue ? (object)simulated.Value : DBNull.Value);
+        using var reader = command.ExecuteReader();
+        var contacts = new List<HfHeardStation>();
+        while (reader.Read())
+            contacts.Add(new(reader.GetString(0), DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(2)),
+                (HfMessageFormat)reader.GetInt32(3), reader.GetBoolean(1)));
+        return contacts.ToArray();
+    }
+
+    internal static void RememberStation(SqliteConnection db, HfHeardStation contact, SqliteTransaction transaction)
+    {
+        using var command = db.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            INSERT INTO heard_stations (callsign, simulated, last_heard, format) VALUES ($call, $simulated, $time, $format)
+            ON CONFLICT (callsign, simulated) DO UPDATE SET last_heard=excluded.last_heard, format=excluded.format
+            WHERE excluded.last_heard >= heard_stations.last_heard
+            """;
+        command.Parameters.AddWithValue("$call", contact.Callsign);
+        command.Parameters.AddWithValue("$simulated", contact.Simulated);
+        command.Parameters.AddWithValue("$time", contact.LastHeard.ToUnixTimeMilliseconds());
+        command.Parameters.AddWithValue("$format", (int)contact.LastFormat);
+        command.ExecuteNonQuery();
+    }
 
     public HfStation Station()
     {
@@ -375,8 +442,11 @@ public sealed class HfLink
                         ? new(packet.Id, packet.From, packet.To, packet.Text!, "", "", now, now, true, station.Simulation, HfStatus.Received,
                             Attempt: packet.Attempt, Format: format)
                         : existing with { Attempt = packet.Attempt };
-                    Write(db, "messages", key, message);
-                    if (existing is null) Record(db, packet.From, "Incoming message stored", packet.Id);
+                    using var transaction = db.BeginTransaction();
+                    Write(db, "messages", key, message, transaction);
+                    RememberStation(db, new(packet.From, now, format, station.Simulation), transaction);
+                    if (isNew) Record(db, packet.From, "Incoming message stored", packet.Id, transaction);
+                    transaction.Commit();
                 }
                 if (isNew) onReceived?.Invoke(message);
                 if (format != HfMessageFormat.HfLink || !approved.Add(packet.Attempt) || !await approveReceipt(message, token)) return null;
