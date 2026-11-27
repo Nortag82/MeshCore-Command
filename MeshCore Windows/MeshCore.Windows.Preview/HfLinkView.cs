@@ -10,8 +10,8 @@ internal sealed class HfLinkView : UserControl
     private readonly BundledMercury _bundled;
     private readonly Label _status = new() { AutoSize = true, Text = "Ready." };
     private readonly Label _station = new() { AutoSize = true };
-    private readonly TextBox _destination = new() { Width = 110, MaxLength = 15, AccessibleName = "Destination callsign" };
-    private readonly TextBox _message = new() { Width = 360, MaxLength = HfPacket.TextLimit, AccessibleName = "Message" };
+    private readonly TextBox _destination = new() { Name = "hfLinkDestination", Width = 110, MaxLength = 15, AccessibleName = "Destination callsign" };
+    private readonly TextBox _message = new() { Name = "hfLinkDraft", Width = 360, MaxLength = HfPacket.TextLimit, AccessibleName = "Message" };
     private readonly TextBox _filter = new() { Width = 130, MaxLength = 15, AccessibleName = "Filter by callsign" };
     private readonly ComboBox _format = new() { Name = "hfLinkMessageFormat", DropDownStyle = ComboBoxStyle.DropDownList, Width = 176, AccessibleName = "Format" };
     private readonly ComboBox _simulation = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 160 };
@@ -26,8 +26,9 @@ internal sealed class HfLinkView : UserControl
     private readonly HfSessionStatus _session = new();
     private readonly RowStyle _waterfallRow = new(SizeType.Absolute, 0);
     private readonly Button _waterfallToggle;
-    private readonly Button _settings, _probe, _send, _queue, _receive, _receiveBroadcast, _cancel, _retry, _reply, _delete, _audit, _stop, _stopMercury;
+    private readonly Button _settings, _probe, _send, _sendDraft, _receive, _receiveBroadcast, _cancel, _retry, _reply, _delete, _audit, _stop, _stopMercury;
     private readonly Action<HfMessage> _received;
+    private readonly Func<string, bool> _confirmTransmission;
     private readonly FlowLayoutPanel _receipt;
     private readonly Label _receiptLabel = new() { AutoSize = true, Anchor = AnchorStyles.Left };
     private CancellationTokenSource? _operation;
@@ -41,11 +42,13 @@ internal sealed class HfLinkView : UserControl
     private bool _ready;
     private int _broadcastLimit;
 
-    public HfLinkView(string directory, bool allowLive, Func<Task> returnToRadio, Action<HfMessage> received)
+    public HfLinkView(string directory, bool allowLive, Func<Task> returnToRadio, Action<HfMessage> received,
+        Func<string, bool>? confirmTransmission = null)
     {
         _link = new HfLink(Path.Combine(directory, "hflink-native.sqlite3"), report: _session.Update);
         _allowLive = allowLive;
         _received = received;
+        _confirmTransmission = confirmTransmission ?? Confirm;
         _bundled = new BundledMercury(directory);
         _bundled.ModemStopped += detail =>
         {
@@ -91,15 +94,20 @@ internal sealed class HfLinkView : UserControl
             try { _format.SelectedIndex = (int)_link.ContactFormat(_destination.Text); }
             catch (ArgumentException) { _format.SelectedIndex = 0; }
         };
-        _queue = Button("Queue for approval", () =>
+        _sendDraft = AsyncButton("Send…", SendDraftAsync);
+        _sendDraft.Name = "hfLinkSendDraft";
+        _message.PreviewKeyDown += (_, args) =>
         {
-            _link.Queue(_destination.Text, _message.Text, (HfMessageFormat)_format.SelectedIndex);
-            _message.Clear();
-            RefreshView();
-            Report("Message is awaiting operator approval.");
-        });
+            if (args.KeyData == Keys.Enter) args.IsInputKey = true;
+        };
+        _message.KeyDown += (_, args) =>
+        {
+            if (args.KeyData != Keys.Enter) return;
+            args.SuppressKeyPress = true;
+            _sendDraft.PerformClick();
+        };
         layout.Controls.Add(Row(FieldLabel(_destination), _destination, FieldLabel(_format), _format,
-            FieldLabel(_message), _message, _bytes, _queue), 0, 4);
+            FieldLabel(_message), _message, _bytes, _sendDraft), 0, 4);
         _message.TextChanged += (_, _) => UpdateMessageBytes();
         _format.SelectedIndexChanged += (_, _) =>
         {
@@ -563,16 +571,36 @@ internal sealed class HfLinkView : UserControl
     private async Task SendAsync()
     {
         var message = Selected();
-        string question = message.Format == HfMessageFormat.MercuryBroadcast
-            ? $"Broadcast this message from {message.From} to any Mercury station listening on this frequency and mode?"
-            : $"Approve this {FormatText(message.Format)} transmission from {message.From} to {message.To}?";
-        if (!Confirm($"{question}\n\n{message.Text}")) return;
-        await RunAsync(async token =>
+        if (!ConfirmSend(message.From, message.To, message.Text, message.Format, message.Simulated)) return;
+        await SendApprovedAsync(message.Id, message.To, message.Format);
+    }
+
+    private async Task SendDraftAsync()
+    {
+        var format = (HfMessageFormat)_format.SelectedIndex;
+        string text = _message.Text;
+        var (station, destination) = _link.ValidateDraft(_destination.Text, text, format);
+        if (!ConfirmSend(station.Callsign, destination, text, format, station.Simulation)) return;
+        Guid id = _link.Queue(destination, text, format);
+        _message.Clear();
+        await SendApprovedAsync(id, destination, format);
+    }
+
+    private bool ConfirmSend(string from, string to, string text, HfMessageFormat format, bool simulated)
+    {
+        string question = format == HfMessageFormat.MercuryBroadcast
+            ? $"Broadcast this message from {from} to stations listening on this frequency and mode?"
+            : $"Transmit this {FormatText(format)} message from {from} to {to}?";
+        string simulation = simulated ? "\n\nSimulation is on. No RF will be used." : "";
+        return _confirmTransmission($"{question}\n\n{text}{simulation}");
+    }
+
+    private Task SendApprovedAsync(Guid id, string destination, HfMessageFormat format) =>
+        RunAsync(async token =>
         {
             await PrepareModemAsync(transmission: true, token);
-            return StatusText(await _link.ApproveAndSendAsync(message.Id, (HfSimulation)_simulation.SelectedIndex, _allowLive, token));
-        }, sessionPhase: message.Format == HfMessageFormat.MercuryBroadcast ? "Preparing broadcast" : $"Preparing to send to {message.To}");
-    }
+            return StatusText(await _link.ApproveAndSendAsync(id, (HfSimulation)_simulation.SelectedIndex, _allowLive, token));
+        }, sessionPhase: format == HfMessageFormat.MercuryBroadcast ? "Preparing broadcast" : $"Preparing to send to {destination}");
 
     private async Task ReceiveAsync(bool broadcast)
     {
@@ -745,7 +773,7 @@ internal sealed class HfLinkView : UserControl
         _settings.Enabled = _audit.Enabled = idle;
         _stopMercury.Visible = station.UseBundledMercury && !station.Simulation;
         _stopMercury.Enabled = idle && _bundled.Running;
-        _queue.Enabled = idle && configured;
+        _sendDraft.Enabled = idle && configured && liveAllowed;
         _format.Enabled = idle;
         _destination.Enabled = idle && (HfMessageFormat)_format.SelectedIndex != HfMessageFormat.MercuryBroadcast;
         _receive.Enabled = _receiveBroadcast.Enabled = _probe.Enabled = idle && configured && liveAllowed;

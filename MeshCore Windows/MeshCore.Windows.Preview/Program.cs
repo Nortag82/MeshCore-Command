@@ -360,6 +360,8 @@ internal sealed class PreviewWindow : Form
     private FirmwareDialog? _firmwareDialog;
     private HfLinkView? _hfLinkView;
     private string? _hfLinkTestDirectory;
+    private bool _hfLinkTestApproveSend;
+    private int _hfLinkTestSendPrompts;
     private readonly string? _testReceipt, _testNonce;
     private readonly byte[]? _expectedRecords;
     private bool _startupReady;
@@ -1045,7 +1047,12 @@ internal sealed class PreviewWindow : Form
                 fixture.SaveStation(new HfStation("M0ABC"));
                 fixture.Queue("G1XYZ", "Example message from the local operator");
             }
-            _hfLinkView = new HfLinkView(directory, _experimentalRadio && !_smokeTest, ReturnToRadioAsync, NotifyHfLinkMessage);
+            _hfLinkView = new HfLinkView(directory, _experimentalRadio && !_smokeTest, ReturnToRadioAsync, NotifyHfLinkMessage,
+                _hfLinkTestDirectory is null ? null : _ =>
+                {
+                    _hfLinkTestSendPrompts++;
+                    return _hfLinkTestApproveSend;
+                });
             _content.Controls.Add(_hfLinkView);
         }
         _web.Hide();
@@ -1154,7 +1161,22 @@ internal sealed class PreviewWindow : Form
         view.EnterView();
         bool hiddenInLiveMode = !simulation.Visible;
         fixture.SaveStation(station);
-        return hiddenInLiveMode;
+        view.EnterView();
+        if (!hiddenInLiveMode || view.Controls.Find("hfLinkDestination", true).SingleOrDefault() is not TextBox destination ||
+            view.Controls.Find("hfLinkDraft", true).SingleOrDefault() is not TextBox draft ||
+            view.Controls.Find("hfLinkSendDraft", true).SingleOrDefault() is not Button { Enabled: true } send) return false;
+        const string text = "One-step HFLink send";
+        destination.Text = "G1XYZ";
+        draft.Text = text;
+        simulation.SelectedIndex = (int)HfSimulation.Acknowledged;
+        send.PerformClick();
+        if (_hfLinkTestSendPrompts != 1 || draft.Text != text || fixture.Messages().Any(message => message.Text == text))
+            return false;
+        _hfLinkTestApproveSend = true;
+        send.PerformClick();
+        for (int attempt = 0; attempt < 50 && !send.Enabled; attempt++) await Task.Delay(50);
+        return _hfLinkTestSendPrompts == 2 && draft.Text.Length == 0 &&
+            fixture.Messages().SingleOrDefault(message => message.Text == text) is { Status: HfStatus.Delivered, Simulated: true };
     }
 
     private static void CaptureControl(Control control, string path)

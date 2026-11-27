@@ -5,8 +5,8 @@ Experimental HFLink sends openly readable direct messages and Mercury broadcasts
 ## Set up simulation
 
 1. Open **HFLink** in the main toolbar, then choose **Settings → Station**. Enter a test callsign such as `M0ABC`, leave **Simulation (no RF)** checked and select **Save station**.
-2. Enter a destination such as `G1XYZ` and up to 512 UTF-8 bytes of text. Select **Queue for approval**, then select the row.
-3. Choose a simulation outcome and select **Approve and send**. **Simulate receipt** shows **Delivered to destination station** in a row marked **Simulation**. A missing receipt leaves the message unconfirmed. A failed or unconfirmed message can be queued again with **Retry**.
+2. Enter a destination such as `G1XYZ` and up to 512 UTF-8 bytes of text.
+3. Choose a simulation outcome, then press **Enter** in the message field or select **Send…**. Confirm the send in the popup. **Simulate receipt** shows **Delivered to destination station** in a row marked **Simulation**. To try again after a failed or unconfirmed send, select the row and choose **Retry**, then **Approve and send**.
 4. Select **Open receive window**, then **Back to radio** to see a desktop notification from the simulated sender. Click it to return to HFLink.
 
 ## Set up bundled Mercury
@@ -15,7 +15,7 @@ Experimental HFLink sends openly readable direct messages and Mercury broadcasts
 2. Go to **Settings → Station**, enter your own transmitting callsign, keep **Use bundled Mercury** selected, clear **Simulation (no RF)** and select **Save station**. Bundled Mercury is the default for new profiles and uses `127.0.0.1` on ports `8300` and `8301`. Close any standalone Mercury instance using those ports.
 3. Go to **Settings → Audio and PTT**, choose the radio’s receive and transmit audio devices and set your PTT method. For serial RTS, choose **serial**, your COM port and **rts**. Select **Save settings**. Set frequency and sideband on the transceiver. [Mercury INI reference](https://github.com/Rhizomatica/mercury/blob/v1.9.25/mercury.ini.example)
 4. Close settings and select **Check modem** to start bundled Mercury and check its TCP ports.
-5. To exchange a message, use two attended stations with compatible Mercury versions. Agree on a clear frequency and the same sideband. The destination operator selects **Open receive window**. The source operator queues the message, selects it and chooses **Approve and send**. Mercury can transmit its own ARQ control frames during an open receive window.
+5. To exchange a message, use two attended stations with compatible Mercury versions. Agree on a clear frequency and the same sideband. The destination operator selects **Open receive window**. The source operator types the message, presses **Enter** or selects **Send…**, then confirms TX. Mercury can transmit its own ARQ control frames during an open receive window.
 
 ### Set ARQ bandwidth
 
@@ -26,7 +26,7 @@ The setting is a maximum. Mercury negotiates the lower bandwidth offered by the 
 ## Chat with standalone Mercury
 
 1. Use compatible Mercury modem versions. MeshCore Command bundles Mercury 1.9.25. Agree on a clear frequency and the same sideband. Your friend opens **Mercury Client**, enters their station callsign, selects **Connect modem**, and leaves the window open to accept your call. [Mercury Client implementation](https://github.com/Rhizomatica/mercury/blob/v1.9.25/gui_interface/mercury-client/client/client.go)
-2. In HFLink, enter your friend’s callsign and set **Format** to **Mercury ARQ Chat**. Type one line of up to 1,024 UTF-8 bytes, choose **Queue for approval**, select the outgoing row, then choose **Approve and send**. HFLink remembers the format for that callsign as soon as you queue a message.
+2. In HFLink, enter your friend’s callsign and set **Format** to **Mercury ARQ Chat**. Type one line of up to 1,024 UTF-8 bytes, press **Enter** or select **Send…**, then confirm TX. HFLink remembers the format for that callsign after you confirm.
 3. After your outgoing session ends, choose **Open receive window**. Your friend enters your callsign and chooses **Connect ARQ** in Mercury Client, then uses **Send message** for the reply and **Disconnect ARQ** to finish. Incoming chat lines are saved as **Mercury ARQ Chat** under their callsign. Select an incoming row and choose **Reply** to fill in the callsign and format.
 
 **Sent to local modem** is the final status for a completed Mercury Chat transfer. A reply from your friend confirms they saw your message. Select **HFLink** as the format when chatting with an HFLink station and you want HFLink delivery receipts.
@@ -34,7 +34,7 @@ The setting is a maximum. Mercury negotiates the lower bandwidth offered by the 
 ## Send and receive Mercury broadcasts
 
 1. Open **HFLink → Settings → Station** and choose the **Broadcast mode** your contacts use. **DATAC3** is the default. Agree on the same frequency, sideband and Mercury broadcast mode. An external Mercury modem also needs its **Broadcast port**, which defaults to **8100**. [Mercury broadcast protocol](https://github.com/Rhizomatica/mercury/blob/v1.9.26/docs/TNC.md#broadcast-port)
-2. Select **Mercury Broadcast** under **Format**. Enter one line within the displayed byte limit and select **Queue for approval**. Select the queued row and choose **Approve and send**. The modem sends the text with your callsign for any station listening. **Sent to local modem** records submission, and broadcasts have no delivery receipt.
+2. Select **Mercury Broadcast** under **Format**. Enter one line within the displayed byte limit, press **Enter** or select **Send…**, then confirm TX. The modem sends the text with your callsign for any station listening. **Sent to local modem** records submission, and broadcasts have no delivery receipt.
 3. Select **Listen for broadcasts** to receive Mercury Client broadcasts for the configured session timeout. The listener saves incoming text in HFLink history and can notify you while you use the radio page. Select **Stop operation** to close it early. Select a received row and choose **Reply** to address a direct Mercury ARQ Chat message to the sender.
 
 The broadcast mode determines how much text fits in one frame. The byte limit includes room for your callsign and the framing. ARQ bandwidth applies to direct connections. Use one client on the external modem’s broadcast port at a time.
@@ -89,4 +89,4 @@ The loopback checks exercise Mercury’s TCP command and data protocol against a
 
 ## Bundled component
 
-The Windows build stages the standalone Rhizomatica Mercury 1.9.25 runtime, pins and verifies the upstream Windows archive and runtime binaries, and includes the upstream Mercury and FreeDV licence files. The [Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.57) includes a source and notices archive for the bundled modem and its dependencies. [Mercury release and source](https://github.com/Rhizomatica/mercury/releases/tag/v1.9.25) · [Mercury source at the pinned commit](https://github.com/Rhizomatica/mercury/tree/33efac4e3089f64f493fde1232b8e96305d15185)
+The Windows build stages the standalone Rhizomatica Mercury 1.9.25 runtime, pins and verifies the upstream Windows archive and runtime binaries, and includes the upstream Mercury and FreeDV licence files. The [Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.58) includes a source and notices archive for the bundled modem and its dependencies. [Mercury release and source](https://github.com/Rhizomatica/mercury/releases/tag/v1.9.25) · [Mercury source at the pinned commit](https://github.com/Rhizomatica/mercury/tree/33efac4e3089f64f493fde1232b8e96305d15185)

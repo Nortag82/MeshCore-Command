@@ -125,24 +125,35 @@ public sealed class HfLink
         }
     }
 
-    public Guid Queue(string destination, string text, HfMessageFormat format = HfMessageFormat.HfLink)
+    public (HfStation Station, string Destination) ValidateDraft(string destination, string text, HfMessageFormat format)
     {
-        bool broadcast = format == HfMessageFormat.MercuryBroadcast;
-        destination = broadcast ? MercuryBroadcast.Destination : HfStation.Call(destination);
+        var station = Station();
+        return (station, ValidateDraft(station, destination, text, format));
+    }
+
+    private static string ValidateDraft(HfStation station, string destination, string text, HfMessageFormat format)
+    {
+        string from = HfStation.Call(station.Callsign);
+        destination = format == HfMessageFormat.MercuryBroadcast ? MercuryBroadcast.Destination : HfStation.Call(destination);
         switch (format)
         {
             case HfMessageFormat.HfLink: HfPacket.ValidateText(text); break;
             case HfMessageFormat.MercuryChat: HfPacket.ValidateChatText(text); break;
-            case HfMessageFormat.MercuryBroadcast: break;
+            case HfMessageFormat.MercuryBroadcast: MercuryBroadcast.ValidateText(from, text, station.BroadcastMode); break;
             default: throw new ArgumentOutOfRangeException(nameof(format));
         }
+        if (from == destination) throw new ArgumentException("Choose a different destination station.");
+        return destination;
+    }
+
+    public Guid Queue(string destination, string text, HfMessageFormat format = HfMessageFormat.HfLink)
+    {
         lock (_gate)
         {
             using var db = Open();
             var station = LoadStation(db);
+            destination = ValidateDraft(station, destination, text, format);
             string from = HfStation.Call(station.Callsign);
-            if (broadcast) MercuryBroadcast.ValidateText(from, text, station.BroadcastMode);
-            if (from == destination) throw new ArgumentException("Choose a different destination station.");
             var now = DateTimeOffset.UtcNow;
             if (ReadAll<HfMessage>(db, "messages").Take(200).Any(m => !m.Incoming && m.To == destination &&
                 m.From == from && m.Simulated == station.Simulation && m.Format == format && m.Text == text &&
@@ -152,7 +163,8 @@ public sealed class HfLink
                 now, now, false, station.Simulation, HfStatus.AwaitingApproval, Format: format);
             using var transaction = db.BeginTransaction();
             Write(db, "messages", message.Id.ToString("D"), message, transaction);
-            if (!broadcast) Write(db, "settings", ContactFormatPrefix + destination, format, transaction);
+            if (format != HfMessageFormat.MercuryBroadcast)
+                Write(db, "settings", ContactFormatPrefix + destination, format, transaction);
             Record(db, Operator, "Queued for operator approval", message.Id, transaction);
             transaction.Commit();
             return message.Id;
