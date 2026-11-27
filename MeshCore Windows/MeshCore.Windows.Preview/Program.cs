@@ -1073,7 +1073,10 @@ internal sealed class PreviewWindow : Form
     private async Task<bool> CheckHfLinkReceiveAsync(HfLinkView view, Button back)
     {
         if (view.Controls.Find("hfLinkSettings", true).SingleOrDefault() is not Button { Text: "Settings" } ||
-            view.Controls.Find("hfLinkReceive", true).SingleOrDefault() is not Button { Enabled: true } receive) return false;
+            view.Controls.Find("hfLinkReceive", true).SingleOrDefault() is not Button { Enabled: true } receive ||
+            view.Controls.Find("hfLinkReceiveBroadcast", true).SingleOrDefault() is not Button { Enabled: true } ||
+            view.Controls.Find("hfLinkMessageFormat", true).SingleOrDefault() is not ComboBox format ||
+            !format.Items.Contains("Mercury Broadcast")) return false;
         string? gallery = _candidate ? null : Environment.GetEnvironmentVariable("MCC_HFLINK_GALLERY_DIR");
         if (view.Controls.Find("hfLinkWaterfallToggle", true).SingleOrDefault() is not Button waterfall ||
             view.Controls.Find("hfLinkWaterfallPlot", true).SingleOrDefault() is not HfWaterfallView { Visible: true } plot ||
@@ -1098,6 +1101,7 @@ internal sealed class PreviewWindow : Form
             version.Text != $"Bundled Mercury {BundledMercury.PackageVersion}" ||
             settings.Controls.Find("hfLinkArqBandwidth", true).SingleOrDefault() is not ComboBox { SelectedIndex: 0 } bandwidth ||
             !bandwidth.Items.Cast<string>().SequenceEqual(["Use modem setting", "500 Hz (narrow)", "2300 Hz", "2750 Hz"]) ||
+            settings.Controls.Find("hfLinkBroadcastMode", true).SingleOrDefault() is not ComboBox { SelectedItem: "DATAC3" } ||
             settings.Controls.Find("hfLinkMercuryUpdateCheck", true).SingleOrDefault() is not Button) return false;
         if (!string.IsNullOrEmpty(gallery))
         {

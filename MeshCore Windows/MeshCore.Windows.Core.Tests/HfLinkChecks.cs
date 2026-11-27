@@ -67,6 +67,8 @@ internal static class HfLinkChecks
             await ReceiveLoopbackAsync();
             await MercuryChatLoopbackAsync(Path.Combine(directory.FullName, "chat.sqlite3"), receive: false);
             await MercuryChatLoopbackAsync(Path.Combine(directory.FullName, "chat.sqlite3"), receive: true);
+            await MercuryBroadcastLoopbackAsync(Path.Combine(directory.FullName, "broadcast.sqlite3"), receive: false);
+            await MercuryBroadcastLoopbackAsync(Path.Combine(directory.FullName, "broadcast.sqlite3"), receive: true);
         }
         finally { directory.Delete(recursive: true); }
         Console.WriteLine("HFLink SQLite, bundled station settings, simulation and Mercury loopback checks passed.");
@@ -123,7 +125,7 @@ internal static class HfLinkChecks
         public Task ProbeAsync(HfStation station, CancellationToken stop) => throw new NotSupportedException();
         public Task<HfPacket?> SendAsync(HfStation station, HfPacket message, Action accepted, CancellationToken stop) =>
             throw new NotSupportedException();
-        public async Task ReceiveAsync(HfStation station, Func<HfPacket, CancellationToken, Task<HfPacket?>> onPacket, CancellationToken stop) =>
+        public async Task ReceiveAsync(HfStation station, Func<HfPacket, CancellationToken, Task<HfPacket?>> onPacket, CancellationToken stop, bool broadcast = false) =>
             _ = await onPacket(packet, stop);
     }
 
@@ -325,6 +327,83 @@ internal static class HfLinkChecks
         await server;
         Check(updates.Any(update => update is { Phase: "Connected", Bandwidth: 500 }),
             "Session status uses the negotiated bandwidth");
+    }
+
+    private static async Task MercuryBroadcastLoopbackAsync(string path, bool receive)
+    {
+        using var control = new TcpListener(IPAddress.Loopback, 0);
+        using var data = new TcpListener(IPAddress.Loopback, 0);
+        using var broadcast = new TcpListener(IPAddress.Loopback, 0);
+        control.Start();
+        data.Start();
+        broadcast.Start();
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var listen = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
+        var stop = deadline.Token;
+        var link = new HfLink(path);
+        link.SaveStation(new HfStation("M0ABC", ControlPort: ((IPEndPoint)control.LocalEndpoint).Port,
+            DataPort: ((IPEndPoint)data.LocalEndpoint).Port, Simulation: false, UseBundledMercury: false, ArqBandwidthHz: 500,
+            BroadcastPort: ((IPEndPoint)broadcast.LocalEndpoint).Port, BroadcastMode: 3));
+        var server = Task.Run(async () =>
+        {
+            using var ctl = await control.AcceptTcpClientAsync(stop);
+            using var payload = await data.AcceptTcpClientAsync(stop);
+            var c = ctl.GetStream();
+            await InitializeAsync(c, stop);
+            Check(await ReadAsync(c, '\r', stop) == "MODE 3", "Broadcast sets the listen mode instead of the ARQ bandwidth");
+            await WriteAsync(c, "OK\r", stop);
+            using var bcast = await broadcast.AcceptTcpClientAsync(stop);
+            var b = bcast.GetStream();
+            if (receive)
+            {
+                await b.WriteAsync(new byte[] { 0xc0, 0x03, 0xff, 0xc0, 0x00, 0xdb, 0xff, 0xc0, 0x00 }, stop);
+                await b.WriteAsync("G1XYZ: Café on the air\n"u8.ToArray(), stop);
+                await b.WriteAsync(new byte[] { 0xc0, 0x00 }, stop);
+                await b.WriteAsync("G2XYZ: Second station\n"u8.ToArray(), stop);
+                await b.WriteAsync(new byte[] { 0xc0 }, stop);
+                var eof = new byte[1];
+                Check(await b.ReadAsync(eof, stop) == 0, "Broadcast listener closes without sending a receipt");
+            }
+            else
+            {
+                byte[] expected = [0xc0, 0x00, .. "M0ABC: From HFLink\n"u8, 0xc0];
+                var actual = new byte[expected.Length];
+                await b.ReadExactlyAsync(actual, stop);
+                Check(actual.SequenceEqual(expected), "Mercury broadcast uses the standalone client’s KISS text frame");
+            }
+        }, stop);
+        if (receive)
+        {
+            var received = new List<HfMessage>();
+            try
+            {
+                await link.ReceiveAsync(true, (_, _) => throw new InvalidOperationException("Broadcast cannot request a receipt."),
+                    listen.Token, message =>
+                    {
+                        received.Add(message);
+                        if (received.Count == 2) listen.Cancel();
+                    }, broadcast: true);
+            }
+            catch (OperationCanceledException) when (listen.IsCancellationRequested && !stop.IsCancellationRequested) { }
+            Check(received.Select(message => message.Text).SequenceEqual(["Café on the air", "Second station"]) &&
+                received.All(message => message is { To: MercuryBroadcast.Destination, Format: HfMessageFormat.MercuryBroadcast, Status: HfStatus.Received }),
+                "HFLink ignores binary and malformed frames and stores broadcasts from both senders");
+        }
+        else
+        {
+            Check(MercuryBroadcast.TextLimit("M0ABC", 3) == 43, "Broadcast frame limit includes mode overhead and the callsign");
+            try
+            {
+                link.Queue("", new string('x', 44), HfMessageFormat.MercuryBroadcast);
+                throw new InvalidOperationException("Broadcast exceeds the modem frame.");
+            }
+            catch (ArgumentException) { }
+            var id = link.Queue("", "From HFLink", HfMessageFormat.MercuryBroadcast);
+            Check(await link.ApproveAndSendAsync(id, HfSimulation.Acknowledged, true, stop) == HfStatus.Sent &&
+                new HfLink(path).Messages().Single() is { To: MercuryBroadcast.Destination, Delivered: null, Status: HfStatus.Sent },
+                "Broadcast submission remains distinct from a delivery confirmation");
+        }
+        await server;
     }
 
     private static async Task<string> ReadAsync(Stream stream, char end, CancellationToken stop)

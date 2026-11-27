@@ -8,7 +8,7 @@ namespace MeshCore.Windows.Core;
 
 public sealed record HfStation(string Callsign = "", string Host = "127.0.0.1",
     int ControlPort = 8300, int DataPort = 8301, int TimeoutSeconds = 120, bool Simulation = true,
-    bool UseBundledMercury = true, int ArqBandwidthHz = 0)
+    bool UseBundledMercury = true, int ArqBandwidthHz = 0, int BroadcastPort = MercuryBroadcast.DefaultPort, int BroadcastMode = 1)
 {
     public static bool ValidArqBandwidth(int hz) => hz is 0 or 500 or 2300 or 2750;
 
@@ -22,7 +22,7 @@ public sealed record HfStation(string Callsign = "", string Host = "127.0.0.1",
     }
 }
 
-public enum HfMessageFormat { HfLink, MercuryChat }
+public enum HfMessageFormat { HfLink, MercuryChat, MercuryBroadcast }
 
 public sealed record HfPacket(string Protocol, string Type, Guid Id, Guid Attempt, string From, string To, string? Text)
 {
@@ -110,7 +110,7 @@ public interface IHfModem
 {
     Task ProbeAsync(HfStation station, CancellationToken stop);
     Task<HfPacket?> SendAsync(HfStation station, HfPacket packet, Action accepted, CancellationToken stop);
-    Task ReceiveAsync(HfStation station, Func<HfPacket, CancellationToken, Task<HfPacket?>> onPacket, CancellationToken stop);
+    Task ReceiveAsync(HfStation station, Func<HfPacket, CancellationToken, Task<HfPacket?>> onPacket, CancellationToken stop, bool broadcast = false);
 }
 
 public enum HfSimulation { NoAcknowledgement, Acknowledged, Disconnected, Timeout }
@@ -129,9 +129,9 @@ public sealed class MockHfModem(HfSimulation outcome = HfSimulation.NoAcknowledg
         if (outcome == HfSimulation.Disconnected) throw new IOException("Simulated modem disconnected.");
         if (outcome == HfSimulation.Timeout) throw new TimeoutException("Simulated Mercury session timed out.");
         accepted();
-        if (packet.Protocol == HfPacket.MercuryChat)
+        if (packet.Protocol is HfPacket.MercuryChat or MercuryBroadcast.Protocol)
         {
-            report?.Invoke(new("Mercury Chat line submitted (simulation)", Peer: packet.To));
+            report?.Invoke(new("Message submitted (simulation)", Peer: packet.To));
             return null;
         }
         report?.Invoke(new("Waiting for simulated receipt", Peer: packet.To));
@@ -139,16 +139,16 @@ public sealed class MockHfModem(HfSimulation outcome = HfSimulation.NoAcknowledg
         return outcome == HfSimulation.Acknowledged ? packet.Acknowledge() : null;
     }
 
-    public async Task ReceiveAsync(HfStation station, Func<HfPacket, CancellationToken, Task<HfPacket?>> onPacket, CancellationToken stop)
+    public async Task ReceiveAsync(HfStation station, Func<HfPacket, CancellationToken, Task<HfPacket?>> onPacket, CancellationToken stop, bool broadcast = false)
     {
         report?.Invoke(new("Listening (simulation)"));
         await Task.Delay(TimeSpan.FromSeconds(2), stop);
         string peer = station.Callsign == "N0SIM" ? "N1SIM" : "N0SIM";
-        var packet = new HfPacket(HfPacket.Version, "message", Guid.NewGuid(), Guid.NewGuid(), peer, station.Callsign,
-            "Simulated incoming HFLink message");
+        var packet = new HfPacket(broadcast ? MercuryBroadcast.Protocol : HfPacket.Version, "message", Guid.NewGuid(), Guid.NewGuid(), peer,
+            broadcast ? MercuryBroadcast.Destination : station.Callsign, broadcast ? "Simulated incoming broadcast" : "Simulated incoming HFLink message");
         report?.Invoke(new("Receiving simulated message", Peer: peer));
         if (await onPacket(packet, stop) is not null) report?.Invoke(new("Simulated receipt sent", Peer: peer));
-        await onPacket(packet, stop);
+        if (!broadcast) await onPacket(packet, stop);
     }
 }
 
@@ -162,6 +162,17 @@ public sealed class MercuryHfModem(Action<HfModemStatus>? report = null) : IHfMo
 
     public async Task<HfPacket?> SendAsync(HfStation station, HfPacket packet, Action accepted, CancellationToken stop)
     {
+        if (packet.Protocol == MercuryBroadcast.Protocol)
+        {
+            MercuryBroadcast.ValidateText(station.Callsign, packet.Text!, station.BroadcastMode);
+            using var control = await OpenAsync(station, stop, broadcast: true);
+            using var client = new TcpClient();
+            await client.ConnectAsync(station.Host, station.BroadcastPort, stop);
+            await client.GetStream().WriteAsync(MercuryBroadcast.Encode(station.Callsign, packet.Text!), stop);
+            accepted();
+            report?.Invoke(new("Broadcast submitted to Mercury"));
+            return null;
+        }
         using var session = await OpenAsync(station, stop);
         bool dialled = false;
         try
@@ -196,8 +207,17 @@ public sealed class MercuryHfModem(Action<HfModemStatus>? report = null) : IHfMo
         }
     }
 
-    public async Task ReceiveAsync(HfStation station, Func<HfPacket, CancellationToken, Task<HfPacket?>> onPacket, CancellationToken stop)
+    public async Task ReceiveAsync(HfStation station, Func<HfPacket, CancellationToken, Task<HfPacket?>> onPacket, CancellationToken stop, bool broadcast = false)
     {
+        if (broadcast)
+        {
+            using var control = await OpenAsync(station, stop, broadcast: true);
+            using var client = new TcpClient();
+            await client.ConnectAsync(station.Host, station.BroadcastPort, stop);
+            report?.Invoke(new("Listening for Mercury broadcasts"));
+            await MercuryBroadcast.ReceiveAsync(client.GetStream(), onPacket, stop);
+            return;
+        }
         using var session = await OpenAsync(station, stop);
         bool connected = false;
         try
@@ -218,7 +238,7 @@ public sealed class MercuryHfModem(Action<HfModemStatus>? report = null) : IHfMo
         }
     }
 
-    private async Task<Session> OpenAsync(HfStation station, CancellationToken stop)
+    private async Task<Session> OpenAsync(HfStation station, CancellationToken stop, bool broadcast = false)
     {
         if (!HfStation.ValidArqBandwidth(station.ArqBandwidthHz))
             throw new ArgumentOutOfRangeException(nameof(station), "Choose a supported Mercury ARQ bandwidth.");
@@ -237,7 +257,9 @@ public sealed class MercuryHfModem(Action<HfModemStatus>? report = null) : IHfMo
                 await session.CommandAsync("LISTEN OFF", deadline.Token);
                 await session.CommandAsync("PUBLIC OFF", deadline.Token);
                 await session.CommandAsync($"MYCALL {station.Callsign}", deadline.Token);
-                if (station.ArqBandwidthHz != 0)
+                if (broadcast)
+                    await session.CommandAsync("MODE " + station.BroadcastMode.ToString(CultureInfo.InvariantCulture), deadline.Token);
+                else if (station.ArqBandwidthHz != 0)
                     await session.CommandAsync("BW" + station.ArqBandwidthHz.ToString(CultureInfo.InvariantCulture), deadline.Token);
                 return session;
             }

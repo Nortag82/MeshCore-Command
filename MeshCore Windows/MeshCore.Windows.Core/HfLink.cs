@@ -93,12 +93,18 @@ public sealed class HfLink
     {
         if (!HfStation.ValidArqBandwidth(station.ArqBandwidthHz))
             throw new ArgumentException("Choose a supported Mercury ARQ bandwidth.");
-        if (station.UseBundledMercury) station = station with { Host = "127.0.0.1", ControlPort = 8300, DataPort = 8301 };
+        if (!MercuryBroadcast.Modes.Any(mode => mode.Index == station.BroadcastMode))
+            throw new ArgumentException("Choose a supported Mercury broadcast mode.");
+        if (station.UseBundledMercury) station = station with
+        {
+            Host = "127.0.0.1", ControlPort = 8300, DataPort = 8301, BroadcastPort = MercuryBroadcast.DefaultPort
+        };
         string host = station.Host.Trim();
         if (Uri.CheckHostName(host) == UriHostNameType.Unknown || host.Length > 253 ||
             station.ControlPort is < 1 or > 65535 || station.DataPort is < 1 or > 65535 ||
+            station.BroadcastPort is < 1 or > 65535 || station.BroadcastPort == station.ControlPort || station.BroadcastPort == station.DataPort ||
             station.ControlPort == station.DataPort || station.TimeoutSeconds is < 5 or > 600)
-            throw new ArgumentException("Enter a valid host, two distinct TCP ports and a timeout of 5–600 seconds.");
+            throw new ArgumentException("Enter a valid host, three distinct TCP ports and a timeout of 5–600 seconds.");
         station = station with { Callsign = HfStation.Call(station.Callsign), Host = host };
         lock (_gate)
         {
@@ -121,11 +127,13 @@ public sealed class HfLink
 
     public Guid Queue(string destination, string text, HfMessageFormat format = HfMessageFormat.HfLink)
     {
-        destination = HfStation.Call(destination);
+        bool broadcast = format == HfMessageFormat.MercuryBroadcast;
+        destination = broadcast ? MercuryBroadcast.Destination : HfStation.Call(destination);
         switch (format)
         {
             case HfMessageFormat.HfLink: HfPacket.ValidateText(text); break;
             case HfMessageFormat.MercuryChat: HfPacket.ValidateChatText(text); break;
+            case HfMessageFormat.MercuryBroadcast: break;
             default: throw new ArgumentOutOfRangeException(nameof(format));
         }
         lock (_gate)
@@ -133,6 +141,7 @@ public sealed class HfLink
             using var db = Open();
             var station = LoadStation(db);
             string from = HfStation.Call(station.Callsign);
+            if (broadcast) MercuryBroadcast.ValidateText(from, text, station.BroadcastMode);
             if (from == destination) throw new ArgumentException("Choose a different destination station.");
             var now = DateTimeOffset.UtcNow;
             if (ReadAll<HfMessage>(db, "messages").Take(200).Any(m => !m.Incoming && m.To == destination &&
@@ -143,7 +152,7 @@ public sealed class HfLink
                 now, now, false, station.Simulation, HfStatus.AwaitingApproval, Format: format);
             using var transaction = db.BeginTransaction();
             Write(db, "messages", message.Id.ToString("D"), message, transaction);
-            Write(db, "settings", ContactFormatPrefix + destination, format, transaction);
+            if (!broadcast) Write(db, "settings", ContactFormatPrefix + destination, format, transaction);
             Record(db, Operator, "Queued for operator approval", message.Id, transaction);
             transaction.Commit();
             return message.Id;
@@ -239,11 +248,19 @@ public sealed class HfLink
                     throw new InvalidOperationException("Select a message awaiting approval.");
                 if (message.Simulated != station.Simulation || message.From != station.Callsign)
                     throw new InvalidOperationException("Station or simulation mode changed. Restore it or queue a new message.");
+                if (message.Format == HfMessageFormat.MercuryBroadcast)
+                    MercuryBroadcast.ValidateText(message.From, message.Text, station.BroadcastMode);
                 message = message with { Attempt = Guid.NewGuid(), Sent = null };
                 message = SetStatus(db, message, HfStatus.Sending, "", Operator, "Approved and transmission started");
             }
-            bool chat = message.Format == HfMessageFormat.MercuryChat;
-            var packet = new HfPacket(chat ? HfPacket.MercuryChat : HfPacket.Version,
+            bool oneWay = message.Format != HfMessageFormat.HfLink;
+            string protocol = message.Format switch
+            {
+                HfMessageFormat.MercuryChat => HfPacket.MercuryChat,
+                HfMessageFormat.MercuryBroadcast => MercuryBroadcast.Protocol,
+                _ => HfPacket.Version
+            };
+            var packet = new HfPacket(protocol,
                 "message", id, message.Attempt, message.From, message.To, message.Text);
             using var deadline = Deadline(station, stop);
             bool handedToModem = false;
@@ -258,14 +275,16 @@ public sealed class HfLink
                     {
                         using var db = Open();
                         message = SetStatus(db, message with { Sent = DateTimeOffset.UtcNow },
-                            chat ? HfStatus.Sending : HfStatus.Sent, "Written to local modem.", Operator);
+                            oneWay ? HfStatus.Sending : HfStatus.Sent, "Written to local modem.", Operator);
                     }
                 }, deadline.Token);
                 bool delivered = response?.Confirms(packet) == true && handedToModem;
-                if (chat && handedToModem)
+                if (oneWay && handedToModem)
                 {
                     status = HfStatus.Sent;
-                    detail = "Mercury Chat transfer finished. Ask the other station to reply to confirm receipt.";
+                    detail = message.Format == HfMessageFormat.MercuryBroadcast
+                        ? "Broadcast submitted to the local modem. Broadcast has no delivery receipt."
+                        : "Mercury Chat transfer finished. Ask the other station to reply to confirm receipt.";
                 }
                 else
                 {
@@ -292,7 +311,7 @@ public sealed class HfLink
 
     public async Task ReceiveAsync(bool allowLive,
         Func<HfMessage, CancellationToken, Task<bool>> approveReceipt, CancellationToken stop,
-        Action<HfMessage>? onReceived = null)
+        Action<HfMessage>? onReceived = null, bool broadcast = false)
     {
         EnterModem();
         try
@@ -303,16 +322,29 @@ public sealed class HfLink
                 using var db = Open();
                 station = LoadStation(db);
                 CheckMode(station, allowLive);
-                Record(db, Operator, "Attended receive window opened");
+                Record(db, Operator, broadcast ? "Broadcast receive window opened" : "Attended receive window opened");
             }
             using var deadline = Deadline(station, stop);
             var approved = new HashSet<Guid>();
-            await _adapter(station, HfSimulation.NoAcknowledgement).ReceiveAsync(station, async (packet, token) =>
+            try { await _adapter(station, HfSimulation.NoAcknowledgement).ReceiveAsync(station, AcceptPacketAsync, deadline.Token, broadcast); }
+            catch (OperationCanceledException) when (broadcast && deadline.IsCancellationRequested && !stop.IsCancellationRequested) { }
+
+            async Task<HfPacket?> AcceptPacketAsync(HfPacket packet, CancellationToken token)
             {
-                if (packet.Protocol is not (HfPacket.Version or HfPacket.MercuryChat) || packet.Type != "message" || packet.To != station.Callsign) return null;
-                bool chat = packet.Protocol == HfPacket.MercuryChat;
-                if (chat) HfPacket.ValidateChatText(packet.Text);
-                else HfPacket.ValidateText(packet.Text);
+                if (packet.Type != "message") return null;
+                HfMessageFormat format;
+                if (broadcast)
+                {
+                    if (packet.Protocol != MercuryBroadcast.Protocol || packet.To != MercuryBroadcast.Destination || packet.From == station.Callsign) return null;
+                    format = HfMessageFormat.MercuryBroadcast;
+                }
+                else
+                {
+                    if (packet.Protocol is not (HfPacket.Version or HfPacket.MercuryChat) || packet.To != station.Callsign) return null;
+                    format = packet.Protocol == HfPacket.MercuryChat ? HfMessageFormat.MercuryChat : HfMessageFormat.HfLink;
+                    if (format == HfMessageFormat.MercuryChat) HfPacket.ValidateChatText(packet.Text);
+                    else HfPacket.ValidateText(packet.Text);
+                }
                 HfMessage message;
                 bool isNew;
                 string key = IncomingKey(station.Simulation, packet.To, packet.From, packet.Id);
@@ -329,13 +361,13 @@ public sealed class HfLink
                     var now = DateTimeOffset.UtcNow;
                     message = existing is null
                         ? new(packet.Id, packet.From, packet.To, packet.Text!, "", "", now, now, true, station.Simulation, HfStatus.Received,
-                            Attempt: packet.Attempt, Format: chat ? HfMessageFormat.MercuryChat : HfMessageFormat.HfLink)
+                            Attempt: packet.Attempt, Format: format)
                         : existing with { Attempt = packet.Attempt };
                     Write(db, "messages", key, message);
                     if (existing is null) Record(db, packet.From, "Incoming message stored", packet.Id);
                 }
                 if (isNew) onReceived?.Invoke(message);
-                if (chat || !approved.Add(packet.Attempt) || !await approveReceipt(message, token)) return null;
+                if (format != HfMessageFormat.HfLink || !approved.Add(packet.Attempt) || !await approveReceipt(message, token)) return null;
                 token.ThrowIfCancellationRequested();
                 lock (_gate)
                 {
@@ -343,7 +375,7 @@ public sealed class HfLink
                     Record(db, Operator, "Receipt transmission authorized", packet.Id);
                 }
                 return packet.Acknowledge();
-            }, deadline.Token);
+            }
         }
         finally { _modem.Release(); }
     }

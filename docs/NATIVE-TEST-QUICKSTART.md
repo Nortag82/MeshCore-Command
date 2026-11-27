@@ -1,6 +1,6 @@
 # Native Windows quick start
 
-The [2.0.56 Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.56) lets HFLink [check for and install Mercury updates](HFLINK.md#mercury-version-and-updates). It supports new installations and updates from previous native builds. The legacy Python updater can offer the [2.0.43 migration release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). The previous legacy release and its [user manual](USER-MANUAL.md) remain available.
+The [2.0.57 Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.57) adds [Mercury broadcast chat](HFLINK.md#send-and-receive-mercury-broadcasts) to HFLink. It supports new installations and updates from previous native builds. The legacy Python updater can offer the [2.0.43 migration release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). The previous legacy release and its [user manual](USER-MANUAL.md) remain available.
 
 ## Update or install
 
