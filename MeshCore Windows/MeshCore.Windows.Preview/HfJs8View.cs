@@ -9,6 +9,8 @@ namespace MeshCore.Windows.Preview;
 
 internal sealed class HfJs8View : UserControl
 {
+    private sealed record BandDecode(DateTimeOffset Time, int? Dial, int Offset, int? Snr, string Text);
+    private const int BandActivityLimit = 250;
     private readonly HfLink _store;
     private readonly Js8ManagedModem _modem = new();
     private readonly HfWaterfallView _waterfall = new();
@@ -17,16 +19,20 @@ internal sealed class HfJs8View : UserControl
     private readonly Action<HfMessage> _received;
     private readonly TabControl _tabs = new() { Dock = DockStyle.Fill };
     private readonly TabPage _inbox = new("Inbox"), _public = new("Public"), _contacts = new("Contacts"), _history = new("Earlier HFLink history");
+    private readonly TabPage _band = new("Band activity");
     private readonly DataGridView _inboxRows = Grid("Time", "From", "To", "Status", "Message");
     private readonly DataGridView _publicRows = Grid("Time", "From", "To", "Status", "Message");
     private readonly DataGridView _contactRows = Grid("Callsign", "Last heard", "SNR");
     private readonly DataGridView _historyRows = Grid("Time", "From", "To", "Status", "Message");
+    private readonly DataGridView _bandRows = Grid("Time", "Dial", "Offset", "SNR", "Decoded text");
+    private readonly List<BandDecode> _bandDecodes = new();
     private readonly TextBox _destination = new() { Width = 120, MaxLength = 15, AccessibleName = "Destination callsign" };
     private readonly TextBox _draft = new() { Width = 400, MaxLength = 180, AccessibleName = "JS8 message" };
+    private readonly TextBox _broadcastDraft = new() { Width = 400, MaxLength = 180, AccessibleName = "Broadcast message" };
     private readonly Label _status = new() { AutoSize = true };
     private readonly Label _activity = new() { AutoSize = true, Anchor = AnchorStyles.Left };
     private readonly Label _target = new() { Text = "To", AutoSize = true, Anchor = AnchorStyles.Left };
-    private readonly Button _send, _leaveAtRelay, _checkRelay, _retrieve;
+    private readonly Button _send, _broadcast, _leaveAtRelay, _checkRelay, _retrieve;
     private readonly Button _installJs8, _waterfallToggle, _stopTx;
     private readonly Dictionary<string, int> _snr = new(StringComparer.Ordinal);
     private Js8LinkSettings _settings;
@@ -61,6 +67,13 @@ internal sealed class HfJs8View : UserControl
         back.Name = "hfLinkBack";
         var settings = Button("Settings", ConfigureAsync);
         settings.Name = "hfLinkJs8Settings";
+        var openBroadcast = Button("Broadcast", () =>
+        {
+            _tabs.SelectedTab = _public;
+            _broadcastDraft.Focus();
+            return Task.CompletedTask;
+        });
+        openBroadcast.Name = "hfLinkOpenBroadcast";
         _installJs8 = Button("Install JS8Call…", InstallJs8Async);
         _installJs8.Visible = false;
         _waterfallToggle = Button("Hide waterfall", () =>
@@ -71,11 +84,11 @@ internal sealed class HfJs8View : UserControl
         });
         _stopTx = Button("Stop TX", StopTransmissionAsync);
         layout.Controls.Add(Row(back, new Label { Text = "HFLink", AutoSize = true, Anchor = AnchorStyles.Left },
-            settings, _installJs8, _waterfallToggle, _activity, _stopTx), 0, 0);
+            openBroadcast, settings, _installJs8, _waterfallToggle, _activity, _stopTx), 0, 0);
         layout.Controls.Add(_status, 0, 1);
         layout.Controls.Add(_waterfall, 0, 2);
         _tabs.Name = "hfLinkJs8Tabs";
-        _tabs.TabPages.AddRange([_inbox, _public, _contacts, _history]);
+        _tabs.TabPages.AddRange([_inbox, _public, _band, _contacts, _history]);
         layout.Controls.Add(_tabs, 0, 3);
 
         _checkRelay = Button("Check relay", () => RelayQueryAsync(null));
@@ -87,6 +100,8 @@ internal sealed class HfJs8View : UserControl
         });
         AddGrid(_inbox, _inboxRows, Row(reply, _checkRelay, _retrieve, DeleteButton(_inboxRows)));
         AddGrid(_public, _publicRows, Row(DeleteButton(_publicRows)));
+        _bandRows.Name = "hfLinkBandActivity";
+        AddGrid(_band, _bandRows);
         var contactMessage = Button("Message station", () =>
         {
             if (_contactRows.CurrentRow?.Tag is HfHeardStation station) ComposeTo(station.Callsign);
@@ -98,18 +113,21 @@ internal sealed class HfJs8View : UserControl
         };
         AddGrid(_contacts, _contactRows, Row(contactMessage));
         AddGrid(_history, _historyRows, Row(DeleteButton(_historyRows)));
-        _send = Button("Send…", () => SendAsync(viaRelay: false));
-        _leaveAtRelay = Button("Leave at relay…", () => SendAsync(viaRelay: true));
+        _send = Button("Send direct…", () => SendAsync(publicChat: false));
+        _broadcast = Button("Broadcast…", () => SendAsync(publicChat: true));
+        _broadcast.Name = "hfLinkSendBroadcast";
+        _broadcastDraft.Name = "hfLinkBroadcastDraft";
+        _draft.Name = "hfLinkDirectDraft";
+        _leaveAtRelay = Button("Leave at relay…", () => SendAsync(publicChat: false, viaRelay: true));
         layout.Controls.Add(Row(_target, _destination,
-            _draft, _send, _leaveAtRelay), 0, 4);
-        _tabs.SelectedIndexChanged += (_, _) => SetActions();
-        _draft.PreviewKeyDown += (_, args) => { if (args.KeyData == Keys.Enter) args.IsInputKey = true; };
-        _draft.KeyDown += (_, args) =>
+            _draft, _broadcastDraft, _send, _broadcast, _leaveAtRelay), 0, 4);
+        _tabs.SelectedIndexChanged += (_, _) =>
         {
-            if (args.KeyData != Keys.Enter) return;
-            args.SuppressKeyPress = true;
-            _send.PerformClick();
+            if (_tabs.SelectedTab == _band) RefreshBandRows();
+            SetActions();
         };
+        SendOnEnter(_draft, _send);
+        SendOnEnter(_broadcastDraft, _broadcast);
         HfLinkTheme.Apply(this);
         SetStatus(_connectAllowed ? "Configure your HF station in Settings." : "JS8Call connection is disabled in this test or preview.");
         RefreshRows();
@@ -265,13 +283,14 @@ internal sealed class HfJs8View : UserControl
         {
             await client.RequestAsync("STATION.GET_CALLSIGN", "", stop);
             await client.RequestAsync("RX.GET_CALL_ACTIVITY", "", stop);
+            await client.RequestAsync("RX.GET_BAND_ACTIVITY", "", stop);
             await client.RequestAsync("INBOX.GET_MESSAGES", "", stop);
             await client.RequestAsync("RIG.GET_PTT", "", stop);
             await Task.Delay(15000, stop);
         }
     }
 
-    private void HandleApiMessage(Js8ApiMessage data)
+    internal void HandleApiMessage(Js8ApiMessage data)
     {
         if (data.Type == "STATION.CALLSIGN")
         {
@@ -302,8 +321,25 @@ internal sealed class HfJs8View : UserControl
             _store.HearJs8Stations([Heard(heard, data.Params)]);
             RefreshContacts();
         }
+        else if (data.Type == "RX.ACTIVITY")
+        {
+            if (AddBandDecode(data.Params, data.Value) && _tabs.SelectedTab == _band) RefreshBandRows();
+        }
+        else if (data.Type == "RX.BAND_ACTIVITY" && data.Params.ValueKind == JsonValueKind.Object)
+        {
+            bool changed = false;
+            foreach (var entry in data.Params.EnumerateObject())
+                changed |= AddBandDecode(entry.Value, Js8CallClient.Text(entry.Value, "TEXT"));
+            if (changed && _tabs.SelectedTab == _band) RefreshBandRows();
+        }
         else if (data.Type == "RX.DIRECTED" && Js8CallClient.DecodeReceived(data.Params, data.Value) is { } incoming)
         {
+            string frame = string.IsNullOrWhiteSpace(data.Value) ? Js8CallClient.Text(data.Params, "TEXT") : data.Value;
+            if (!string.IsNullOrWhiteSpace(frame))
+            {
+                if (!frame.StartsWith(incoming.From + ":", StringComparison.OrdinalIgnoreCase)) frame = $"{incoming.From}: {frame}";
+                if (AddBandDecode(data.Params, frame) && _tabs.SelectedTab == _band) RefreshBandRows();
+            }
             _store.HearJs8Stations([Heard(incoming.From, data.Params)]);
             RefreshContacts();
             StoreReceived(incoming, notify: true);
@@ -318,6 +354,29 @@ internal sealed class HfJs8View : UserControl
                     changed |= StoreReceived(stored, notify: false);
             if (changed) RefreshRows();
         }
+    }
+
+    private bool AddBandDecode(JsonElement parameters, string text)
+    {
+        text = text.Trim();
+        if (text.Length == 0 || Js8CallClient.Number(parameters, "OFFSET") is not int offset) return false;
+        var entry = new BandDecode(Js8CallClient.Time(parameters), Js8CallClient.Number(parameters, "DIAL"),
+            offset, Js8CallClient.Number(parameters, "SNR"), text);
+        if (_bandDecodes.Any(existing => existing.Time == entry.Time && existing.Dial == entry.Dial &&
+            existing.Offset == entry.Offset && existing.Text == entry.Text)) return false;
+        _bandDecodes.Add(entry);
+        _bandDecodes.Sort((left, right) => right.Time.CompareTo(left.Time));
+        if (_bandDecodes.Count > BandActivityLimit) _bandDecodes.RemoveAt(BandActivityLimit);
+        return true;
+    }
+
+    private void RefreshBandRows()
+    {
+        _bandRows.Rows.Clear();
+        foreach (var entry in _bandDecodes)
+            _bandRows.Rows.Add(entry.Time.ToLocalTime().ToString("HH:mm:ss"),
+                entry.Dial is { } dial ? $"{dial / 1_000_000m:0.000000} MHz" : "", $"{entry.Offset} Hz",
+                entry.Snr is { } snr ? $"{snr} dB" : "", entry.Text);
     }
 
     private HfHeardStation Heard(string call, JsonElement parameters)
@@ -363,15 +422,26 @@ internal sealed class HfJs8View : UserControl
         return true;
     }
 
-    private async Task SendAsync(bool viaRelay)
+    private static void SendOnEnter(TextBox draft, Button send)
     {
-        bool publicChat = _tabs.SelectedTab == _public;
+        draft.PreviewKeyDown += (_, args) => { if (args.KeyData == Keys.Enter) args.IsInputKey = true; };
+        draft.KeyDown += (_, args) =>
+        {
+            if (args.KeyData != Keys.Enter) return;
+            args.SuppressKeyPress = true;
+            send.PerformClick();
+        };
+    }
+
+    private async Task SendAsync(bool publicChat, bool viaRelay = false)
+    {
+        var draft = publicChat ? _broadcastDraft : _draft;
         string to = publicChat ? _settings.PublicGroup : HfStation.Call(_destination.Text);
         if (to == _callsign) throw new ArgumentException("Choose a different station.");
-        string body = _draft.Text.Trim().ToUpperInvariant();
+        string body = draft.Text.Trim().ToUpperInvariant();
         string command = Js8CallClient.Compose(to, body, publicChat, viaRelay ? _settings.Relay : null);
         var format = viaRelay ? HfMessageFormat.Js8Relay : publicChat ? HfMessageFormat.Js8Public : HfMessageFormat.Js8Direct;
-        if (await SubmitAsync(command, to, body, format)) _draft.Clear();
+        if (await SubmitAsync(command, to, body, format)) draft.Clear();
     }
 
     private async Task RelayQueryAsync(int? id)
@@ -510,8 +580,10 @@ internal sealed class HfJs8View : UserControl
         _target.Visible = inbox || publicChat;
         _target.Text = publicChat ? $"To {_settings.PublicGroup}" : "To";
         _destination.Visible = inbox;
-        _draft.Enabled = inbox || publicChat;
-        _send.Enabled = available && _draft.Enabled;
+        _draft.Visible = _send.Visible = _leaveAtRelay.Visible = inbox;
+        _broadcastDraft.Visible = _broadcast.Visible = publicChat;
+        _send.Enabled = available && inbox;
+        _broadcast.Enabled = available && publicChat;
         _leaveAtRelay.Enabled = relay && inbox;
         _checkRelay.Enabled = relay;
         _retrieve.Enabled = relay && _relayMessageId.HasValue;

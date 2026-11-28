@@ -1070,10 +1070,34 @@ internal sealed class PreviewWindow : Form
         _hfLinkView!.SelectMessage(message, clearFilter: true);
     }
 
-    private static bool CheckJs8HfLink(HfJs8View view) =>
-        view.Controls.Find("hfLinkJs8Settings", true).SingleOrDefault() is Button &&
-        view.Controls.Find("hfLinkJs8Tabs", true).SingleOrDefault() is TabControl tabs &&
-        tabs.TabPages.Cast<TabPage>().Select(tab => tab.Text).SequenceEqual(["Inbox", "Public", "Contacts", "Earlier HFLink history"]);
+    private static bool CheckJs8HfLink(HfJs8View view)
+    {
+        if (view.Controls.Find("hfLinkJs8Settings", true).SingleOrDefault() is not Button ||
+            view.Controls.Find("hfLinkJs8Tabs", true).SingleOrDefault() is not TabControl tabs ||
+            !tabs.TabPages.Cast<TabPage>().Select(tab => tab.Text).SequenceEqual(["Inbox", "Public", "Band activity", "Contacts", "Earlier HFLink history"]) ||
+            view.Controls.Find("hfLinkOpenBroadcast", true).SingleOrDefault() is not Button openBroadcast ||
+            view.Controls.Find("hfLinkSendBroadcast", true).SingleOrDefault() is not Button sendBroadcast ||
+            view.Controls.Find("hfLinkDirectDraft", true).SingleOrDefault() is not TextBox direct ||
+            view.Controls.Find("hfLinkBroadcastDraft", true).SingleOrDefault() is not TextBox broadcast ||
+            view.Controls.Find("hfLinkBandActivity", true).SingleOrDefault() is not DataGridView band)
+            return false;
+
+        tabs.SelectedIndex = 0;
+        direct.Text = "DIRECT DRAFT";
+        openBroadcast.PerformClick();
+        bool separate = tabs.SelectedIndex == 1 && !direct.Visible && broadcast.Visible && sendBroadcast.Visible &&
+            !sendBroadcast.Enabled && broadcast.Text.Length == 0;
+        broadcast.Text = "PUBLIC DRAFT";
+        using var heard = JsonDocument.Parse("""{"OFFSET":1039,"DIAL":14078000,"SNR":-17,"UTC":1769740328005,"FROM":"M0ABC","TO":"G1XYZ","CMD":" MSG","TEXT":"G1XYZ MSG HEARD ON BAND ♢"}""");
+        using var snapshot = JsonDocument.Parse("""{"499":{"OFFSET":499,"DIAL":14078000,"SNR":-16,"UTC":1769740328000,"TEXT":"G2XYZ: @HB HEARTBEAT IO91 ♢"}}""");
+        view.HandleApiMessage(new("RX.BAND_ACTIVITY", "", snapshot.RootElement));
+        view.HandleApiMessage(new("RX.BAND_ACTIVITY", "", snapshot.RootElement));
+        view.HandleApiMessage(new("RX.DIRECTED", "G1XYZ MSG HEARD ON BAND ♢", heard.RootElement));
+        tabs.SelectedIndex = 2;
+        bool hearsBand = band.Rows.Count == 2 && (string?)band.Rows[0].Cells[4].Value == "M0ABC: G1XYZ MSG HEARD ON BAND ♢";
+        tabs.SelectedIndex = 0;
+        return separate && hearsBand && !broadcast.Visible && direct.Visible && direct.Text == "DIRECT DRAFT";
+    }
 
     private async Task ReturnToRadioAsync()
     {

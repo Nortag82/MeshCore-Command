@@ -1,6 +1,6 @@
 # HFLink for JS8Call
 
-HFLink in MeshCore Command 2.0.61 sets up and starts the JS8Call modem on the same PC. Other stations can exchange plain-text messages with you using standard JS8Call.
+HFLink in MeshCore Command sets up and starts the JS8Call modem on the same PC. Other stations can exchange plain-text messages with you using standard JS8Call.
 
 ## Connect to JS8Call
 
@@ -13,7 +13,7 @@ The official engine can also be installed from the [JS8Call downloads page](http
 
 ## Inbox and heard stations
 
-- **Inbox** shows directed messages and imports incoming messages from the local JS8Call inbox. To send, enter a callsign and message, press **Enter** or select **Send…**, and confirm.
+- **Inbox** shows directed messages and imports incoming messages from the local JS8Call inbox. To send, enter a callsign and message, press **Enter** or select **Send direct…**, and confirm.
 - **Contacts** lists stations JS8Call hears and shows their last-heard times and available signal reports. Select a callsign and choose **Message station** to address it.
 - **Submitted to JS8Call** means HFLink handed the message to the modem. Use JS8Call to see transmit progress.
 - **Delete message…** removes the selected entry from local HFLink history after confirmation. Manage the standalone JS8Call inbox in JS8Call.
@@ -21,7 +21,9 @@ The official engine can also be installed from the [JS8Call downloads page](http
 
 ## Public
 
-Choose **Public** to send to the group shown by the editor. It defaults to `@ALLCALL`. Set a shared group in **HFLink → Settings** and add the group in JS8Call if your group uses one.
+Select **Broadcast** at the top of HFLink to open **Public** and start a broadcast draft. Type the message, select **Broadcast…** or press **Enter**, and confirm. JS8Call sends your callsign and text addressed to the group shown beside the composer. The default is `@ALLCALL`. You can set a shared group in **HFLink → Settings**. An ordinary broadcast does not request an acknowledgement.
+
+**Band activity** shows recent decoded traffic with time, frequency, audio offset and SNR. It includes heartbeats and conversations between other stations. Use **Public** for broadcasts and **Inbox** for messages addressed to you.
 
 ## Relay inbox
 
