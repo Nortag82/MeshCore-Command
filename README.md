@@ -1,6 +1,6 @@
 # MeshCore Command
 
-> **Windows release 2.0.59** adds the [Heard stations contact list](docs/HFLINK.md#heard-stations) to HFLink.
+> **Windows release 2.0.60** connects HFLink to JS8Call for direct messages, public chat and a heard-station contact list. [Setup guide](docs/HFLINK.md)
 
 A Windows companion for MeshCore radios, with Wi-Fi, Bluetooth and USB connections, messaging, repeater monitoring, terrain planning and a shared situation map. An experimental Android Bluetooth companion is also included.
 
@@ -28,32 +28,11 @@ Features depend on radio firmware, connectivity and node permissions. Terrain vi
 
 ## HFLink
 
-HFLink is an experimental Windows module for exchanging openly readable direct messages between two amateur HF stations. Mercury is bundled and selected by default for new profiles. Open **HFLink → Settings** to configure your callsign, audio, PTT and firewall. You can try **Simulation (no RF)** without connecting a radio.
+MeshCore Command 2.0.60 and newer connect to JS8Call on the same PC. **Inbox** supports directed messages and relay retrieval. **Contacts** lists stations heard by JS8Call. **Public** uses `@ALLCALL` or a group you choose. Other stations can use regular JS8Call.
 
-Choose **Mercury ARQ Chat** in the message format menu to exchange plain-text messages with someone using the standalone Mercury Client. Choose **Mercury Broadcast** to send to any station listening in the same mode. HFLink remembers the format by destination callsign when you queue a message. [Mercury Chat setup](docs/HFLINK.md#chat-with-standalone-mercury)
+Open **HFLink** once to start listening. **Back to radio** keeps HFLink connected while you work with MeshCore. JS8Call handles the radio, audio and PTT. Earlier messages remain available in **Earlier HFLink history**.
 
-HFLink opens with a scrolling 0–4 kHz waterfall of the radio’s tuned receive audio. In simulation mode, it shows generated signals.
-
-![HFLink receive waterfall showing simulated signals from 0 to 4 kHz](docs/images/native/hflink-waterfall.png)
-
-Select **Open receive window**, then **Back to radio** to keep listening while using MeshCore. When a message arrives during the window, click the desktop alert to open it in HFLink.
-
-The **Session status** panel on the right shows the send or receive stage, the other station, and the latest modem reports. [Session status screenshot](docs/SCREENSHOTS.md#hflink)
-
-Use **Settings → Mercury updates** to see the bundled version and check the latest stable Windows release. To remove a received or outgoing message from this PC, select it, choose **Delete message**, and confirm.
-
-![HFLink receive alert over the MeshCore Command overview during a simulated receive window](docs/images/native/hflink-notification.png)
-
-<details>
-<summary>See the HFLink inbox and settings</summary>
-
-![HFLink inbox with a simulated incoming message and receipt controls](docs/images/native/hflink.png)
-
-![HFLink Settings showing Station, Audio and PTT, and Firewall tabs](docs/images/native/hflink-settings.png)
-
-</details>
-
-[HFLink setup guide](docs/HFLINK.md) · [Full screenshot gallery](docs/SCREENSHOTS.md#hflink)
+[JS8Call setup and relay guide](docs/HFLINK.md) · [HFLink guide for Windows 2.0.59](https://github.com/Nortag82/MeshCore-Command/blob/v2.0.59/docs/HFLINK.md)
 
 ## How Secure Coms protects messages and maps
 
@@ -65,7 +44,7 @@ There are tradeoffs. Packet routing information and traffic patterns remain obse
 
 ## Download for Windows
 
-Download the [version 2.0.59 Windows installer](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.59) or update from **Settings** in the native app. The legacy Python updater can offer the [2.0.43 migration release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). Back up important data first and see the [Windows quick start](docs/NATIVE-TEST-QUICKSTART.md) and [upgrade notes](MeshCore%20Windows/LEGACY-UPGRADE.md). The Python and native apps keep separate profiles. Setup checks for WebView2 and offers to install it from Microsoft if needed. The installer and bundled firmware are unsigned. Use the exact board option and back up radio data before flashing.
+Download the [version 2.0.60 Windows installer](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.60) or update from **Settings** in the native app. The legacy Python updater can offer the [2.0.43 migration release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). Back up important data first and see the [Windows quick start](docs/NATIVE-TEST-QUICKSTART.md) and [upgrade notes](MeshCore%20Windows/LEGACY-UPGRADE.md). The Python and native apps keep separate profiles. Setup checks for WebView2 and offers to install it from Microsoft if needed. The installer and bundled firmware are unsigned. Use the exact board option and back up radio data before flashing.
 
 ## Android test app
 
@@ -137,7 +116,7 @@ Do not commit Wi-Fi credentials, radio identity backups, message histories or pr
 <details>
 <summary>Version history and technical notes</summary>
 
-The current Windows release is **2.0.59**. The previous Python release is **2.0.38** and the Android test build is **0.2.15**. Secure groups use local recipient lists to send individual encrypted messages. The [secure pairing research prototype](experimental/secure-pairing/) is separate. Command discovery uses Public.
+The current Windows release is **2.0.60**. The previous Python release is **2.0.38** and the Android test build is **0.2.15**. Secure groups use local recipient lists to send individual encrypted messages. The [secure pairing research prototype](experimental/secure-pairing/) is separate. Command discovery uses Public.
 
 Windows 2.0.6 and newer add a user-initiated update check. Release publishers must name future Windows assets `MeshCore-Command-Windows-X.Y.Z-Setup.exe`, retain the installer's `--update` mode, and publish the asset with GitHub's SHA-256 digest. The app compares that digest before launching the installer; the digest is not an independent signature.
 

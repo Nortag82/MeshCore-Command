@@ -640,7 +640,7 @@ internal sealed class InstallerTestReleaseHandler(string executable, string vers
 
 internal sealed class InstallerWindow : Form
 {
-    private readonly Label _status = new() { AutoSize = true, MaximumSize = new Size(450, 0), Text = "Install MeshCore Command for this Windows account. HFLink and Mercury are included." };
+    private readonly Label _status = new() { AutoSize = true, MaximumSize = new Size(450, 0), Text = "Install MeshCore Command for this Windows account, including HFLink for JS8Call." };
     private readonly Button _install = new() { Name = "installCommand", Text = "Install", AutoSize = true };
     private readonly Button _launch = new() { Text = "Open MeshCore Command", AutoSize = true, Visible = false };
     private readonly Label _runtimeStatus = new() { Name = "webView2Status", AutoSize = true, MaximumSize = new Size(450, 0) };

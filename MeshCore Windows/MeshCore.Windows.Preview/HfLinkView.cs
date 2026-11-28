@@ -14,7 +14,6 @@ internal sealed class HfLinkView : UserControl
     private readonly TextBox _message = new() { Name = "hfLinkDraft", Width = 360, MaxLength = HfPacket.TextLimit, AccessibleName = "Message" };
     private readonly TextBox _filter = new() { Width = 130, MaxLength = 15, AccessibleName = "Filter by callsign" };
     private readonly ComboBox _format = new() { Name = "hfLinkMessageFormat", DropDownStyle = ComboBoxStyle.DropDownList, Width = 176, AccessibleName = "Format" };
-    private readonly ComboBox _simulation = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 160 };
     private readonly Label _bytes = new() { AutoSize = true, Text = "0 / 512 bytes" };
     private readonly DataGridView _history = new()
     {
@@ -44,10 +43,10 @@ internal sealed class HfLinkView : UserControl
     private int _broadcastLimit;
 
     public HfLinkView(string directory, bool allowLive, Func<Task> returnToRadio, Action<HfMessage> received,
-        Func<string, bool>? confirmTransmission = null)
+        Func<string, bool>? confirmTransmission = null, bool simulate = false)
     {
-        _link = new HfLink(Path.Combine(directory, "hflink-native.sqlite3"), report: _session.Update);
-        _allowLive = allowLive;
+        _link = new HfLink(Path.Combine(directory, "hflink-native.sqlite3"), report: _session.Update, stationSimulation: simulate);
+        _allowLive = allowLive && !simulate;
         _received = received;
         _confirmTransmission = confirmTransmission ?? Confirm;
         _bundled = new BundledMercury(directory);
@@ -139,10 +138,7 @@ internal sealed class HfLinkView : UserControl
             SetWaterfallVisible(_showWaterfall);
         });
         _waterfallToggle.Name = "hfLinkWaterfallToggle";
-        _simulation.Items.AddRange(["Simulate no receipt", "Simulate receipt", "Simulate disconnect", "Simulate timeout"]);
-        _simulation.Name = "hfLinkSimulationOutcome";
-        _simulation.SelectedIndex = 0;
-        layout.Controls.Add(Row(_probe, _receive, _receiveBroadcast, _stop, _stopMercury, _simulation, _waterfallToggle), 0, 5);
+        layout.Controls.Add(Row(_probe, _receive, _receiveBroadcast, _stop, _stopMercury, _waterfallToggle), 0, 5);
         layout.Controls.Add(_waterfall, 0, 6);
         layout.Controls.Add(_session, 1, 0);
         layout.SetRowSpan(_session, 7);
@@ -261,7 +257,8 @@ internal sealed class HfLinkView : UserControl
             return;
         }
         var station = _link.Station();
-        _waterfall.Start(station.Simulation || !_allowLive, () =>
+        if (!station.Simulation && !_allowLive) return;
+        _waterfall.Start(station.Simulation, () =>
         {
             string? path = station.UseBundledMercury ? _bundled.ConfigPath :
                 _link.MercuryConfigPath() ?? MercurySettingsPanel.FindConfig();
@@ -319,12 +316,11 @@ internal sealed class HfLinkView : UserControl
         void SetExternalFields() => host.Enabled = control.Enabled = data.Enabled = broadcastPort.Enabled = !bundled.Checked;
         bundled.CheckedChanged += (_, _) => SetExternalFields();
         SetExternalFields();
-        var sim = new CheckBox { Text = "Simulation (no RF)", Checked = station.Simulation || !_allowLive, Enabled = _allowLive, AutoSize = true };
         var stationStatus = new Label { AutoSize = true, MaximumSize = new Size(560, 0) };
         var save = new Button { Text = "Save station", AutoSize = true };
         var form = Fields([("Station callsign", call), ("Modem", bundled), ("External Mercury host", host), ("Control port", control),
             ("Data port", data), ("Broadcast port", broadcastPort), ("ARQ bandwidth", bandwidth), ("Broadcast mode", broadcastMode),
-            ("Session timeout in seconds", timeout), ("Mode", sim), ("", save), ("", stationStatus)]);
+            ("Session timeout in seconds", timeout), ("", save), ("", stationStatus)]);
         stationTab.Controls.Add(form);
         bool? modemMode = null;
         void LoadModem()
@@ -356,10 +352,13 @@ internal sealed class HfLinkView : UserControl
             try
             {
                 if (_operation is not null) throw new InvalidOperationException("Wait for the active HFLink operation to finish.");
-                bool simulation = _allowLive ? sim.Checked : station.Simulation;
-                _link.SaveStation(new(call.Text, host.Text, (int)control.Value, (int)data.Value, (int)timeout.Value,
-                    simulation, bundled.Checked, bandwidths[bandwidth.SelectedIndex], (int)broadcastPort.Value,
-                    MercuryBroadcast.Modes[broadcastMode.SelectedIndex].Index));
+                _link.SaveStation(station with
+                {
+                    Callsign = call.Text, Host = host.Text, ControlPort = (int)control.Value, DataPort = (int)data.Value,
+                    TimeoutSeconds = (int)timeout.Value, UseBundledMercury = bundled.Checked,
+                    ArqBandwidthHz = bandwidths[bandwidth.SelectedIndex], BroadcastPort = (int)broadcastPort.Value,
+                    BroadcastMode = MercuryBroadcast.Modes[broadcastMode.SelectedIndex].Index
+                });
                 station = _link.Station();
                 _bundled.Stop();
                 RefreshView();
@@ -602,7 +601,7 @@ internal sealed class HfLinkView : UserControl
         RunAsync(async token =>
         {
             await PrepareModemAsync(transmission: true, token);
-            return StatusText(await _link.ApproveAndSendAsync(id, (HfSimulation)_simulation.SelectedIndex, _allowLive, token));
+            return StatusText(await _link.ApproveAndSendAsync(id, HfSimulation.Acknowledged, _allowLive, token));
         }, sessionPhase: format == HfMessageFormat.MercuryBroadcast ? "Preparing broadcast" : $"Preparing to send to {destination}");
 
     private async Task ReceiveAsync(bool broadcast)
@@ -750,7 +749,8 @@ internal sealed class HfLinkView : UserControl
         _heardStationsWindow?.SetStations(_link.HeardStations(station.Simulation));
         _broadcastLimit = MercuryBroadcast.TextLimit(station.Callsign, station.BroadcastMode);
         UpdateMessageBytes();
-        string mode = station.Simulation ? "simulation" : station.UseBundledMercury ? "bundled Mercury" : "external Mercury";
+        string mode = station.Simulation ? "test simulation" : !_allowLive ? "radio access unavailable" :
+            station.UseBundledMercury ? "bundled Mercury" : "external Mercury";
         string bundledVersion = station.UseBundledMercury && _bundled.Installed ? $"   Mercury {_bundled.InstalledVersion}" : "";
         string arqLimit = station.ArqBandwidthHz == 0 ? "" : $"   ARQ limit {station.ArqBandwidthHz} Hz";
         _station.Text = $"Station: {(station.Callsign.Length == 0 ? "not configured" : station.Callsign)}   Mode: {mode}{bundledVersion}{arqLimit}";
@@ -782,12 +782,11 @@ internal sealed class HfLinkView : UserControl
         _destination.Enabled = idle && (HfMessageFormat)_format.SelectedIndex != HfMessageFormat.MercuryBroadcast;
         _receive.Enabled = _receiveBroadcast.Enabled = _probe.Enabled = idle && configured && liveAllowed;
         _stop.Enabled = !idle;
-        _simulation.Visible = station.Simulation;
-        _simulation.Enabled = idle && station.Simulation;
-        _send.Enabled = idle && configured && liveAllowed && message is { Incoming: false, Status: HfStatus.AwaitingApproval };
+        bool inCurrentMode = message?.Simulated == station.Simulation;
+        _send.Enabled = idle && configured && liveAllowed && inCurrentMode && message is { Incoming: false, Status: HfStatus.AwaitingApproval };
         _cancel.Enabled = idle && message is { Incoming: false, Status: HfStatus.AwaitingApproval };
-        _retry.Enabled = idle && message is { Incoming: false, Status: HfStatus.Failed or HfStatus.Unconfirmed };
-        _reply.Enabled = idle && configured && message is { Incoming: true };
+        _retry.Enabled = idle && inCurrentMode && message is { Incoming: false, Status: HfStatus.Failed or HfStatus.Unconfirmed };
+        _reply.Enabled = idle && configured && inCurrentMode && message is { Incoming: true };
         _delete.Enabled = idle && message is not null;
         _detail.Text = message is null ? "" : message.Text + Environment.NewLine + message.Detail +
             (message.Incoming ? "" : $"\r\nRequested by {message.Requester} ({message.RequesterCall})\r\nID: {message.Id}");

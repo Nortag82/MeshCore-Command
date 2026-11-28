@@ -1,6 +1,6 @@
 # Native Windows quick start
 
-The [2.0.59 Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.59) adds the [Heard stations contact list](HFLINK.md#heard-stations) to HFLink. It supports new installations and updates from previous native builds. The legacy Python updater can offer the [2.0.43 migration release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). The previous legacy release and its [user manual](USER-MANUAL.md) remain available.
+The [2.0.60 Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.60) connects HFLink to JS8Call. It supports new installations and updates from previous native builds. The legacy Python updater can offer the [2.0.43 migration release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). The previous legacy release and its [user manual](USER-MANUAL.md) remain available.
 
 ## Update or install
 
@@ -18,11 +18,11 @@ To find a missing chat contact, ask the person to send a flood advert from the r
 
 ## HFLink
 
-Open **HFLink → Settings** to configure your station, audio and PTT. HFLink checks Windows Firewall on the first visit with bundled Mercury selected and offers to fix it if needed. After you select **Open receive window**, **Back to radio** keeps the session open so incoming HFLink messages can alert you while you use MeshCore. [HFLink setup](HFLINK.md) · [HFLink screenshots](SCREENSHOTS.md#hflink)
+Open **HFLink** with JS8Call running and its local TCP Network Message API enabled. HFLink uses the station settings from JS8Call. After opening HFLink once, **Back to radio** keeps listening in the background so incoming messages can alert you while you use MeshCore. [JS8Call setup and relay guide](HFLINK.md)
 
 ## Full app backup
 
-Choose **Settings** beside **Disconnect** in the main toolbar and select **Export full backup**. The password-encrypted file contains saved board profiles, local MeshCore messages and settings, Secure Coms secrets, maps, HFLink callsign and history, and the Mercury configuration saved in HFLink. You can export with no board connected.
+Choose **Settings** beside **Disconnect** in the main toolbar and select **Export full backup**. The password-encrypted file contains saved board profiles, local MeshCore messages and settings, Secure Coms secrets, maps, HFLink callsign, contacts, history and saved modem connection settings. You can export with no board connected.
 
 On the destination PC, open the same Settings dialog, disconnect any boards and choose **Restore backup**. MeshCore Command saves an encrypted recovery copy before replacing matching data. Verify the audio devices and PTT port on the destination PC and complete its firewall setup if prompted. To include or restore the identity and supported settings stored on the physical MeshCore radio, use **Encrypted backup** in the connected radio’s Settings page.
 

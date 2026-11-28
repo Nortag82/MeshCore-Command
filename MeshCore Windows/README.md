@@ -2,7 +2,7 @@
 
 This directory contains the C# replacement for the Python desktop host. The native Windows app includes a legacy-upgrade path. User testing has covered migration, backups, radio use, messaging and maps, flashing and installation.
 
-See the [experimental HFLink guide](../docs/HFLINK.md) for the native direct-messaging workflow, no-RF simulation and Mercury setup.
+See the [HFLink for JS8Call guide](../docs/HFLINK.md) for setup, the inbox, public chat, contacts and relay messages.
 
 The .NET 10 core includes companion stream framing, acknowledged queues, Wi-Fi discovery and reconnect, USB serial, a Windows Bluetooth GATT adapter with authenticated pairing, profile and credential compatibility, GPS input, offline map access and verified-helper map downloads. It also includes compatible encrypted backup, snapshot, validation and rollback code, firmware preflight checks, and installer release/download validation. The local endpoint supports radio frames, credentials, notifications, elevation and offline maps. Hardware transports, notifications, real map downloads and the desktop backup workflow require physical and end-to-end testing. Firmware flashing, update installation, production data migration, and other desktop API features are not complete.
 

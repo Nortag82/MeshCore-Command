@@ -1,9 +1,11 @@
 using Microsoft.Data.Sqlite;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace MeshCore.Windows.Core;
 
-public enum HfStatus { AwaitingApproval, Sending, Sent, Delivered, Unconfirmed, Failed, Cancelled, Received }
+public enum HfStatus { AwaitingApproval, Sending, Sent, Delivered, Unconfirmed, Failed, Cancelled, Received, Submitted }
 public sealed record HfMessage(Guid Id, string From, string To, string Text, string Requester, string RequesterCall,
     DateTimeOffset Created, DateTimeOffset Updated, bool Incoming, bool Simulated, HfStatus Status, string Detail = "",
     Guid Attempt = default, DateTimeOffset? Sent = null, DateTimeOffset? Delivered = null,
@@ -16,17 +18,21 @@ public sealed class HfLink
     private const string Operator = "local operator";
     internal const string DatabaseName = "hflink-native.sqlite3";
     internal const string ContactFormatPrefix = "contact-format:";
+    internal const string Js8SettingsKey = "js8call-settings";
     private const string HeardStationsSeeded = "heard-stations-seeded";
     private readonly string _connection;
     private readonly object _gate = new();
     private readonly SemaphoreSlim _modem = new(1);
     private readonly Func<HfStation, HfSimulation, IHfModem> _adapter;
+    private readonly bool? _stationSimulation;
 
-    public HfLink(string path, Func<HfStation, HfSimulation, IHfModem>? adapter = null, Action<HfModemStatus>? report = null)
+    public HfLink(string path, Func<HfStation, HfSimulation, IHfModem>? adapter = null, Action<HfModemStatus>? report = null,
+        bool? stationSimulation = null)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         _connection = new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString();
         _adapter = adapter ?? ((station, simulation) => station.Simulation ? new MockHfModem(simulation, report) : new MercuryHfModem(report));
+        _stationSimulation = stationSimulation;
         using var db = Open();
         InitializeDatabase(db);
         SeedHeardStations(db);
@@ -62,6 +68,86 @@ public sealed class HfLink
         }
         Write(db, "settings", HeardStationsSeeded, true, transaction);
         transaction.Commit();
+    }
+
+    public Js8LinkSettings Js8Settings()
+    {
+        lock (_gate)
+        {
+            using var db = Open();
+            return Read<Js8LinkSettings>(db, "settings", Js8SettingsKey) ?? new();
+        }
+    }
+
+    public void SaveJs8Settings(Js8LinkSettings settings)
+    {
+        settings = settings.Validate();
+        lock (_gate)
+        {
+            using var db = Open();
+            Write(db, "settings", Js8SettingsKey, settings);
+        }
+    }
+
+    public void HearJs8Stations(IEnumerable<HfHeardStation> contacts)
+    {
+        lock (_gate)
+        {
+            using var db = Open();
+            using var transaction = db.BeginTransaction();
+            foreach (var contact in contacts) RememberStation(db, contact, transaction);
+            transaction.Commit();
+        }
+    }
+
+    public HfMessage? RecordJs8Received(Js8Received received, HfMessageFormat format)
+    {
+        long second = received.Time.ToUnixTimeSeconds();
+        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes($"{received.From}\n{received.To}\n{second}\n{received.Text}"));
+        var id = new Guid(hash.AsSpan(0, 16));
+        lock (_gate)
+        {
+            using var db = Open();
+            string key = IncomingKey(false, received.To, received.From, id);
+            using var deleted = db.CreateCommand();
+            deleted.CommandText = "SELECT 1 FROM deleted_incoming WHERE id=$id";
+            deleted.Parameters.AddWithValue("$id", key);
+            if (deleted.ExecuteScalar() is not null || Read<HfMessage>(db, "messages", key) is not null) return null;
+            var message = new HfMessage(id, received.From, received.To, received.Text, "", "", received.Time,
+                DateTimeOffset.UtcNow, true, false, HfStatus.Received, Format: format);
+            Write(db, "messages", key, message);
+            return message;
+        }
+    }
+
+    public async Task SubmitJs8Async(string from, string destination, string text, HfMessageFormat format, Func<Task> send)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var message = new HfMessage(Guid.NewGuid(), from, destination, text, Operator, from, now, now,
+            false, false, HfStatus.Sending, Format: format);
+        lock (_gate)
+        {
+            using var db = Open();
+            SaveMessage(db, message, Operator, "JS8Call send approved");
+        }
+        try
+        {
+            await send();
+            lock (_gate)
+            {
+                using var db = Open();
+                SetStatus(db, message, HfStatus.Submitted, "Submitted to JS8Call for transmission.", Operator);
+            }
+        }
+        catch
+        {
+            lock (_gate)
+            {
+                using var db = Open();
+                SetStatus(db, message, HfStatus.Unconfirmed, "The JS8Call submission could not be verified.", Operator);
+            }
+            throw;
+        }
     }
 
     public IReadOnlyList<HfHeardStation> HeardStations(bool simulated)
@@ -172,7 +258,7 @@ public sealed class HfLink
             station.BroadcastPort is < 1 or > 65535 || station.BroadcastPort == station.ControlPort || station.BroadcastPort == station.DataPort ||
             station.ControlPort == station.DataPort || station.TimeoutSeconds is < 5 or > 600)
             throw new ArgumentException("Enter a valid host, three distinct TCP ports and a timeout of 5–600 seconds.");
-        station = station with { Callsign = HfStation.Call(station.Callsign), Host = host };
+        station = WithStationMode(station with { Callsign = HfStation.Call(station.Callsign), Host = host });
         lock (_gate)
         {
             using var db = Open();
@@ -472,7 +558,7 @@ public sealed class HfLink
     private static void CheckMode(HfStation station, bool allowLive)
     {
         HfStation.Call(station.Callsign);
-        if (!station.Simulation && !allowLive) throw new InvalidOperationException("This window allows simulation only.");
+        if (!station.Simulation && !allowLive) throw new InvalidOperationException("Live radio access is unavailable in this window.");
     }
 
     private void EnterModem()
@@ -487,7 +573,9 @@ public sealed class HfLink
         return db;
     }
 
-    private static HfStation LoadStation(SqliteConnection db) => Read<HfStation>(db, "settings", "station") ?? new();
+    private HfStation LoadStation(SqliteConnection db) => WithStationMode(Read<HfStation>(db, "settings", "station") ?? new());
+    private HfStation WithStationMode(HfStation station) => _stationSimulation is { } simulation && simulation != station.Simulation
+        ? station with { Simulation = simulation } : station;
     internal static string IncomingKey(bool simulation, string to, string from, Guid id) => $"in:{simulation}:{to}:{from}:{id:D}";
     private static HfMessage GetMessage(SqliteConnection db, Guid id) =>
         Read<HfMessage>(db, "messages", id.ToString("D")) ?? throw new ArgumentException("Outgoing message not found.");

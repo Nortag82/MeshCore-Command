@@ -14,7 +14,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Launcher build failed.' }
 Copy-Item -LiteralPath (Join-Path $launchPublish 'MeshCore Command.exe') -Destination (Join-Path $artifacts 'installer-launcher.exe') -Force
 Add-Type -AssemblyName System.IO.Compression
 $source = Join-Path $artifacts 'preview-publish'
-$files = Get-ChildItem -LiteralPath $source -File -Recurse | Sort-Object FullName
+$files = Get-ChildItem -LiteralPath $source -File -Recurse |
+    Where-Object { -not [IO.Path]::GetRelativePath($source, $_.FullName).StartsWith('mercury\', [StringComparison]::OrdinalIgnoreCase) } |
+    Sort-Object FullName
 $hashes = [ordered]@{}
 foreach ($file in $files) {
     $relative = [IO.Path]::GetRelativePath($source, $file.FullName).Replace('\','/')

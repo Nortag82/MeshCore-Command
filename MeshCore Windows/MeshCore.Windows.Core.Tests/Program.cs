@@ -54,6 +54,7 @@ if (args.Contains("--live-mercury-release-test"))
 }
 
 await HfLinkChecks.RunAsync();
+await Js8CallChecks.RunAsync();
 using (var http = new HttpClient(new MercuryReleaseTestHandler()))
 {
     var client = new MercuryReleaseClient(http);

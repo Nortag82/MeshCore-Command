@@ -22,7 +22,7 @@ public sealed record HfStation(string Callsign = "", string Host = "127.0.0.1",
     }
 }
 
-public enum HfMessageFormat { HfLink, MercuryChat, MercuryBroadcast }
+public enum HfMessageFormat { HfLink, MercuryChat, MercuryBroadcast, Js8Direct, Js8Public, Js8Relay }
 
 public sealed record HfPacket(string Protocol, string Type, Guid Id, Guid Attempt, string From, string To, string? Text)
 {

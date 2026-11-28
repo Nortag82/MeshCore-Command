@@ -10,6 +10,7 @@ internal static class Program
     {
         bool test = args.Contains("--installer-test");
         string[] forwarded = args.Where(argument => argument != "--installer-test").ToArray();
+        if (!test && forwarded.Length == 0) forwarded = ["--native-candidate"];
         try
         {
             string executable = VersionedInstall.ResolveCurrent(AppContext.BaseDirectory);
@@ -30,7 +31,7 @@ internal static class Program
                     VersionedInstall.RecoverPreviousAsync(AppContext.BaseDirectory).GetAwaiter().GetResult();
                     string executable = VersionedInstall.ResolveCurrent(AppContext.BaseDirectory);
                     var start = new ProcessStartInfo(executable) { WorkingDirectory = Path.GetDirectoryName(executable)!, UseShellExecute = false };
-                    foreach (string argument in args) start.ArgumentList.Add(argument);
+                    foreach (string argument in forwarded) start.ArgumentList.Add(argument);
                     using var process = Process.Start(start) ?? throw new InvalidOperationException("Windows did not start the previous application.");
                     return;
                 }

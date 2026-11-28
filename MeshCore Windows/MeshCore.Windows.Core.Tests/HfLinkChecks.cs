@@ -63,6 +63,7 @@ internal static class HfLinkChecks
                 reopened.Messages().Any(message => message.Id == cancelled), "Deleting a sent message preserves other messages");
             await CheckDeletedReceiveAsync(Path.Combine(directory.FullName, "backup-source", "hflink-native.sqlite3"));
             CheckHeardStationsMigration(Path.Combine(directory.FullName, "legacy-contacts.sqlite3"));
+            await CheckLiveStationModeAsync(Path.Combine(directory.FullName, "live-mode.sqlite3"));
 
             await LoopbackAsync(wrongReceipt: false);
             await LoopbackAsync(wrongReceipt: true);
@@ -124,6 +125,27 @@ internal static class HfLinkChecks
         Check(restored.HeardStations(true).Select(contact => contact.Callsign).Order().SequenceEqual(["G1XYZ", "G2XYZ"]),
             "Portable backup restores heard stations even after their messages were deleted");
         await restored.ReceiveAsync(false, (_, _) => throw new InvalidOperationException("A restored deletion was not preserved."), default);
+    }
+
+    private static async Task CheckLiveStationModeAsync(string path)
+    {
+        var previous = new HfLink(path);
+        var live = new HfLink(path, stationSimulation: false);
+        Check(live.Station() is { Callsign: "", Simulation: false, UseBundledMercury: true }, "New Windows stations use live Mercury");
+        previous.SaveStation(new HfStation("M0ABC", Simulation: true, ArqBandwidthHz: 500));
+        Guid testMessage = previous.Queue("G1XYZ", "Previously queued in simulation");
+        Check(live.Station() is { Callsign: "M0ABC", Simulation: false, ArqBandwidthHz: 500 },
+            "A saved simulation flag cannot keep an installed HFLink station in simulation");
+        try
+        {
+            await live.ApproveAndSendAsync(testMessage, HfSimulation.Acknowledged, allowLive: true, default);
+            throw new Exception("A simulated send was promoted to live operation.");
+        }
+        catch (InvalidOperationException error) when (error.Message.Contains("simulation mode changed", StringComparison.Ordinal)) { }
+        Check(live.Messages().Single() is { Simulated: true, Status: HfStatus.AwaitingApproval },
+            "Old simulated messages retain their original classification");
+        live.SaveStation(previous.Station());
+        Check(!previous.Station().Simulation, "A station saved by the installed app is stored as live");
     }
 
     private static void CheckHeardStationsMigration(string path)

@@ -358,10 +358,8 @@ internal sealed class PreviewWindow : Form
     private bool _updatePrompted;
     private byte[]? _pendingRestore;
     private FirmwareDialog? _firmwareDialog;
-    private HfLinkView? _hfLinkView;
+    private HfJs8View? _hfLinkView;
     private string? _hfLinkTestDirectory;
-    private bool _hfLinkTestApproveSend;
-    private int _hfLinkTestSendPrompts;
     private readonly string? _testReceipt, _testNonce;
     private readonly byte[]? _expectedRecords;
     private bool _startupReady;
@@ -664,7 +662,7 @@ internal sealed class PreviewWindow : Form
                                 await _web.CoreWebView2.ExecuteScriptAsync("window.hfLinkRadioFrame = document.querySelector('iframe'); " + openHfLink);
                                 for (int attempt = 0; attempt < 50 && _hfLinkView?.Visible != true; attempt++) await Task.Delay(100);
                                 var view = _hfLinkView;
-                                if (view is null || !view.Visible || view.FindForm() != this || _web.Visible || !CheckHfLinkButtonContrast(view) ||
+                                if (view is null || !view.Visible || view.FindForm() != this || _web.Visible ||
                                     view.Controls.Find("hfLinkBack", true).SingleOrDefault() is not Button back)
                                     Environment.ExitCode = 1;
                                 else
@@ -676,7 +674,7 @@ internal sealed class PreviewWindow : Form
                                     {
                                         await _web.CoreWebView2.ExecuteScriptAsync(openHfLink);
                                         for (int attempt = 0; attempt < 50 && !view.Visible; attempt++) await Task.Delay(100);
-                                        if (_hfLinkView != view || !view.Visible || !await CheckHfLinkReceiveAsync(view, back))
+                                        if (_hfLinkView != view || !view.Visible || !CheckJs8HfLink(view))
                                             Environment.ExitCode = 1;
                                         await ReturnToRadioAsync();
                                     }
@@ -1047,12 +1045,7 @@ internal sealed class PreviewWindow : Form
                 fixture.SaveStation(new HfStation("M0ABC"));
                 fixture.Queue("G1XYZ", "Example message from the local operator");
             }
-            _hfLinkView = new HfLinkView(directory, _experimentalRadio && !_smokeTest, ReturnToRadioAsync, NotifyHfLinkMessage,
-                _hfLinkTestDirectory is null ? null : _ =>
-                {
-                    _hfLinkTestSendPrompts++;
-                    return _hfLinkTestApproveSend;
-                });
+            _hfLinkView = new HfJs8View(directory, _experimentalRadio && !_smokeTest, ReturnToRadioAsync, NotifyHfLinkMessage);
             _content.Controls.Add(_hfLinkView);
         }
         _web.Hide();
@@ -1077,139 +1070,10 @@ internal sealed class PreviewWindow : Form
         _hfLinkView!.SelectMessage(message, clearFilter: true);
     }
 
-    private async Task<bool> CheckHfLinkReceiveAsync(HfLinkView view, Button back)
-    {
-        if (view.Controls.Find("hfLinkSettings", true).SingleOrDefault() is not Button { Text: "Settings" } ||
-            view.Controls.Find("hfLinkHeardStations", true).SingleOrDefault() is not Button { Enabled: true } ||
-            view.Controls.Find("hfLinkReceive", true).SingleOrDefault() is not Button { Enabled: true } receive ||
-            view.Controls.Find("hfLinkReceiveBroadcast", true).SingleOrDefault() is not Button { Enabled: true } ||
-            view.Controls.Find("hfLinkMessageFormat", true).SingleOrDefault() is not ComboBox format ||
-            !format.Items.Contains("Mercury Broadcast")) return false;
-        string? gallery = _candidate ? null : Environment.GetEnvironmentVariable("MCC_HFLINK_GALLERY_DIR");
-        if (view.Controls.Find("hfLinkWaterfallToggle", true).SingleOrDefault() is not Button waterfall ||
-            view.Controls.Find("hfLinkWaterfallPlot", true).SingleOrDefault() is not HfWaterfallView { Visible: true } plot ||
-            view.Controls.Find("hfLinkSimulationOutcome", true).SingleOrDefault() is not ComboBox { Visible: true } simulation ||
-            view.Controls.Find("hfLinkDeleteMessage", true).SingleOrDefault() is not Button { Enabled: true } delete ||
-            waterfall.Text != "Hide waterfall")
-            return false;
-        var spectrum = new HfWaterfallSpectrum(48000);
-        for (int index = 0; index < 4800; index++)
-            spectrum.Add((float)(0.25 * Math.Sin(2 * Math.PI * 1500 * index / 48000)));
-        if (spectrum.TakeFrame() is not { } frame ||
-            Math.Abs(Array.IndexOf(frame, frame.Max()) * spectrum.BinHz - 1500) > spectrum.BinHz ||
-            Math.Abs(frame.Max() - 20 * Math.Log10(0.25)) > 0.5)
-            return false;
-        waterfall.PerformClick();
-        if (plot.Visible || waterfall.Text != "Show waterfall") return false;
-        waterfall.PerformClick();
-        if (!plot.Visible || waterfall.Text != "Hide waterfall") return false;
-        await Task.Delay(string.IsNullOrEmpty(gallery) ? 250 : 3500);
-        using var settings = view.CreateSettingsDialog();
-        if (settings.Controls.Find("hfLinkMercuryVersion", true).SingleOrDefault() is not Label version ||
-            version.Text != $"Bundled Mercury {BundledMercury.PackageVersion}" ||
-            settings.Controls.Find("hfLinkArqBandwidth", true).SingleOrDefault() is not ComboBox { SelectedIndex: 0 } bandwidth ||
-            !bandwidth.Items.Cast<string>().SequenceEqual(["Use modem setting", "500 Hz (narrow)", "2300 Hz", "2750 Hz"]) ||
-            settings.Controls.Find("hfLinkBroadcastMode", true).SingleOrDefault() is not ComboBox { SelectedItem: "DATAC3" } ||
-            settings.Controls.Find("hfLinkMercuryUpdateCheck", true).SingleOrDefault() is not Button) return false;
-        if (!string.IsNullOrEmpty(gallery))
-        {
-            Directory.CreateDirectory(gallery);
-            CaptureControl(view, Path.Combine(gallery, "hflink-waterfall.png"));
-            settings.Show(this);
-            await Task.Yield();
-            CaptureControl(settings, Path.Combine(gallery, "hflink-settings.png"));
-            settings.Close();
-        }
-        receive.PerformClick();
-        if (view.Controls.Find("hfLinkSessionPhase", true).SingleOrDefault() is not Label { Text: "Listening (simulation)" })
-            return false;
-        back.PerformClick();
-        if (!_web.Visible || view.Visible || waterfall.Text != "Show waterfall") return false;
-        Form? notification = null;
-        for (int attempt = 0; attempt < 50 && notification is null; attempt++)
-        {
-            await Task.Delay(100);
-            notification = Application.OpenForms.Cast<Form>().FirstOrDefault(form =>
-                form.Text == "MeshCore Command notification" &&
-                form.Controls.OfType<Label>().Any(label => label.Text == "HFLink simulation"));
-        }
-        if (notification is null || !_web.Visible) return false;
-        if (!string.IsNullOrEmpty(gallery))
-        {
-            using var preview = new MemoryStream();
-            await _web.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, preview);
-            preview.Position = 0;
-            using var dashboard = new Bitmap(preview);
-            using var overlay = new Bitmap(notification.Width, notification.Height);
-            notification.DrawToBitmap(overlay, new Rectangle(Point.Empty, overlay.Size));
-            using (var graphics = Graphics.FromImage(dashboard))
-                graphics.DrawImageUnscaled(overlay, dashboard.Width - overlay.Width - 16, dashboard.Height - overlay.Height - 16);
-            dashboard.Save(Path.Combine(gallery, "hflink-notification.png"));
-        }
-        notification.Close();
-        var fixture = new HfLink(Path.Combine(_hfLinkTestDirectory!, "hflink-native.sqlite3"));
-        var incoming = fixture.Messages().Where(message => message.Incoming).ToArray();
-        if (incoming.Length != 1) return false;
-        using (var heard = new HfHeardStationsWindow(simulated: true))
-        {
-            heard.SetStations(fixture.HeardStations(simulated: true));
-            if (heard.Controls.Find("hfLinkHeardStationsList", true).SingleOrDefault() is not DataGridView grid ||
-                grid.Rows.Count != 1 || grid.Rows[0].Cells[0].Value is not string callsign || callsign != incoming[0].From)
-                return false;
-        }
-        ShowHfLink();
-        view.SelectMessage(incoming[0], clearFilter: true);
-        if (!string.IsNullOrEmpty(gallery))
-            CaptureControl(view, Path.Combine(gallery, "hflink.png"));
-        await view.StopAsync();
-        if (!view.Visible || _web.Visible || !delete.Enabled || fixture.Messages().Count(message => message.Incoming) != 1)
-            return false;
-        var station = fixture.Station();
-        fixture.SaveStation(station with { Simulation = false });
-        view.EnterView();
-        bool hiddenInLiveMode = !simulation.Visible;
-        fixture.SaveStation(station);
-        view.EnterView();
-        if (!hiddenInLiveMode || view.Controls.Find("hfLinkDestination", true).SingleOrDefault() is not TextBox destination ||
-            view.Controls.Find("hfLinkDraft", true).SingleOrDefault() is not TextBox draft ||
-            view.Controls.Find("hfLinkSendDraft", true).SingleOrDefault() is not Button { Enabled: true } send) return false;
-        const string text = "One-step HFLink send";
-        destination.Text = "G1XYZ";
-        draft.Text = text;
-        simulation.SelectedIndex = (int)HfSimulation.Acknowledged;
-        send.PerformClick();
-        if (_hfLinkTestSendPrompts != 1 || draft.Text != text || fixture.Messages().Any(message => message.Text == text))
-            return false;
-        _hfLinkTestApproveSend = true;
-        send.PerformClick();
-        for (int attempt = 0; attempt < 50 && !send.Enabled; attempt++) await Task.Delay(50);
-        return _hfLinkTestSendPrompts == 2 && draft.Text.Length == 0 &&
-            fixture.Messages().SingleOrDefault(message => message.Text == text) is { Status: HfStatus.Delivered, Simulated: true };
-    }
-
-    private static void CaptureControl(Control control, string path)
-    {
-        using var bitmap = new Bitmap(control.Width, control.Height);
-        control.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
-        bitmap.Save(path);
-    }
-
-    private static bool CheckHfLinkButtonContrast(HfLinkView view)
-    {
-        if (SystemInformation.HighContrast) return true;
-        if (view.Controls.Find("hfLinkStopOperation", true).SingleOrDefault() is not Button { Enabled: false } button ||
-            button.Width < 3 || button.Height < 3) return false;
-        using var bitmap = new Bitmap(button.Width, button.Height);
-        button.DrawToBitmap(bitmap, new Rectangle(Point.Empty, button.Size));
-        // Sample the painted interior. The background and border are both deliberately dark.
-        for (int y = 2; y < bitmap.Height - 2; y++)
-            for (int x = 2; x < bitmap.Width - 2; x++)
-            {
-                Color pixel = bitmap.GetPixel(x, y);
-                if (pixel.R >= 125 && pixel.G >= 140 && pixel.B >= 150) return true;
-            }
-        return false;
-    }
+    private static bool CheckJs8HfLink(HfJs8View view) =>
+        view.Controls.Find("hfLinkJs8Settings", true).SingleOrDefault() is Button &&
+        view.Controls.Find("hfLinkJs8Tabs", true).SingleOrDefault() is TabControl tabs &&
+        tabs.TabPages.Cast<TabPage>().Select(tab => tab.Text).SequenceEqual(["Inbox", "Public", "Contacts", "Earlier HFLink history"]);
 
     private async Task ReturnToRadioAsync()
     {

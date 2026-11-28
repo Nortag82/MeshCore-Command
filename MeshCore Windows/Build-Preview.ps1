@@ -22,8 +22,6 @@ try {
     if (-not (Test-Path -LiteralPath $flasher) -or (Get-FileHash -LiteralPath $flasher -Algorithm SHA256).Hash.ToLowerInvariant() -ne '9fc8f3ace81e3180d2ba0b72c31a81e3f47ac580e3c9667954b58016d7a3fd87') {
         & (Join-Path $PSScriptRoot 'Fetch-EspFlash.ps1')
     }
-    & (Join-Path $PSScriptRoot 'Fetch-Mercury.ps1')
-    & (Join-Path $PSScriptRoot 'Test-MercuryFirewall.ps1')
     & $dotnet run --project (Join-Path $PSScriptRoot 'MeshCore.Windows.Core.Tests') --configuration Release
     if ($LASTEXITCODE -ne 0) { throw 'Native core tests failed.' }
     & $dotnet publish (Join-Path $PSScriptRoot 'MeshCore.Windows.Preview') --configuration Release --runtime win-x64 --self-contained true `
@@ -32,8 +30,6 @@ try {
     $versionXml = [xml](Get-Content -LiteralPath (Join-Path $PSScriptRoot 'NativeVersion.props') -Raw)
     $expectedVersion = [string]$versionXml.Project.PropertyGroup.MccVersion
     if ((Get-Item -LiteralPath (Join-Path $output 'MeshCore.Windows.Preview.exe')).VersionInfo.FileVersion -ne "$expectedVersion.0") { throw 'Native app version does not match the installer version.' }
-    $mercury = Start-Process -FilePath (Join-Path $output 'MeshCore.Windows.Preview.exe') -ArgumentList '--verify-mercury' -WindowStyle Hidden -Wait -PassThru
-    if ($mercury.ExitCode -ne 0) { throw 'Bundled Mercury verification failed.' }
     $listenerRetry = Start-Process -FilePath (Join-Path $output 'MeshCore.Windows.Preview.exe') -ArgumentList '--listener-retry-test' -WindowStyle Hidden -Wait -PassThru
     if ($listenerRetry.ExitCode -ne 0) { throw 'Listener retry test failed.' }
     $firmware = Start-Process -FilePath (Join-Path $output 'MeshCore.Windows.Preview.exe') -ArgumentList '--verify-firmware' -WindowStyle Hidden -Wait -PassThru
