@@ -56,7 +56,8 @@ internal sealed class HfJs8View : UserControl
         _destination.Text = drafts.Destination;
         _draft.Text = drafts.Direct;
         _broadcastDraft.Text = drafts.Broadcast;
-        _connectAllowed = connectAllowed;
+        string? phy = Js8PhyLab.Executable();
+        _connectAllowed = connectAllowed && phy is null;
         _received = received;
         _showContactMap = showContactMap;
         Dock = DockStyle.Fill;
@@ -90,8 +91,15 @@ internal sealed class HfJs8View : UserControl
         });
         _stopTx = Button("Stop TX", StopTransmissionAsync);
         _dial = Button("Dial…", SetDialAsync);
-        layout.Controls.Add(Row(back, new Label { Text = "HFLink", AutoSize = true, Anchor = AnchorStyles.Left },
-            openBroadcast, settings, _dial, _installJs8, _waterfallToggle, _activity, _stopTx), 0, 0);
+        var toolbar = Row(back, new Label { Text = "HFLink", AutoSize = true, Anchor = AnchorStyles.Left },
+            openBroadcast, settings, _dial, _installJs8, _waterfallToggle, _activity, _stopTx);
+        if (phy is not null)
+        {
+            var lab = Button("HF Lab", () => { Js8PhyLab.Open(this, phy, _settings.Station?.Input); return Task.CompletedTask; });
+            lab.Name = "hfLinkPhyLab";
+            toolbar.Controls.Add(lab);
+        }
+        layout.Controls.Add(toolbar, 0, 0);
         layout.Controls.Add(_status, 0, 1);
         layout.Controls.Add(_waterfall, 0, 2);
         _tabs.Name = "hfLinkJs8Tabs";
@@ -143,7 +151,8 @@ internal sealed class HfJs8View : UserControl
         SendOnEnter(_draft, _send);
         SendOnEnter(_broadcastDraft, _broadcast);
         HfLinkTheme.Apply(this);
-        SetStatus(_connectAllowed ? "Configure your HF station in Settings." : "JS8Call connection is disabled in this test or preview.");
+        SetStatus(phy is not null ? "HF Lab supports receive only. Live transmission is disabled for this session." :
+            _connectAllowed ? "Configure your HF station in Settings." : "JS8Call connection is disabled in this test or preview.");
         RefreshRows();
     }
 

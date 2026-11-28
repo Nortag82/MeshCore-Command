@@ -23,26 +23,29 @@ internal sealed class HfWaterfallSpectrum(int sampleRate)
 
     public void AddAudio(ReadOnlySpan<byte> buffer, WaveFormat format)
     {
+        for (int offset = 0; offset + format.BlockAlign <= buffer.Length; offset += format.BlockAlign)
+            Add(ReadMonoFrame(buffer[offset..], format));
+    }
+
+    internal static float ReadMonoFrame(ReadOnlySpan<byte> frame, WaveFormat format)
+    {
         int bytesPerChannel = format.BitsPerSample / 8;
         bool floatingPoint = format.Encoding == WaveFormatEncoding.IeeeFloat;
-        for (int offset = 0; offset + format.BlockAlign <= buffer.Length; offset += format.BlockAlign)
+        float sum = 0;
+        for (int channel = 0; channel < format.Channels; channel++)
         {
-            float sum = 0;
-            for (int channel = 0; channel < format.Channels; channel++)
+            var bytes = frame[(channel * bytesPerChannel)..];
+            float sample = format.BitsPerSample switch
             {
-                var bytes = buffer[(offset + channel * bytesPerChannel)..];
-                float sample = format.BitsPerSample switch
-                {
-                    16 => BinaryPrimitives.ReadInt16LittleEndian(bytes) / 32768f,
-                    24 => ((bytes[0] << 8) | (bytes[1] << 16) | (bytes[2] << 24)) / 2147483648f,
-                    32 when floatingPoint => BinaryPrimitives.ReadSingleLittleEndian(bytes),
-                    32 => BinaryPrimitives.ReadInt32LittleEndian(bytes) / 2147483648f,
-                    _ => (bytes[0] - 128) / 128f
-                };
-                if (float.IsFinite(sample)) sum += Math.Clamp(sample, -1, 1);
-            }
-            Add(sum / format.Channels);
+                16 => BinaryPrimitives.ReadInt16LittleEndian(bytes) / 32768f,
+                24 => ((bytes[0] << 8) | (bytes[1] << 16) | (bytes[2] << 24)) / 2147483648f,
+                32 when floatingPoint => BinaryPrimitives.ReadSingleLittleEndian(bytes),
+                32 => BinaryPrimitives.ReadInt32LittleEndian(bytes) / 2147483648f,
+                _ => (bytes[0] - 128) / 128f
+            };
+            if (float.IsFinite(sample)) sum += Math.Clamp(sample, -1, 1);
         }
+        return sum / format.Channels;
     }
 
     public void Add(float sample)

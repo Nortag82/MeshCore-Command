@@ -1113,7 +1113,8 @@ internal sealed class PreviewWindow : Form
 
     private static bool CheckJs8HfLink(HfJs8View view)
     {
-        if (view.Controls.Find("hfLinkJs8Settings", true).SingleOrDefault() is not Button ||
+        if ((Js8PhyLab.Executable() is not null) != (view.Controls.Find("hfLinkPhyLab", true).SingleOrDefault() is Button) ||
+            view.Controls.Find("hfLinkJs8Settings", true).SingleOrDefault() is not Button ||
             view.Controls.Find("hfLinkJs8Tabs", true).SingleOrDefault() is not TabControl tabs ||
             !tabs.TabPages.Cast<TabPage>().Select(tab => tab.Text).SequenceEqual(["Inbox", "Public", "Band activity", "Contacts", "Earlier HFLink history"]) ||
             view.Controls.Find("hfLinkOpenBroadcast", true).SingleOrDefault() is not Button openBroadcast ||
