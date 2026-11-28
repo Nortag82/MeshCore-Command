@@ -16,12 +16,14 @@ Add-Type -AssemblyName System.IO.Compression
 $source = Join-Path $artifacts 'preview-publish'
 $files = Get-ChildItem -LiteralPath $source -File -Recurse |
     Where-Object { -not [IO.Path]::GetRelativePath($source, $_.FullName).StartsWith('mercury\', [StringComparison]::OrdinalIgnoreCase) } |
+    Where-Object { $env:MCC_JS8_RUNTIME_DIR -or -not [IO.Path]::GetRelativePath($source, $_.FullName).StartsWith('js8-phy\', [StringComparison]::OrdinalIgnoreCase) } |
     Sort-Object FullName
 $hashes = [ordered]@{}
 foreach ($file in $files) {
     $relative = [IO.Path]::GetRelativePath($source, $file.FullName).Replace('\','/')
     $hashes[$relative] = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
 }
+if ($env:MCC_JS8_RUNTIME_DIR -and !$hashes.Contains('js8-phy/meshcore-js8-phy.exe')) { throw 'The installer package is missing the bundled JS8 worker.' }
 $package = Join-Path $artifacts 'installer-payload.zip'
 $stream = [IO.File]::Open($package, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::None)
 try {

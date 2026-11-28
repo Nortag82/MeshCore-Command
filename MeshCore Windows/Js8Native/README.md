@@ -20,7 +20,13 @@ dotnet run --project './MeshCore Windows/MeshCore.Windows.Core.Tests' -c Release
 
 In the same shell, run `& './MeshCore Windows/Build-Preview.ps1'` with the usual [Windows build prerequisites](../README.md). Start `MeshCore Windows/artifacts/preview-publish/MeshCore.Windows.Preview.exe` from that shell. **HFLink → HF Lab** opens the receiver. Choose a mode and decode an aligned WAV containing one slot or less, or choose **Start receive** to use the radio input selected in HFLink Settings. The preferred offset helps the decoder prioritise candidates. HF Lab is receive-only.
 
-Live capture uses Windows shared audio, converts it to mono at 12 kHz, and waits for a complete slot aligned to the PC's UTC clock. It then passes a temporary WAV to the worker. The input meter shows digital audio level in dBFS. The receiver retries the current slot once if the worker exits or stops responding. It keeps up to two pending slots and drops the oldest pending slot if decoding falls behind. **Stop receive** closes the capture and worker.
+Live capture uses Windows shared audio, converts it to mono at 12 kHz, and waits for a complete slot aligned to the PC's UTC clock. It then passes a temporary WAV to the worker. The input meter shows digital audio level in dBFS. The receiver retries the current slot once if the worker exits or stops responding. It keeps up to two pending slots and drops the oldest pending slot if decoding falls behind. **Stop receive** closes the capture and worker. The table displays legacy JS8 text and callsigns where the frame contains them. Longer transmissions may appear as several rows.
+
+## Installable Windows preview
+
+Stage the pinned runtime into a new directory with `Stage-Runtime.ps1 -Worker <exe> -Output <directory>`. Set `MCC_JS8_RUNTIME_DIR` to that directory before running `Build-Native-Installer.ps1`. The installed worker has its own DLLs and is discovered automatically by **HFLink → HF Lab**. Build and publish the [corresponding sources](THIRD-PARTY.md) with `Build-SourceBundle.ps1` alongside the installer. The source manifest fixes the toolchain library versions for this preview. Clear `MCC_JS8_RUNTIME_DIR` when building a stable installer without the worker.
+
+Use **HF Lab → Start receive** and select the radio's Windows audio input. No JS8Call desktop install is needed for that path. For operators who need the existing transmit features, **Legacy JS8…** switches to the separately configured legacy modem. Opening HF Lab again stops the legacy modem before starting native receive.
 
 ## Local IPC
 
@@ -30,6 +36,6 @@ Send one UTF-8 JSON object per line on stdin. Read one reply per line on stdout.
 | --- | --- | --- |
 | `status` | `protocol` (1), `id`, `operation` | Pinned upstream commit, sample rate and file-only capability |
 | `encodeWav` | Common fields plus `path`, `mode`, `offsetHz`, `frame`, `type` | Writes a new WAV with one slot and returns an empty result |
-| `decodeWav` | Common fields plus `path`, `mode`, `offsetHz` | Decoded raw frames with frame type, offset, SNR and timing offset |
+| `decodeWav` | Common fields plus `path`, `mode`, `offsetHz` | Raw frames, legacy text and addressing where available, frame type, offset, SNR and timing offset |
 
 Modes are Normal (0), Fast (1), Turbo (2), Slow (4) and Ultra (8). The raw frame is exactly 12 characters from `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-+`. The frame type is 0–7. This API operates below legacy Varicode and the future JS8-R application protocol.

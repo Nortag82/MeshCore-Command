@@ -1,16 +1,21 @@
 using System.ComponentModel;
 using System.Text.Json;
 using MeshCore.Windows.Core;
+using NAudio.CoreAudioApi;
 
 namespace MeshCore.Windows.Preview;
 
 internal static class Js8PhyLab
 {
+    private sealed record Input(string Id, string Label) { public override string ToString() => Label; }
+
     internal static string? Executable()
     {
         string? path = Environment.GetEnvironmentVariable("MCC_JS8_PHY");
-        return Path.IsPathFullyQualified(path ?? "") && File.Exists(path) ? path : null;
+        if (Path.IsPathFullyQualified(path ?? "") && File.Exists(path)) return path;
+        return File.Exists(BundledPath) ? BundledPath : null;
     }
+    internal static string BundledPath => Path.Combine(AppContext.BaseDirectory, "js8-phy", "meshcore-js8-phy.exe");
 
     internal static void Open(Control owner, string executable, string? radioInput)
     {
@@ -23,16 +28,35 @@ internal static class Js8PhyLab
         mode.SelectedIndex = 0;
         var offset = new NumericUpDown { Minimum = 100, Maximum = 3500, Value = 1500, Width = 75, AccessibleName = "Preferred audio offset in hertz" };
         var decode = new HfLinkTheme.ActionButton { Text = "Decode WAV…", AutoSize = true };
-        var receive = new HfLinkTheme.ActionButton { Text = "Start receive", AutoSize = true, Enabled = !string.IsNullOrWhiteSpace(radioInput) };
+        var audio = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 245, AccessibleName = "Radio audio input" };
+        audio.Items.Add("Choose radio audio input");
+        audio.SelectedIndex = 0;
+        try
+        {
+            using var devices = new MMDeviceEnumerator();
+            foreach (var device in devices.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active))
+            {
+                using (device)
+                {
+                    var item = new Input(device.ID, device.FriendlyName);
+                    audio.Items.Add(item);
+                    if (item.Id == radioInput) audio.SelectedItem = item;
+                }
+            }
+        }
+        catch (System.Runtime.InteropServices.COMException) { }
+        var receive = new HfLinkTheme.ActionButton { Text = "Start receive", AutoSize = true, Enabled = audio.SelectedItem is Input };
+        audio.SelectedIndexChanged += (_, _) => receive.Enabled = audio.SelectedItem is Input;
         var inputLevel = new Label { AutoSize = true, Anchor = AnchorStyles.Left };
         var status = new Label { Text = receive.Enabled ? "Choose file audio or start receiving from the HFLink input." :
-            "Choose file audio or select a radio input in HFLink Settings.", AutoSize = true };
+            "Choose file audio or select your radio input.", AutoSize = true };
         var rows = new DataGridView { Dock = DockStyle.Fill, ReadOnly = true, AllowUserToAddRows = false,
             AllowUserToDeleteRows = false, RowHeadersVisible = false };
-        foreach (var label in new[] { "Slot UTC", "Raw frame", "Type", "Offset (Hz)", "SNR (dB)", "Timing offset (s)" })
-            rows.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = label, AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill });
+        foreach (var label in new[] { "Slot UTC", "From", "To", "Decoded text", "Offset (Hz)", "SNR (dB)" })
+            rows.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = label, AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
+                FillWeight = label == "Decoded text" ? 250 : 80 });
         var controls = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
-        controls.Controls.AddRange([mode, offset, new Label { Text = "Hz", AutoSize = true }, decode, receive, inputLevel]);
+        controls.Controls.AddRange([mode, offset, new Label { Text = "Hz", AutoSize = true }, audio, decode, receive, inputLevel]);
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 3, ColumnCount = 1, Padding = new Padding(12) };
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -53,10 +77,11 @@ internal static class Js8PhyLab
                 live.Cancel();
                 return;
             }
+            if (audio.SelectedItem is not Input input) return;
             using var listening = CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
             live = listening;
             receive.Text = "Stop receive";
-            decode.Enabled = mode.Enabled = offset.Enabled = false;
+            decode.Enabled = mode.Enabled = offset.Enabled = audio.Enabled = false;
             rows.Rows.Clear();
             int selected = modes[mode.SelectedIndex], preferredOffset = (int)offset.Value;
             var radioStatus = new Progress<string>(message =>
@@ -75,7 +100,7 @@ internal static class Js8PhyLab
             });
             try
             {
-                await Task.Run(() => Js8LiveReceiver.RunAsync(executable, radioInput!, selected, preferredOffset,
+                await Task.Run(() => Js8LiveReceiver.RunAsync(executable, input.Id, selected, preferredOffset,
                     radioStatus, level, results, listening.Token));
             }
             catch (OperationCanceledException) when (listening.IsCancellationRequested)
@@ -94,7 +119,8 @@ internal static class Js8PhyLab
                 {
                     inputLevel.Text = "";
                     receive.Text = "Start receive";
-                    receive.Enabled = decode.Enabled = mode.Enabled = offset.Enabled = true;
+                    decode.Enabled = mode.Enabled = offset.Enabled = audio.Enabled = true;
+                    receive.Enabled = audio.SelectedItem is Input;
                 }
             }
         };
@@ -103,7 +129,7 @@ internal static class Js8PhyLab
             if (file.ShowDialog(dialog) != DialogResult.OK) return;
             int selected = modes[mode.SelectedIndex];
             decode.Enabled = false;
-            receive.Enabled = false;
+            receive.Enabled = audio.Enabled = false;
             rows.Rows.Clear();
             status.Text = "Decoding file…";
             try
@@ -123,8 +149,8 @@ internal static class Js8PhyLab
             {
                 if (!dialog.IsDisposed)
                 {
-                    decode.Enabled = true;
-                    receive.Enabled = !string.IsNullOrWhiteSpace(radioInput);
+                    decode.Enabled = audio.Enabled = true;
+                    receive.Enabled = audio.SelectedItem is Input;
                 }
             }
         };
@@ -133,7 +159,10 @@ internal static class Js8PhyLab
         {
             foreach (var frame in frames)
             {
-                rows.Rows.Add(slot, frame.Frame, frame.Type, frame.OffsetHz.ToString("0.0"), frame.Snr, frame.TimeOffsetSeconds.ToString("0.000"));
+                string text = string.IsNullOrEmpty(frame.Text) ? frame.Frame : frame.Text;
+                if (frame.LowConfidence) text = $"[{text}]";
+                int row = rows.Rows.Add(slot, frame.From, frame.To, text, frame.OffsetHz.ToString("0.0"), frame.Snr);
+                rows.Rows[row].Cells[3].ToolTipText = $"Frame {frame.Frame} · timing {frame.TimeOffsetSeconds:0.000} s";
                 if (rows.Rows.Count > 500) rows.Rows.RemoveAt(0);
             }
         }

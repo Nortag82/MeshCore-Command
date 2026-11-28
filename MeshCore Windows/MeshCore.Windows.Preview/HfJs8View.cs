@@ -14,7 +14,7 @@ internal sealed class HfJs8View : UserControl
     private readonly Js8ManagedModem _modem = new();
     private readonly HfWaterfallView _waterfall = new();
     private readonly RowStyle _waterfallRow = new(SizeType.Absolute, 162);
-    private readonly bool _connectAllowed;
+    private bool _connectAllowed;
     private readonly Action<HfMessage> _received;
     private readonly TabControl _tabs = new() { Dock = DockStyle.Fill };
     private readonly TabPage _inbox = new("Inbox"), _public = new("Public"), _contacts = new("Contacts"), _history = new("Earlier HFLink history");
@@ -95,9 +95,32 @@ internal sealed class HfJs8View : UserControl
             openBroadcast, settings, _dial, _installJs8, _waterfallToggle, _activity, _stopTx);
         if (phy is not null)
         {
-            var lab = Button("HF Lab", () => { Js8PhyLab.Open(this, phy, _settings.Station?.Input); return Task.CompletedTask; });
+            var lab = Button("HF Lab", async () =>
+            {
+                if (_sending || _activity.Text == "TX active") throw new InvalidOperationException("Wait for transmission to finish before opening HF Lab.");
+                if (_connectAllowed)
+                {
+                    await StopAsync();
+                    _connectAllowed = false;
+                    RefreshWaterfall();
+                    SetActions();
+                }
+                SetStatus("HF Lab is ready for receive-only operation.");
+                Js8PhyLab.Open(this, phy, _settings.Station?.Input);
+            });
             lab.Name = "hfLinkPhyLab";
             toolbar.Controls.Add(lab);
+            if (connectAllowed && string.Equals(phy, Js8PhyLab.BundledPath, StringComparison.OrdinalIgnoreCase))
+                toolbar.Controls.Add(Button("Legacy JS8…", () =>
+                {
+                    if (_connectAllowed) return Task.CompletedTask;
+                    if (MessageBox.Show(this, "Switch to the legacy JS8Call modem and its configured radio settings?", "Legacy JS8",
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+                        return Task.CompletedTask;
+                    _connectAllowed = true;
+                    EnterView();
+                    return Task.CompletedTask;
+                }));
         }
         layout.Controls.Add(toolbar, 0, 0);
         layout.Controls.Add(_status, 0, 1);

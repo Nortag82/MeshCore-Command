@@ -34,6 +34,8 @@ Open **HFLink** once to start listening. **Back to radio** keeps HFLink connecte
 
 [JS8Call setup and relay guide](docs/HFLINK.md) · [HFLink guide for Windows 2.0.59](https://github.com/Nortag82/MeshCore-Command/blob/v2.0.59/docs/HFLINK.md)
 
+The [JS8-R Windows receive preview](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.64-js8-r.1) bundles the headless decoder for **HFLink → HF Lab**. See the [JS8-R development notes](docs/js8-r/ARCHITECTURE.md) for the remaining modem and protocol work.
+
 ## How Secure Coms protects messages and maps
 
 MeshCore already encrypts direct messages. Secure Coms adds a second, independent **AES-256-GCM** layer in the Command apps: the sender encrypts the content before passing it to the companion radio, and the receiving Command app decrypts it using the shared secret. Secure Situation Map updates, including shared markers, areas and GPS positions, use the same app-to-app transport. Ordinary channel and direct messages are not automatically covered by this additional layer. See [MeshCore's payload documentation](https://github.com/meshcore-dev/MeshCore/blob/main/docs/payloads.md) for the underlying packet formats.

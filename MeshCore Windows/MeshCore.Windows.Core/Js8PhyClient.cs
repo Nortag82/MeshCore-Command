@@ -4,7 +4,8 @@ using System.Text.Json;
 
 namespace MeshCore.Windows.Core;
 
-public sealed record Js8PhyFrame(string Frame, int Type, double OffsetHz, int Snr, double TimeOffsetSeconds);
+public sealed record Js8PhyFrame(string Frame, int Type, double OffsetHz, int Snr, double TimeOffsetSeconds,
+    string Text = "", string From = "", string To = "", bool Heartbeat = false, bool LowConfidence = false);
 
 public sealed class Js8PhyClient : IAsyncDisposable
 {

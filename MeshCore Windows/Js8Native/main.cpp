@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "JS8_Include/commons.h"
 #include "JS8_Mode/JS8.h"
+#include "JS8_Mode/DecodedText.h"
 
 #include <QCoreApplication>
 #include <QDataStream>
@@ -145,8 +146,12 @@ QJsonArray decodeWav(const QJsonObject& request, const Mode& mode)
     JS8::Decoder decoder;
     QObject::connect(&decoder, &JS8::Decoder::decodeEvent, &loop, [&](const JS8::Event::Variant& event) {
         if (const auto* decoded = std::get_if<JS8::Event::Decoded>(&event)) {
+            const DecodedText legacy(*decoded);
             frames.append(QJsonObject{{"frame", QString::fromStdString(decoded->data)}, {"type", decoded->type},
-                {"offsetHz", decoded->frequency}, {"snr", decoded->snr}, {"timeOffsetSeconds", decoded->xdt}});
+                {"offsetHz", decoded->frequency}, {"snr", decoded->snr}, {"timeOffsetSeconds", decoded->xdt},
+                {"text", legacy.message()}, {"from", legacy.directedMessage().value(0, legacy.compoundCall())},
+                {"to", legacy.directedMessage().value(1)}, {"heartbeat", legacy.isHeartbeat()},
+                {"lowConfidence", legacy.isLowConfidence()}});
         } else if (std::holds_alternative<JS8::Event::DecodeFinished>(event)) loop.quit();
     });
     decoder.start(QThread::NormalPriority);

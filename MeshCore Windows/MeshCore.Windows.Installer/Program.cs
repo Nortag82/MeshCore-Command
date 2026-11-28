@@ -86,6 +86,12 @@ internal static class Program
                 InstallAsync(root, new Progress<string>()).GetAwaiter().GetResult();
                 string executable = VersionedInstall.ResolveCurrent(root);
                 if (!File.Exists(executable) || !File.Exists(Path.Combine(root, LauncherName))) throw new IOException("Installer test did not create both executables.");
+                string phy = Path.Combine(Path.GetDirectoryName(executable)!, "js8-phy", "meshcore-js8-phy.exe");
+                if (File.Exists(phy))
+                {
+                    var worker = Js8PhyClient.OpenAsync(phy).GetAwaiter().GetResult();
+                    worker.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                }
                 string shortcuts = Path.Combine(root, "test-programs"); Directory.CreateDirectory(shortcuts);
                 string link = PreviewShortcut.Create(shortcuts, Path.Combine(root, LauncherName));
                 object shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!;

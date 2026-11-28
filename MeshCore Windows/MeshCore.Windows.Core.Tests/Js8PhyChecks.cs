@@ -37,7 +37,8 @@ internal static class Js8PhyChecks
             if (Environment.GetEnvironmentVariable("MCC_JS8_UPSTREAM_FIXTURE") is { Length: > 0 } fixture)
             {
                 var received = await worker.DecodeWavAsync(fixture, 0, 1500, stop.Token);
-                if (received.Length == 0) throw new InvalidDataException("The upstream Normal sample produced no decoded frames.");
+                if (!received.Any(frame => frame.Heartbeat && frame.Text.Length > 0 && frame.Text != frame.Frame))
+                    throw new InvalidDataException("The upstream Normal sample did not produce a readable legacy heartbeat.");
                 Console.WriteLine($"Offline upstream sample recovered {received.Length} JS8 frame(s).");
             }
             Console.WriteLine("The native JS8 PHY round-tripped all five modes through PCM WAV without radio hardware.");

@@ -22,7 +22,13 @@ find_library(FFTW_FLOAT_LIBRARY NAMES fftw3f REQUIRED)
 add_executable(meshcore-js8-phy main.cpp
     "${JS8_SOURCE}/JS8_Mode/JS8.h"
     "${JS8_SOURCE}/JS8_Mode/JS8.cpp"
-    "${JS8_SOURCE}/JS8_Mode/FrequencyTracker.cpp")
+    "${JS8_SOURCE}/JS8_Mode/FrequencyTracker.cpp"
+    "${JS8_SOURCE}/JS8_Mode/DecodedText.cpp"
+    "${JS8_SOURCE}/JS8_Main/Varicode.h"
+    "${JS8_SOURCE}/JS8_Main/Varicode.cpp"
+    "${JS8_SOURCE}/JS8_JSC/JSC.cpp"
+    "${JS8_SOURCE}/JS8_JSC/JSC_list.cpp"
+    "${JS8_SOURCE}/JS8_JSC/JSC_map.cpp")
 set_target_properties(meshcore-js8-phy PROPERTIES AUTOMOC ON)
 target_compile_features(meshcore-js8-phy PRIVATE cxx_std_20)
 target_compile_definitions(meshcore-js8-phy PRIVATE NOMINMAX)
