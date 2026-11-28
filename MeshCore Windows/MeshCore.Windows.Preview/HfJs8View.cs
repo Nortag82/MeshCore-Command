@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -8,6 +10,9 @@ namespace MeshCore.Windows.Preview;
 internal sealed class HfJs8View : UserControl
 {
     private readonly HfLink _store;
+    private readonly Js8ManagedModem _modem = new();
+    private readonly HfWaterfallView _waterfall = new();
+    private readonly RowStyle _waterfallRow = new(SizeType.Absolute, 162);
     private readonly bool _connectAllowed;
     private readonly Action<HfMessage> _received;
     private readonly TabControl _tabs = new() { Dock = DockStyle.Fill };
@@ -19,15 +24,21 @@ internal sealed class HfJs8View : UserControl
     private readonly TextBox _destination = new() { Width = 120, MaxLength = 15, AccessibleName = "Destination callsign" };
     private readonly TextBox _draft = new() { Width = 400, MaxLength = 180, AccessibleName = "JS8 message" };
     private readonly Label _status = new() { AutoSize = true };
+    private readonly Label _activity = new() { AutoSize = true, Anchor = AnchorStyles.Left };
     private readonly Label _target = new() { Text = "To", AutoSize = true, Anchor = AnchorStyles.Left };
     private readonly Button _send, _leaveAtRelay, _checkRelay, _retrieve;
+    private readonly Button _installJs8, _waterfallToggle, _stopTx;
     private readonly Dictionary<string, int> _snr = new(StringComparer.Ordinal);
     private Js8LinkSettings _settings;
     private CancellationTokenSource? _lifetime;
     private Task? _connection;
     private Js8CallClient? _client;
+    private CancellationTokenSource? _installerDownload;
     private string _callsign = "";
     private bool _sending;
+    private bool _js8Installed;
+    private bool _showWaterfall = true;
+    private bool _waterfallStarted;
     private int? _relayMessageId;
 
     public HfJs8View(string directory, bool connectAllowed, Func<Task> returnToRadio, Action<HfMessage> received)
@@ -39,9 +50,10 @@ internal sealed class HfJs8View : UserControl
         Dock = DockStyle.Fill;
         AccessibleName = "HFLink for JS8Call";
         Font = new Font("Segoe UI", 10);
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, Padding = new Padding(14) };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(14) };
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(_waterfallRow);
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         Controls.Add(layout);
@@ -49,11 +61,22 @@ internal sealed class HfJs8View : UserControl
         back.Name = "hfLinkBack";
         var settings = Button("Settings", ConfigureAsync);
         settings.Name = "hfLinkJs8Settings";
-        layout.Controls.Add(Row(back, new Label { Text = "HFLink · JS8Call", AutoSize = true, Anchor = AnchorStyles.Left }, settings), 0, 0);
+        _installJs8 = Button("Install JS8Call…", InstallJs8Async);
+        _installJs8.Visible = false;
+        _waterfallToggle = Button("Hide waterfall", () =>
+        {
+            _showWaterfall = !_showWaterfall;
+            RefreshWaterfall();
+            return Task.CompletedTask;
+        });
+        _stopTx = Button("Stop TX", StopTransmissionAsync);
+        layout.Controls.Add(Row(back, new Label { Text = "HFLink", AutoSize = true, Anchor = AnchorStyles.Left },
+            settings, _installJs8, _waterfallToggle, _activity, _stopTx), 0, 0);
         layout.Controls.Add(_status, 0, 1);
+        layout.Controls.Add(_waterfall, 0, 2);
         _tabs.Name = "hfLinkJs8Tabs";
         _tabs.TabPages.AddRange([_inbox, _public, _contacts, _history]);
-        layout.Controls.Add(_tabs, 0, 2);
+        layout.Controls.Add(_tabs, 0, 3);
 
         _checkRelay = Button("Check relay", () => RelayQueryAsync(null));
         _retrieve = Button("Retrieve message", () => RelayQueryAsync(_relayMessageId));
@@ -78,7 +101,7 @@ internal sealed class HfJs8View : UserControl
         _send = Button("Send…", () => SendAsync(viaRelay: false));
         _leaveAtRelay = Button("Leave at relay…", () => SendAsync(viaRelay: true));
         layout.Controls.Add(Row(_target, _destination,
-            _draft, _send, _leaveAtRelay), 0, 3);
+            _draft, _send, _leaveAtRelay), 0, 4);
         _tabs.SelectedIndexChanged += (_, _) => SetActions();
         _draft.PreviewKeyDown += (_, args) => { if (args.KeyData == Keys.Enter) args.IsInputKey = true; };
         _draft.KeyDown += (_, args) =>
@@ -87,29 +110,91 @@ internal sealed class HfJs8View : UserControl
             args.SuppressKeyPress = true;
             _send.PerformClick();
         };
-        SetStatus(_connectAllowed ? "Open JS8Call and enable its local TCP Network Message API." : "JS8Call connection is disabled in this test or preview.");
+        HfLinkTheme.Apply(this);
+        SetStatus(_connectAllowed ? "Configure your HF station in Settings." : "JS8Call connection is disabled in this test or preview.");
         RefreshRows();
     }
 
     public void EnterView()
     {
-        if (_connectAllowed && _connection is null)
+        RefreshWaterfall();
+        if (!_connectAllowed) return;
+        string? executable = Js8CallPrerequisite.FindExecutable();
+        _js8Installed = executable is not null;
+        SetActions();
+        if (_connection?.IsCompleted == true)
         {
+            _lifetime?.Dispose();
+            _lifetime = null;
+            _connection = null;
+        }
+        if (_connection is not null) return;
+        if (executable is null)
+        {
+            SetStatus("Install the JS8Call modem for HFLink.");
+            return;
+        }
+        if (_settings.Station is null)
+        {
+            SetStatus("Open Settings to configure your HF station.");
+            return;
+        }
+        try
+        {
+            _modem.Start(executable, _settings);
             _lifetime = new CancellationTokenSource();
             _connection = ConnectLoopAsync(_lifetime.Token);
         }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or IOException or
+            UnauthorizedAccessException or Win32Exception or System.Runtime.InteropServices.COMException)
+        {
+            SetStatus(error.Message);
+        }
     }
 
-    public Task LeaveViewAsync() => Task.CompletedTask;
+    public Task LeaveViewAsync()
+    {
+        StopWaterfall();
+        return Task.CompletedTask;
+    }
 
     public async Task StopAsync()
     {
-        if (_lifetime is null) return;
-        await _lifetime.CancelAsync();
-        if (_connection is not null) await _connection;
-        _lifetime.Dispose();
-        _lifetime = null;
-        _connection = null;
+        StopWaterfall();
+        if (_lifetime is not null)
+        {
+            await _lifetime.CancelAsync();
+            if (_connection is not null) await _connection;
+            _lifetime.Dispose();
+            _lifetime = null;
+            _connection = null;
+        }
+        await _modem.StopAsync();
+    }
+
+    private void RefreshWaterfall()
+    {
+        _waterfall.Visible = _showWaterfall;
+        _waterfallRow.Height = _showWaterfall ? 162 : 0;
+        _waterfallToggle.Text = _showWaterfall ? "Hide waterfall" : "Show waterfall";
+        if (!_showWaterfall || !Visible)
+        {
+            StopWaterfall();
+            return;
+        }
+        if (_connectAllowed && _settings.Station is { } station)
+        {
+            if (_waterfallStarted) return;
+            _waterfall.Start(simulation: false, () => station.Input);
+            _waterfallStarted = true;
+        }
+        else _waterfall.ShowStatus("Choose the radio's receive audio input in HFLink Settings.");
+    }
+
+    private void StopWaterfall()
+    {
+        _waterfall.Stop();
+        _waterfallStarted = false;
     }
 
     private async Task ConnectLoopAsync(CancellationToken stop)
@@ -122,10 +207,10 @@ internal sealed class HfJs8View : UserControl
                 using (var connect = CancellationTokenSource.CreateLinkedTokenSource(stop))
                 {
                     connect.CancelAfter(TimeSpan.FromSeconds(3));
-                    await client.ConnectAsync(_settings.Port, connect.Token);
+                    await client.ConnectAsync(_modem.Port, connect.Token);
                 }
                 _client = client;
-                SetStatus("Waiting for JS8Call station details. In JS8Call Settings → Reporting, enable Accept TCP Requests.");
+                SetStatus("Connecting to the HFLink modem…");
                 using var session = CancellationTokenSource.CreateLinkedTokenSource(stop);
                 var poll = PollAsync(client, session.Token);
                 try
@@ -151,7 +236,7 @@ internal sealed class HfJs8View : UserControl
             catch (Exception error) when (error is SocketException or IOException or InvalidDataException or JsonException or OperationCanceledException)
             {
                 if (!stop.IsCancellationRequested)
-                    SetStatus($"Waiting for JS8Call on TCP port {_settings.Port}. Check Settings → Reporting in JS8Call.");
+                    SetStatus("Waiting for the HFLink modem. Check the audio devices and PTT port in Settings.");
             }
             catch (Microsoft.Data.Sqlite.SqliteException error)
             {
@@ -161,7 +246,13 @@ internal sealed class HfJs8View : UserControl
             {
                 _client = null;
                 _callsign = "";
+                _activity.Text = "";
                 SetActions();
+            }
+            if (!_modem.IsRunning)
+            {
+                if (!stop.IsCancellationRequested) SetStatus("The modem stopped. Reopen HFLink to start it again.");
+                return;
             }
             if (!stop.IsCancellationRequested)
                 try { await Task.Delay(3000, stop); } catch (OperationCanceledException) { }
@@ -175,6 +266,7 @@ internal sealed class HfJs8View : UserControl
             await client.RequestAsync("STATION.GET_CALLSIGN", "", stop);
             await client.RequestAsync("RX.GET_CALL_ACTIVITY", "", stop);
             await client.RequestAsync("INBOX.GET_MESSAGES", "", stop);
+            await client.RequestAsync("RIG.GET_PTT", "", stop);
             await Task.Delay(15000, stop);
         }
     }
@@ -183,11 +275,20 @@ internal sealed class HfJs8View : UserControl
     {
         if (data.Type == "STATION.CALLSIGN")
         {
-            Js8CallClient.TryCall(data.Value, out string call);
+            if (!Js8CallClient.TryCall(data.Value, out string call) || call != _settings.Station?.Callsign)
+                throw new IOException("Unexpected station on the HFLink modem port.");
             if (call.Length > 0 && call == _callsign) return;
             _callsign = call;
-            SetStatus(_callsign.Length > 0 ? $"Connected to JS8Call · {_callsign}" : "Set your station callsign in JS8Call.");
+            _modem.KeepInBackground();
+            SetStatus($"Modem connected · {_callsign}");
+            _activity.Text = "RX";
             SetActions();
+        }
+        else if (data.Type is "RIG.PTT" or "RIG.PTT_STATUS" && _callsign.Length > 0 &&
+            data.Params.ValueKind == JsonValueKind.Object && data.Params.TryGetProperty("PTT", out var ptt) &&
+            ptt.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            _activity.Text = ptt.GetBoolean() ? "TX active" : "RX";
         }
         else if (data.Type == "RX.CALL_ACTIVITY" && data.Params.ValueKind == JsonValueKind.Object)
         {
@@ -295,7 +396,7 @@ internal sealed class HfJs8View : UserControl
         {
             var stop = _lifetime.Token;
             await _store.SubmitJs8Async(_callsign, to, body, format, () => client.RequestAsync("TX.SEND_MESSAGE", command, stop));
-            SetStatus("Submitted to JS8Call. Check JS8Call for transmit progress.");
+            SetStatus("Submitted to the modem for transmission.");
             return true;
         }
         finally
@@ -307,33 +408,78 @@ internal sealed class HfJs8View : UserControl
 
     private async Task ConfigureAsync()
     {
-        using var dialog = new Form { Text = "HFLink JS8Call settings", StartPosition = FormStartPosition.CenterParent,
-            ClientSize = new Size(480, 170), FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false };
-        var port = new NumericUpDown { Minimum = 1, Maximum = 65535, Value = _settings.Port };
-        var group = new TextBox { Text = _settings.PublicGroup, MaxLength = 9 };
-        var relay = new TextBox { Text = _settings.Relay, MaxLength = 15 };
-        var save = new Button { Text = "Save", AutoSize = true, DialogResult = DialogResult.OK };
-        var cancel = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
-        var form = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(10) };
-        foreach (var (name, field) in new (string, Control)[] { ("Local JS8Call TCP port", port), ("Public JS8Call group", group), ("Inbox relay callsign", relay) })
-        {
-            form.Controls.Add(new Label { Text = name, AutoSize = true, Anchor = AnchorStyles.Left });
-            form.Controls.Add(field);
-        }
-        var actions = Row(save, cancel);
-        form.Controls.Add(actions);
-        form.SetColumnSpan(actions, 2);
-        dialog.Controls.Add(form);
-        dialog.AcceptButton = save;
-        dialog.CancelButton = cancel;
+        if (_sending) return;
+        using var dialog = new HfJs8SettingsDialog(_settings);
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
-        var settings = new Js8LinkSettings((int)port.Value, group.Text, relay.Text).Validate();
-        _store.SaveJs8Settings(settings);
-        _settings = settings;
-        _relayMessageId = null;
         await StopAsync();
+        _store.SaveJs8Settings(dialog.Settings);
+        _settings = dialog.Settings;
+        _relayMessageId = null;
         EnterView();
         SetActions();
+    }
+
+    private async Task StopTransmissionAsync()
+    {
+        if (_client is not { } client || _lifetime is null || _callsign.Length == 0) return;
+        await client.RequestAsync("RIG.TX_HALT", "", _lifetime.Token);
+        SetStatus("Stop requested on the modem.");
+    }
+
+    private async Task InstallJs8Async()
+    {
+        if (_installerDownload is not null) return;
+        _js8Installed = Js8CallPrerequisite.IsInstalled();
+        SetActions();
+        if (_js8Installed || _callsign.Length > 0) return;
+        if (MessageBox.Show(this, $"Download the official JS8Call {Js8CallPrerequisite.Version} installer and open Windows Setup?",
+            "Install JS8Call", MessageBoxButtons.OKCancel, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.OK)
+            return;
+
+        using var stop = new CancellationTokenSource();
+        _installerDownload = stop;
+        _installJs8.Text = "Downloading JS8Call…";
+        SetActions();
+        string? path = null;
+        DirectoryInfo? staging = null;
+        try
+        {
+            staging = Directory.CreateTempSubdirectory("meshcore-js8call-");
+            path = Path.Combine(staging.FullName, Js8CallPrerequisite.FileName);
+            await Js8CallPrerequisite.DownloadAsync(path, stop.Token);
+            stop.Token.ThrowIfCancellationRequested();
+            if (_callsign.Length > 0 || Js8CallPrerequisite.IsInstalled()) return;
+            using var setup = Process.Start(new ProcessStartInfo(path) { UseShellExecute = true, WorkingDirectory = staging.FullName })
+                ?? throw new IOException("Windows could not open the JS8Call installer.");
+            _installJs8.Text = "JS8Call setup open";
+            await setup.WaitForExitAsync();
+            if (IsDisposed) return;
+            if (Js8CallPrerequisite.IsInstalled()) EnterView();
+            else SetStatus("JS8Call setup finished. Use Install JS8Call to try again.");
+        }
+        catch (Exception error) when (error is HttpRequestException or IOException or InvalidDataException or
+            UnauthorizedAccessException or Win32Exception or OperationCanceledException)
+        {
+            if (!IsDisposed && !stop.IsCancellationRequested)
+                MessageBox.Show(this, error is OperationCanceledException ? "The JS8Call download timed out. Try again." : error.Message,
+                    "JS8Call setup", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally
+        {
+            _installerDownload = null;
+            try
+            {
+                if (path is not null) File.Delete(path);
+                staging?.Delete();
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+            if (!IsDisposed)
+            {
+                _js8Installed = Js8CallPrerequisite.IsInstalled();
+                _installJs8.Text = "Install JS8Call…";
+                SetActions();
+            }
+        }
     }
 
     public void SelectMessage(HfMessage message, bool clearFilter)
@@ -354,7 +500,10 @@ internal sealed class HfJs8View : UserControl
     private void SetActions()
     {
         if (IsDisposed) return;
+        _installJs8.Visible = _connectAllowed && !_js8Installed && _callsign.Length == 0;
+        _installJs8.Enabled = _installerDownload is null;
         bool available = !_sending && _client is not null && _callsign.Length != 0;
+        _stopTx.Enabled = _client is not null && _callsign.Length != 0;
         bool inbox = _tabs.SelectedTab == _inbox;
         bool publicChat = _tabs.SelectedTab == _public;
         bool relay = available && _settings.Relay.Length > 0 && _settings.Relay != _callsign;
@@ -445,19 +594,24 @@ internal sealed class HfJs8View : UserControl
 
     private Button Button(string text, Func<Task> action)
     {
-        var button = new Button { Text = text, AutoSize = true };
+        var button = new HfLinkTheme.ActionButton { Text = text, AutoSize = true };
         button.Click += async (_, _) =>
         {
             try { await action(); }
             catch (Exception error) when (error is ArgumentException or IOException or InvalidOperationException or
-                SocketException or OperationCanceledException or Microsoft.Data.Sqlite.SqliteException) { SetStatus(error.Message); }
+                SocketException or OperationCanceledException or Microsoft.Data.Sqlite.SqliteException or
+                System.Runtime.InteropServices.COMException or UnauthorizedAccessException) { SetStatus(error.Message); }
         };
         return button;
     }
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) _lifetime?.Cancel();
+        if (disposing)
+        {
+            _installerDownload?.Cancel();
+            _lifetime?.Cancel();
+        }
         base.Dispose(disposing);
     }
 }

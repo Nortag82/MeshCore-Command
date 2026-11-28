@@ -7,7 +7,7 @@ using System.Text.RegularExpressions;
 
 namespace MeshCore.Windows.Core;
 
-public sealed record Js8LinkSettings(int Port = 2442, string PublicGroup = "@ALLCALL", string Relay = "")
+public sealed record Js8LinkSettings(int Port = 2442, string PublicGroup = "@ALLCALL", string Relay = "", Js8StationSettings? Station = null)
 {
     public Js8LinkSettings Validate()
     {
@@ -15,8 +15,32 @@ public sealed record Js8LinkSettings(int Port = 2442, string PublicGroup = "@ALL
         if (Port is < 1 or > 65535 || !Regex.IsMatch(group, @"\A@[A-Z0-9/]{1,8}\z") ||
             group is "@HB" or "@APRSIS")
             throw new ArgumentException("Enter the JS8Call TCP port and an open JS8Call group such as @ALLCALL.");
-        return this with { PublicGroup = group, Relay = string.IsNullOrWhiteSpace(Relay) ? "" : HfStation.Call(Relay) };
+        return this with { PublicGroup = group, Relay = string.IsNullOrWhiteSpace(Relay) ? "" : HfStation.Call(Relay),
+            Station = Station?.Validate() };
     }
+}
+
+public sealed record Js8StationSettings(string Callsign, string Grid, string Input, string Output, string Ptt,
+    string SerialPort, decimal TxDelay, int Speed, int Offset, bool AutoReply)
+{
+    public Js8StationSettings Validate()
+    {
+        string callsign = HfStation.Call(Callsign ?? "");
+        string grid = Grid?.Trim().ToUpperInvariant() ?? "";
+        string serial = SerialPort?.Trim().ToUpperInvariant() ?? "";
+        if (!Regex.IsMatch(grid, @"\A[A-R]{2}[0-9]{2}(?:[A-X]{2})?\z"))
+            throw new ArgumentException("Enter a four- or six-character Maidenhead grid locator.");
+        if (!IsAudioEndpoint(Input) || !IsAudioEndpoint(Output))
+            throw new ArgumentException("Choose the radio's receive and transmit audio devices.");
+        if (Ptt is not ("VOX" or "RTS" or "DTR") || (Ptt != "VOX" && !Regex.IsMatch(serial, @"\ACOM[1-9][0-9]{0,3}\z")))
+            throw new ArgumentException("Choose VOX, or choose RTS or DTR with a Windows COM port.");
+        if (TxDelay is < 0.1m or > 2m || Speed is not (0 or 1 or 2 or 4 or 8) || Offset is < 100 or > 3500)
+            throw new ArgumentException("Check the JS8 transmission delay, speed and audio offset.");
+        return this with { Callsign = callsign, Grid = grid, SerialPort = Ptt == "VOX" ? "" : serial };
+    }
+
+    private static bool IsAudioEndpoint(string? value) =>
+        value is not null && value.Length <= 150 && Regex.IsMatch(value, @"\A\{[0-9.]+\}\.\{[A-Fa-f0-9-]+\}\z");
 }
 
 public readonly record struct Js8ApiMessage(string Type, string Value, JsonElement Params);

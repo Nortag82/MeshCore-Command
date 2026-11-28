@@ -154,7 +154,7 @@ internal sealed class HfWaterfallView : Control
             new Rectangle(0, firstRow, Columns, rowCount), GraphicsUnit.Pixel);
     }
 
-    private void ShowStatus(string status)
+    internal void ShowStatus(string status)
     {
         _status = status;
         AccessibleDescription = status;

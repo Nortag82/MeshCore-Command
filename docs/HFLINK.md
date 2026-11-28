@@ -1,13 +1,15 @@
 # HFLink for JS8Call
 
-HFLink in MeshCore Command 2.0.60 and newer connects to JS8Call on the same PC. Other stations can exchange plain-text messages with you using standard JS8Call.
+HFLink in MeshCore Command 2.0.61 sets up and starts the JS8Call modem on the same PC. Other stations can exchange plain-text messages with you using standard JS8Call.
 
 ## Connect to JS8Call
 
-1. Start JS8Call with your usual callsign, audio and PTT settings.
-2. In **JS8Call → Settings → Reporting → Network Message API**, enable the TCP server on `127.0.0.1`, check **Accept TCP Requests**, and note the TCP port. The JS8Call 3.0.3 default is `2442`.
-3. Open **HFLink** in MeshCore Command. If JS8Call uses a different port, enter it in **HFLink → Settings**. Wait for HFLink to show the connected station callsign.
-4. Keep JS8Call running. **Back to radio** returns to MeshCore while HFLink stays connected and can show a Windows notification when a message arrives. Use JS8Call for tuning, audio, PTT and the waterfall.
+1. Open **HFLink**. If **Install JS8Call…** appears, select it to download the official Windows installer and open setup.
+2. Open **HFLink → Settings** and select your station callsign, grid, radio receive and transmit audio, and PTT method. HFLink supports VOX or RTS/DTR on a COM port. Set the dial frequency and USB mode on the radio.
+3. Choose **Save and start modem**. Command starts JS8Call in the background with its own profile and local connection. Close any standalone JS8Call session before starting the HFLink modem so it can open the radio devices.
+4. The **waterfall** reads the same Windows receive device you chose in HFLink. **Back to radio** keeps the modem listening and can show a Windows notification when a message arrives. Closing Command stops the modem it started.
+
+The official engine can also be installed from the [JS8Call downloads page](https://js8call.com/downloads.html). The earlier [2.0.60 release](https://github.com/Nortag82/MeshCore-Command/blob/v2.0.60/docs/HFLINK.md) uses a separately started JS8Call session.
 
 ## Inbox and heard stations
 

@@ -1,6 +1,6 @@
 # Native Windows quick start
 
-The [2.0.60 Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.60) connects HFLink to JS8Call. It supports new installations and updates from previous native builds. The legacy Python updater can offer the [2.0.43 migration release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). The previous legacy release and its [user manual](USER-MANUAL.md) remain available.
+The [2.0.61 Windows release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.61) adds in-app JS8Call modem setup and a receive waterfall to HFLink. It supports new installations and updates from previous native builds. The legacy Python updater can offer the [2.0.43 migration release](https://github.com/Nortag82/MeshCore-Command/releases/tag/v2.0.43). The previous legacy release and its [user manual](USER-MANUAL.md) remain available.
 
 ## Update or install
 
@@ -18,7 +18,7 @@ To find a missing chat contact, ask the person to send a flood advert from the r
 
 ## HFLink
 
-Open **HFLink** with JS8Call running and its local TCP Network Message API enabled. HFLink uses the station settings from JS8Call. After opening HFLink once, **Back to radio** keeps listening in the background so incoming messages can alert you while you use MeshCore. [JS8Call setup and relay guide](HFLINK.md)
+Open **HFLink**, install the modem if prompted, and configure your station in **HFLink → Settings**. Command starts the modem for you. After opening HFLink once, **Back to radio** keeps listening in the background so incoming messages can alert you while you use MeshCore. [JS8Call setup and relay guide](HFLINK.md)
 
 ## Full app backup
 
