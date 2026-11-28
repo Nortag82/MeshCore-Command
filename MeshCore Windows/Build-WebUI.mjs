@@ -32,4 +32,15 @@ if (html.includes('/*__RCC6_') || /<script\s+[^>]*src=|<link\s+[^>]*rel=["']styl
 const output = join(nativeRoot, 'artifacts');
 await mkdir(output, { recursive: true });
 await writeFile(join(output, 'radio.html'), html);
+const mapJs = await esbuild.build({
+  entryPoints: [join(nativeRoot, 'assets/hflink-contacts-map.mjs')], nodePaths: [join(web, 'node_modules')],
+  bundle: true, write: false, format: 'esm', platform: 'browser', target: 'chrome100', minify: true,
+});
+const leafletCss = await readFile(join(web, 'node_modules/leaflet/dist/leaflet.css'), 'utf8');
+await writeFile(join(output, 'hflink-contacts-map.html'), `<!doctype html><html lang="en"><meta charset="utf-8">
+<title>HFLink contact map</title><style>${leafletCss}
+html,body{height:100%;margin:0;background:#0b1218;color:#e8f2fa;font:14px Segoe UI,sans-serif}
+body{display:flex;flex-direction:column}#map{flex:1;background:#14232e}#status{margin:0;padding:8px 12px}
+</style><p id="status">Contact markers show grid-square centres.</p><div id="map" aria-label="HFLink contacts map"></div>
+<script type="module">${mapJs.outputFiles[0].text}</script></html>`);
 console.log(`Native WebUI built: ${Buffer.byteLength(html)} bytes.`);

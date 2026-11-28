@@ -445,6 +445,8 @@ internal sealed class PreviewWindow : Form
         {
             byte[] shell = await File.ReadAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "multi_board_shell.html"));
             string radio = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "radio.html"));
+            string contactMapPath = Path.Combine(AppContext.BaseDirectory, "hflink-contacts-map.html");
+            byte[]? contactMap = File.Exists(contactMapPath) ? await File.ReadAllBytesAsync(contactMapPath) : null;
             await LoadOfflineMapAsync();
             // The preview uses an isolated port; a migrated candidate keeps its profile's original origin.
             _elevationHttp.DefaultRequestHeaders.UserAgent.ParseAdd("MeshCoreCommandNativePreview/1.0");
@@ -460,7 +462,7 @@ internal sealed class PreviewWindow : Form
                     body == "New channel message. Open MeshCore Command to read it.")
                     Interlocked.Exchange(ref _syntheticMessageNotification, 1);
                 if (!IsDisposed && IsHandleCreated) BeginInvoke(() => _notifications.Show(title, body));
-            }, _downloads);
+            }, _downloads, contactMap);
             if (_integrationIp is not null)
             {
                 var ip = IPAddress.Parse(_integrationIp);
@@ -1045,7 +1047,8 @@ internal sealed class PreviewWindow : Form
                 fixture.SaveStation(new HfStation("M0ABC"));
                 fixture.Queue("G1XYZ", "Example message from the local operator");
             }
-            _hfLinkView = new HfJs8View(directory, _experimentalRadio && !_smokeTest, ReturnToRadioAsync, NotifyHfLinkMessage);
+            _hfLinkView = new HfJs8View(directory, _experimentalRadio && !_smokeTest, ReturnToRadioAsync, NotifyHfLinkMessage,
+                ShowHfContactsMapAsync);
             _content.Controls.Add(_hfLinkView);
         }
         _web.Hide();
@@ -1053,6 +1056,44 @@ internal sealed class PreviewWindow : Form
         _hfLinkView.BringToFront();
         _hfLinkView.Select();
         _hfLinkView.EnterView();
+    }
+
+    private Task ShowHfContactsMapAsync(IReadOnlyList<HfHeardStation> contacts)
+    {
+        if (_server is null || _web.CoreWebView2 is null) return Task.CompletedTask;
+        string address = _server.HfContactsMapUrl;
+        var points = contacts
+            .Select(contact => (contact.Callsign, contact.Grid, Center: Maidenhead.Center(contact.Grid)))
+            .Where(contact => contact.Center.HasValue)
+            .Select(contact => new { callsign = contact.Callsign, grid = contact.Grid,
+                latitude = contact.Center!.Value.Latitude, longitude = contact.Center.Value.Longitude })
+            .ToArray();
+        using var dialog = new Form { Text = "HFLink contact map", StartPosition = FormStartPosition.CenterParent,
+            ClientSize = new Size(900, 580), MinimumSize = new Size(500, 350) };
+        using var map = new WebView2 { Dock = DockStyle.Fill };
+        dialog.Controls.Add(map);
+        HfLinkTheme.Apply(dialog);
+        dialog.Shown += async (_, _) =>
+        {
+            try
+            {
+                await map.EnsureCoreWebView2Async(_web.CoreWebView2.Environment);
+                map.CoreWebView2.NavigationStarting += (_, args) => args.Cancel = args.Uri != address;
+                map.CoreWebView2.NewWindowRequested += (_, args) => args.Handled = true;
+                map.CoreWebView2.NavigationCompleted += (_, args) =>
+                {
+                    if (args.IsSuccess && !map.IsDisposed)
+                        map.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(points));
+                };
+                map.Source = new Uri(address);
+            }
+            catch (Exception error) when (error is InvalidOperationException or System.Runtime.InteropServices.COMException)
+            {
+                if (!dialog.IsDisposed) MessageBox.Show(dialog, error.Message, "HFLink contact map");
+            }
+        };
+        dialog.ShowDialog(this);
+        return Task.CompletedTask;
     }
 
     private void NotifyHfLinkMessage(HfMessage message)

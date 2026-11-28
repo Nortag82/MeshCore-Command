@@ -366,7 +366,7 @@ try
     string endpointMap = Path.Combine(Path.GetTempPath(), "mcc-map-test-" + Guid.NewGuid().ToString("N") + ".pmtiles");
     byte[] endpointMapBytes = new byte[120]; "PMTiles\x03"u8.CopyTo(endpointMapBytes); File.WriteAllBytes(endpointMap, endpointMapBytes);
     var endpointMaps = new OfflineMapStore(); endpointMaps.Select(endpointMap);
-    await using var endpoint = new BoardFrameEndpoint(httpPort, System.Text.Encoding.UTF8.GetBytes("<html>shell</html>"), "<html><head></head><body>radio</body></html>", endpointCredentials, endpointMaps, notify: (title, body) => notifiedTitle = title);
+    await using var endpoint = new BoardFrameEndpoint(httpPort, System.Text.Encoding.UTF8.GetBytes("<html>shell</html>"), "<html><head></head><body>radio</body></html>", endpointCredentials, endpointMaps, notify: (title, body) => notifiedTitle = title, contactMap: "<html>contacts map</html>"u8.ToArray());
     endpoint.AddBoard(boardId, board);
     string secondId = "abcdef0123456789abcdef0123456789";
     var secondBoard = new RecordingBoard(); endpoint.AddBoard(secondId, secondBoard);
@@ -390,6 +390,16 @@ try
     mapRequest.Headers.Add("X-MCC-Board-Token", endpoint.Token); mapRequest.Headers.Add("Range", "bytes=0-7");
     using var mapResult = await http.SendAsync(mapRequest);
     Check(mapResult.StatusCode == HttpStatusCode.PartialContent && (await mapResult.Content.ReadAsByteArrayAsync()).SequenceEqual("PMTiles\x03"u8.ToArray()), "Offline map range endpoint");
+    Check((await http.GetStringAsync(endpoint.HfContactsMapUrl)).Contains("contacts map") &&
+        (await http.GetStringAsync(endpoint.HfContactsMapUrl + "offline-map")).Contains("pmtiles"),
+        "HFLink uses the same selected offline map as Command");
+    using var contactsRange = new HttpRequestMessage(HttpMethod.Get, endpoint.HfContactsMapUrl + "offline-map.pmtiles");
+    contactsRange.Headers.Add("Range", "bytes=0-7");
+    using var contactsTiles = await http.SendAsync(contactsRange);
+    Check(contactsTiles.StatusCode == HttpStatusCode.PartialContent &&
+        (await contactsTiles.Content.ReadAsByteArrayAsync()).SequenceEqual("PMTiles\x03"u8.ToArray()) &&
+        (await http.GetAsync(endpoint.HfContactsMapUrl + "secure-credential")).StatusCode == HttpStatusCode.NotFound,
+        "HFLink map serves the offline tiles without exposing board endpoints");
     File.Delete(endpointMap);
     using var send = new HttpRequestMessage(HttpMethod.Post, url) { Content = new ByteArrayContent(new byte[] { 9 }) };
     send.Headers.Add("X-MCC-Board-Token", endpoint.Token); send.Headers.Add("Origin", endpoint.Origin);

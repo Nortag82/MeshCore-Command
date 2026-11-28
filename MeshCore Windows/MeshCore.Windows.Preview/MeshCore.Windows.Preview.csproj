@@ -18,6 +18,7 @@
     <Content Include="../assets/NAudio-LICENSE.txt" Link="NAudio-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <Content Include="../assets/multi_board_shell.html" Link="multi_board_shell.html" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../artifacts/radio.html" Link="radio.html" CopyToOutputDirectory="PreserveNewest" Condition="Exists('../artifacts/radio.html')" />
+    <Content Include="../artifacts/hflink-contacts-map.html" Link="hflink-contacts-map.html" CopyToOutputDirectory="PreserveNewest" Condition="Exists('../artifacts/hflink-contacts-map.html')" />
     <Content Include="../assets/meshcore-command.ico" Link="meshcore-command.ico" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <Content Include="../firmware/**/*" Link="firmware/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" Condition="'$(MCC_FIRMWARE_DIR)' == ''" />
     <Content Include="$(MCC_FIRMWARE_DIR)/**/*" Link="firmware/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" Condition="'$(MCC_FIRMWARE_DIR)' != ''" />

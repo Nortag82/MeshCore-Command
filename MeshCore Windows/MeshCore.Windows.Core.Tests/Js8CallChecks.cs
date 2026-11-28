@@ -26,6 +26,11 @@ internal static class Js8CallChecks
                 "Concurrent JS8Call requests use different IDs");
         await output.WriteLineAsync("""{"type":"STATION.CALLSIGN","value":"M0ABC","params":{"_ID":1}}""");
         Check(await client.ReadAsync(stop) is { Type: "STATION.CALLSIGN", Value: "M0ABC" }, "JS8Call station reply");
+        await client.RequestAsync("RIG.SET_FREQ", "", stop, dialHz: 7_078_000);
+        using (var dial = JsonDocument.Parse((await input.ReadLineAsync(stop))!))
+            Check(dial.RootElement.GetProperty("params").GetProperty("DIAL").GetInt32() == 7_078_000, "CAT dial change sends hertz");
+        Check(Maidenhead.Center(" io91 ") == (51.5, -1) && Maidenhead.Center("ZZ99") is null,
+            "Maidenhead map pins use the centre of a valid grid");
 
         string direct = Js8CallClient.Compose("g1xyz", "Hello from HFLink", false);
         Check(direct == "G1XYZ MSG HELLO FROM HFLINK", "Direct uses the stock JS8 inbox command");
@@ -53,14 +58,19 @@ internal static class Js8CallChecks
         {
             var link = new HfLink(database);
             link.SaveJs8Settings(new Js8LinkSettings(PublicGroup: "@GROUP/1", Relay: "G2XYZ"));
-            link.HearJs8Stations([new(incoming.From, incoming.Time, HfMessageFormat.Js8Direct, false)]);
+            link.HearJs8Stations([new(incoming.From, incoming.Time, HfMessageFormat.Js8Direct, false, "IO91")]);
+            link.HearJs8Stations([new(incoming.From, incoming.Time.AddMinutes(1), HfMessageFormat.Js8Direct, false)]);
+            link.SaveJs8Drafts(new("G1XYZ", "DRAFT DIRECT", "DRAFT PUBLIC"));
+            var band = new Js8BandDecode(incoming.Time, 14_078_000, 1590, -12, "G1XYZ: G2XYZ HEARD");
+            Check(link.SaveJs8BandDecode(band) && !link.SaveJs8BandDecode(band), "Band decodes deduplicate");
             Check(link.RecordJs8Received(incoming, HfMessageFormat.Js8Direct) is not null &&
                 link.RecordJs8Received(incoming, HfMessageFormat.Js8Direct) is null, "Repeat receives and inbox refreshes deduplicate");
             await link.SubmitJs8Async("M0ABC", "G1XYZ", "HELLO", HfMessageFormat.Js8Direct, () => Task.CompletedTask);
             var reopened = new HfLink(database);
-            Check(reopened.Js8Settings().Relay == "G2XYZ" && reopened.HeardStations(false).Single().Callsign == "G1XYZ" &&
+            Check(reopened.Js8Settings().Relay == "G2XYZ" && reopened.HeardStations(false).Single() is { Callsign: "G1XYZ", Grid: "IO91" } &&
+                reopened.LoadJs8BandActivity(250).Single() == band && reopened.LoadJs8Drafts().Broadcast == "DRAFT PUBLIC" &&
                 reopened.Messages().Any(message => message is { Status: HfStatus.Submitted, Delivered: null }),
-                "JS8 settings and contacts persist and submission never claims delivery");
+                "JS8 history, contact grids, settings and drafts persist and submission never claims delivery");
         }
         finally { File.Delete(database); }
         Console.WriteLine("JS8Call TCP, standard message commands and HFLink storage checks passed.");

@@ -70,7 +70,11 @@ internal sealed class Js8ManagedModem
             MyCall={station.Callsign}
             MyGrid={station.Grid}
             MyGroups={group}
-            Rig=None
+            Rig={(station.CatPort.Length > 0 ? "Yaesu FT-450" : "None")}
+            CATSerialPort={station.CatPort}
+            CATSerialRate={station.CatBaud}
+            Polling=1
+            MonitorLastUsed=true
             PTTMethod=@Variant(\0\0\0\x7f\0\0\0\x1eTransceiverFactory::PTTMethod\0\0\0\0\x{ptt.Length + 1:x}{ptt}\0)
             PTTport={station.SerialPort}
             TxDelay={station.TxDelay}
@@ -92,6 +96,7 @@ internal sealed class Js8ManagedModem
             [Common]
             SubMode={station.Speed}
             Freq={station.Offset}
+            DialFreq={station.DialHz}
             """));
     }
 

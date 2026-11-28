@@ -14,6 +14,8 @@ public sealed class BoardFrameEndpoint : IAsyncDisposable
     private readonly Task _loop;
     private readonly byte[] _token;
     private readonly byte[]? _shell;
+    private readonly byte[]? _contactMap;
+    private readonly string _contactMapPath = $"/hflink/{Guid.NewGuid():N}/";
     private readonly string? _boardHtml;
     private readonly IBackupCredentials? _credentials;
     private readonly OfflineMapStore? _offlineMap;
@@ -23,14 +25,16 @@ public sealed class BoardFrameEndpoint : IAsyncDisposable
     private string? _firstBoard;
     public string Origin { get; }
     public string Token { get; }
+    public string HfContactsMapUrl => Origin + _contactMapPath;
 
-    public BoardFrameEndpoint(int port, byte[]? shell = null, string? boardHtml = null, IBackupCredentials? credentials = null, OfflineMapStore? offlineMap = null, ElevationService? elevation = null, Action<string, string>? notify = null, OfflineDownloads? downloads = null)
+    public BoardFrameEndpoint(int port, byte[]? shell = null, string? boardHtml = null, IBackupCredentials? credentials = null, OfflineMapStore? offlineMap = null, ElevationService? elevation = null, Action<string, string>? notify = null, OfflineDownloads? downloads = null, byte[]? contactMap = null)
     {
         if (port is < 1 or > 65535) throw new ArgumentOutOfRangeException(nameof(port));
         Origin = $"http://127.0.0.1:{port}";
         Token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
         _token = Encoding.ASCII.GetBytes(Token);
         _shell = shell;
+        _contactMap = contactMap;
         _boardHtml = boardHtml;
         _credentials = credentials;
         _offlineMap = offlineMap;
@@ -79,6 +83,21 @@ public sealed class BoardFrameEndpoint : IAsyncDisposable
                 response.ContentType = "text/html; charset=utf-8";
                 response.ContentLength64 = _shell.Length;
                 await response.OutputStream.WriteAsync(_shell, _stop.Token);
+                return;
+            }
+            if (_contactMap is not null && req.HttpMethod == "GET" && path.StartsWith(_contactMapPath, StringComparison.Ordinal))
+            {
+                string resource = path[_contactMapPath.Length..];
+                if (resource.Length == 0)
+                {
+                    response.ContentType = "text/html; charset=utf-8";
+                    response.ContentLength64 = _contactMap.Length;
+                    await response.OutputStream.WriteAsync(_contactMap, _stop.Token);
+                }
+                else if (resource is "offline-map" or "offline-map.pmtiles" ||
+                    System.Text.RegularExpressions.Regex.IsMatch(resource, @"\Aoffline-tile/[0-9]{1,2}/[0-9]+/[0-9]+\z"))
+                    await ServeOfflineMapAsync(req, response, resource);
+                else response.StatusCode = 404;
                 return;
             }
             var view = System.Text.RegularExpressions.Regex.Match(path, "^/board/([0-9a-f]{32})/$");
@@ -168,36 +187,8 @@ public sealed class BoardFrameEndpoint : IAsyncDisposable
             }
             if (operation == "offline-map" || operation == "offline-map.pmtiles" || publicTile)
             {
-                if (_offlineMap is null || req.HttpMethod != "GET") { response.StatusCode = 404; return; }
-                try
-                {
-                    if (operation == "offline-map")
-                    {
-                        var info = _offlineMap.Info;
-                        byte[] json = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new { available = info.Available, name = info.Name, format = info.Format, maxZoom = info.MaxZoom });
-                        response.ContentType = "application/json"; response.ContentLength64 = json.Length;
-                        await response.OutputStream.WriteAsync(json, _stop.Token); return;
-                    }
-                    if (publicTile)
-                    {
-                        string[] parts = operation.Split('/');
-                        if (!int.TryParse(parts[1], out int z) || !long.TryParse(parts[2], out long x) || !long.TryParse(parts[3], out long y)) { response.StatusCode = 404; return; }
-                        var tile = _offlineMap.ReadTile(z, x, y);
-                        if (tile is null) { response.StatusCode = 404; return; }
-                        response.ContentType = tile.ContentType; response.ContentLength64 = tile.Data.Length;
-                        await response.OutputStream.WriteAsync(tile.Data, _stop.Token); return;
-                    }
-                    var range = System.Text.RegularExpressions.Regex.Match(req.Headers["Range"] ?? "", "^bytes=([0-9]+)-([0-9]*)$");
-                    if (!range.Success || !long.TryParse(range.Groups[1].Value, out long start) || (range.Groups[2].Length > 0 && !long.TryParse(range.Groups[2].Value, out _))) { response.StatusCode = 416; return; }
-                    long? end = range.Groups[2].Length == 0 ? null : long.Parse(range.Groups[2].Value, CultureInfo.InvariantCulture);
-                    var data = _offlineMap.ReadRange(start, end);
-                    if (data is null) { response.StatusCode = 416; return; }
-                    response.StatusCode = 206; response.ContentType = "application/octet-stream";
-                    response.Headers["Content-Range"] = $"bytes {start}-{data.Value.End}/{data.Value.Size}";
-                    response.Headers["Accept-Ranges"] = "bytes"; response.ContentLength64 = data.Value.Data.Length;
-                    await response.OutputStream.WriteAsync(data.Value.Data, _stop.Token); return;
-                }
-                catch (Exception error) when (error is IOException or Microsoft.Data.Sqlite.SqliteException or ArgumentException) { response.StatusCode = 404; return; }
+                await ServeOfflineMapAsync(req, response, operation);
+                return;
             }
             if (operation != "frame")
             {
@@ -256,6 +247,40 @@ public sealed class BoardFrameEndpoint : IAsyncDisposable
         catch (Exception e) when (e is IOException or HttpListenerException or OperationCanceledException or ObjectDisposedException)
         { try { response.StatusCode = 503; } catch (ObjectDisposedException) { } }
         finally { response.Close(); }
+    }
+
+    private async Task ServeOfflineMapAsync(HttpListenerRequest req, HttpListenerResponse response, string operation)
+    {
+        if (_offlineMap is null || req.HttpMethod != "GET") { response.StatusCode = 404; return; }
+        try
+        {
+            if (operation == "offline-map")
+            {
+                var info = _offlineMap.Info;
+                byte[] json = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new { available = info.Available, name = info.Name, format = info.Format, maxZoom = info.MaxZoom });
+                response.ContentType = "application/json"; response.ContentLength64 = json.Length;
+                await response.OutputStream.WriteAsync(json, _stop.Token); return;
+            }
+            if (operation.StartsWith("offline-tile/", StringComparison.Ordinal))
+            {
+                string[] parts = operation.Split('/');
+                if (!int.TryParse(parts[1], out int z) || !long.TryParse(parts[2], out long x) || !long.TryParse(parts[3], out long y)) { response.StatusCode = 404; return; }
+                var tile = _offlineMap.ReadTile(z, x, y);
+                if (tile is null) { response.StatusCode = 404; return; }
+                response.ContentType = tile.ContentType; response.ContentLength64 = tile.Data.Length;
+                await response.OutputStream.WriteAsync(tile.Data, _stop.Token); return;
+            }
+            var range = System.Text.RegularExpressions.Regex.Match(req.Headers["Range"] ?? "", "^bytes=([0-9]+)-([0-9]*)$");
+            if (!range.Success || !long.TryParse(range.Groups[1].Value, out long start) || (range.Groups[2].Length > 0 && !long.TryParse(range.Groups[2].Value, out _))) { response.StatusCode = 416; return; }
+            long? end = range.Groups[2].Length == 0 ? null : long.Parse(range.Groups[2].Value, CultureInfo.InvariantCulture);
+            var data = _offlineMap.ReadRange(start, end);
+            if (data is null) { response.StatusCode = 416; return; }
+            response.StatusCode = 206; response.ContentType = "application/octet-stream";
+            response.Headers["Content-Range"] = $"bytes {start}-{data.Value.End}/{data.Value.Size}";
+            response.Headers["Accept-Ranges"] = "bytes"; response.ContentLength64 = data.Value.Data.Length;
+            await response.OutputStream.WriteAsync(data.Value.Data, _stop.Token); return;
+        }
+        catch (Exception error) when (error is IOException or Microsoft.Data.Sqlite.SqliteException or ArgumentException) { response.StatusCode = 404; return; }
     }
 
     public async ValueTask DisposeAsync()

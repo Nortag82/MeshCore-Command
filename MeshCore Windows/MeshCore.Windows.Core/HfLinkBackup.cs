@@ -15,7 +15,7 @@ internal static class HfLinkBackup
 
     private sealed record Snapshot(HfStation? Station, HfMessage[] Messages, HfAudit[] Audit, string[] DeletedIncoming,
         Dictionary<string, HfMessageFormat>? ContactFormats = null, HfHeardStation[]? HeardStations = null,
-        Js8LinkSettings? Js8Settings = null);
+        Js8LinkSettings? Js8Settings = null, Js8Drafts? Drafts = null, Js8BandDecode[]? BandActivity = null);
 
     internal static void Capture(string root, Dictionary<string, byte[]> files)
     {
@@ -24,8 +24,8 @@ internal static class HfLinkBackup
         if (!File.Exists(path)) return;
         using var db = Open(path, SqliteOpenMode.ReadOnly);
         using var transaction = db.BeginTransaction(deferred: true);
-        var settings = ReadColumn(db, transaction, $"SELECT id, value FROM settings WHERE id IN ('station', 'mercury-config-path', '{HfLink.Js8SettingsKey}')");
-        var tables = ReadColumn(db, transaction, "SELECT name FROM sqlite_schema WHERE type = 'table' AND name IN ('deleted_incoming', 'heard_stations')");
+        var settings = ReadColumn(db, transaction, $"SELECT id, value FROM settings WHERE id IN ('station', 'mercury-config-path', '{HfLink.Js8SettingsKey}', '{HfLink.Js8DraftsKey}')");
+        var tables = ReadColumn(db, transaction, "SELECT name FROM sqlite_schema WHERE type = 'table' AND name IN ('deleted_incoming', 'heard_stations', 'js8_band')");
         HfStation? station = settings.GetValueOrDefault("station") is { } saved ? JsonSerializer.Deserialize<HfStation>(saved) : null;
         var snapshot = new Snapshot(station,
             ReadJson<HfMessage>("SELECT value FROM messages ORDER BY rowid"),
@@ -36,7 +36,9 @@ internal static class HfLinkBackup
                 .ToDictionary(entry => entry.Key[HfLink.ContactFormatPrefix.Length..],
                     entry => JsonSerializer.Deserialize<HfMessageFormat>(entry.Value!)),
             tables.ContainsKey("heard_stations") ? HfLink.ReadHeardStations(db, transaction) : null,
-            settings.GetValueOrDefault(HfLink.Js8SettingsKey) is { } js8 ? JsonSerializer.Deserialize<Js8LinkSettings>(js8) : null);
+            settings.GetValueOrDefault(HfLink.Js8SettingsKey) is { } js8 ? JsonSerializer.Deserialize<Js8LinkSettings>(js8) : null,
+            settings.GetValueOrDefault(HfLink.Js8DraftsKey) is { } drafts ? JsonSerializer.Deserialize<Js8Drafts>(drafts) : null,
+            tables.ContainsKey("js8_band") ? ReadJson<Js8BandDecode>("SELECT value FROM js8_band ORDER BY rowid") : null);
         files.Add(History, JsonSerializer.SerializeToUtf8Bytes(snapshot));
         if (settings.GetValueOrDefault("mercury-config-path") is { } external &&
             JsonSerializer.Deserialize<string>(external) is { } config)
@@ -94,8 +96,11 @@ internal static class HfLinkBackup
                 message.From is null || message.To is null || !Enum.IsDefined(message.Status) || !Enum.IsDefined(message.Format)) ||
             snapshot.ContactFormats?.Any(entry => !Enum.IsDefined(entry.Value) || !CanonicalCall(entry.Key)) == true ||
             snapshot.HeardStations?.Any(contact => contact is null || contact.Callsign is null ||
-                !CanonicalCall(contact.Callsign) || !Enum.IsDefined(contact.LastFormat)) == true ||
+                !CanonicalCall(contact.Callsign) || !Enum.IsDefined(contact.LastFormat) || contact.Grid is null ||
+                contact.Grid.Length > 0 && Maidenhead.Normalize(contact.Grid) != contact.Grid) == true ||
             snapshot.Audit.Any(item => item is null || item.Actor is null || item.Event is null) ||
+            snapshot.Drafts is { } drafts && (drafts.Destination is null || drafts.Direct is null || drafts.Broadcast is null) ||
+            snapshot.BandActivity?.Any(decode => decode is null || string.IsNullOrWhiteSpace(decode.Text)) == true ||
             snapshot.DeletedIncoming.Any(id => id is null || id.Length is < 1 or > 100 || !id.StartsWith("in:", StringComparison.Ordinal)))
             throw new InvalidDataException("Invalid HFLink backup records.");
         return snapshot;
@@ -121,6 +126,10 @@ internal static class HfLinkBackup
                 if (snapshot.Station is not null) Write("INSERT INTO settings (id,value) VALUES ($id,$value)", "station", JsonSerializer.Serialize(snapshot.Station));
                 if (snapshot.Js8Settings is not null)
                     Write("INSERT INTO settings (id,value) VALUES ($id,$value)", HfLink.Js8SettingsKey, JsonSerializer.Serialize(snapshot.Js8Settings.Validate()));
+                if (snapshot.Drafts is not null)
+                    Write("INSERT INTO settings (id,value) VALUES ($id,$value)", HfLink.Js8DraftsKey, JsonSerializer.Serialize(snapshot.Drafts));
+                if (snapshot.BandActivity is not null)
+                    foreach (var decode in snapshot.BandActivity) HfLink.SaveJs8BandDecode(db, decode, transaction);
                 if (externalConfig is not null) Write("INSERT INTO settings (id,value) VALUES ($id,$value)", "mercury-config-path", JsonSerializer.Serialize(externalConfig));
                 if (snapshot.ContactFormats is not null)
                     foreach (var entry in snapshot.ContactFormats)

@@ -14,7 +14,7 @@ The official engine can also be installed from the [JS8Call downloads page](http
 ## Inbox and heard stations
 
 - **Inbox** shows directed messages and imports incoming messages from the local JS8Call inbox. To send, enter a callsign and message, press **Enter** or select **Send direct…**, and confirm.
-- **Contacts** lists stations JS8Call hears and shows their last-heard times and available signal reports. Select a callsign and choose **Message station** to address it.
+- **Contacts** lists stations JS8Call hears and shows their last-heard times, available signal reports and reported Maidenhead locators. Select **Map** to see the centres of those grid squares on the offline map already selected in Command. Select a callsign and choose **Message station** to address it.
 - **Submitted to JS8Call** means HFLink handed the message to the modem. Use JS8Call to see transmit progress.
 - **Delete message…** removes the selected entry from local HFLink history after confirmation. Manage the standalone JS8Call inbox in JS8Call.
 - **Earlier HFLink history** shows messages saved by previous Mercury-based builds.
@@ -24,6 +24,12 @@ The official engine can also be installed from the [JS8Call downloads page](http
 Select **Broadcast** at the top of HFLink to open **Public** and start a broadcast draft. Type the message, select **Broadcast…** or press **Enter**, and confirm. JS8Call sends your callsign and text addressed to the group shown beside the composer. The default is `@ALLCALL`. You can set a shared group in **HFLink → Settings**. An ordinary broadcast does not request an acknowledgement.
 
 **Band activity** shows recent decoded traffic with time, frequency, audio offset and SNR. It includes heartbeats and conversations between other stations. Use **Public** for broadcasts and **Inbox** for messages addressed to you.
+
+HFLink keeps Inbox, Public and Band activity history on this PC. **Show earlier activity** loads another page of band decodes. Direct and public drafts are restored after you leave and reopen HFLink.
+
+## Dial frequency
+
+Use **Dial…** in HFLink to set the modem dial frequency in MHz. If you use manual tuning, set the radio to the same frequency. On an FT-450 with a serial cable attached to its CAT jack, set the **FT-450 CAT COM port** and match the radio's CAT baud rate in HFLink Settings. Once the modem connects, use **Dial…** to request a retune and check the radio's display. If the CAT and PTT interfaces share the same port, choose **CAT** PTT. RTS/DTR PTT can use a separate COM port.
 
 ## Relay inbox
 

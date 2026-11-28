@@ -11,7 +11,13 @@ public sealed record HfMessage(Guid Id, string From, string To, string Text, str
     Guid Attempt = default, DateTimeOffset? Sent = null, DateTimeOffset? Delivered = null,
     HfMessageFormat Format = HfMessageFormat.HfLink);
 public sealed record HfAudit(DateTimeOffset Time, string Actor, string Event, Guid? Message);
-public sealed record HfHeardStation(string Callsign, DateTimeOffset LastHeard, HfMessageFormat LastFormat, bool Simulated);
+public sealed record HfHeardStation(string Callsign, DateTimeOffset LastHeard, HfMessageFormat LastFormat, bool Simulated, string Grid = "");
+public sealed record Js8BandDecode(DateTimeOffset Time, int? Dial, int Offset, int? Snr, string Text)
+{
+    internal string Key => Convert.ToHexString(SHA256.HashData(
+        Encoding.UTF8.GetBytes(FormattableString.Invariant($"{Time.ToUnixTimeMilliseconds()}\n{Dial}\n{Offset}\n{Text}"))));
+}
+public sealed record Js8Drafts(string Destination = "", string Direct = "", string Broadcast = "");
 
 public sealed class HfLink
 {
@@ -19,6 +25,7 @@ public sealed class HfLink
     internal const string DatabaseName = "hflink-native.sqlite3";
     internal const string ContactFormatPrefix = "contact-format:";
     internal const string Js8SettingsKey = "js8call-settings";
+    internal const string Js8DraftsKey = "js8call-drafts";
     private const string HeardStationsSeeded = "heard-stations-seeded";
     private readonly string _connection;
     private readonly object _gate = new();
@@ -45,6 +52,8 @@ public sealed class HfLink
         Execute(db, """
             CREATE TABLE IF NOT EXISTS settings (id TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, value TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS js8_band (id TEXT PRIMARY KEY, time_ms INTEGER NOT NULL, value TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS js8_band_time ON js8_band(time_ms DESC);
             CREATE TABLE IF NOT EXISTS deleted_incoming (id TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS heard_stations (
@@ -86,6 +95,60 @@ public sealed class HfLink
         {
             using var db = Open();
             Write(db, "settings", Js8SettingsKey, settings);
+        }
+    }
+
+    public Js8Drafts LoadJs8Drafts()
+    {
+        lock (_gate)
+        {
+            using var db = Open();
+            return Read<Js8Drafts>(db, "settings", Js8DraftsKey) ?? new();
+        }
+    }
+
+    public void SaveJs8Drafts(Js8Drafts drafts)
+    {
+        lock (_gate)
+        {
+            using var db = Open();
+            Write(db, "settings", Js8DraftsKey, drafts);
+        }
+    }
+
+    public bool SaveJs8BandDecode(Js8BandDecode decode)
+    {
+        lock (_gate)
+        {
+            using var db = Open();
+            return SaveJs8BandDecode(db, decode);
+        }
+    }
+
+    internal static bool SaveJs8BandDecode(SqliteConnection db, Js8BandDecode decode, SqliteTransaction? transaction = null)
+    {
+        using var command = db.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "INSERT OR IGNORE INTO js8_band (id,time_ms,value) VALUES ($id,$time,$value)";
+        command.Parameters.AddWithValue("$id", decode.Key);
+        command.Parameters.AddWithValue("$time", decode.Time.ToUnixTimeMilliseconds());
+        command.Parameters.AddWithValue("$value", JsonSerializer.Serialize(decode));
+        return command.ExecuteNonQuery() > 0;
+    }
+
+    public IReadOnlyList<Js8BandDecode> LoadJs8BandActivity(int limit)
+    {
+        lock (_gate)
+        {
+            using var db = Open();
+            using var query = db.CreateCommand();
+            query.CommandText = "SELECT value FROM js8_band ORDER BY time_ms DESC, rowid DESC LIMIT $limit";
+            query.Parameters.AddWithValue("$limit", limit);
+            using var rows = query.ExecuteReader();
+            var decodes = new List<Js8BandDecode>();
+            while (rows.Read())
+                decodes.Add(JsonSerializer.Deserialize<Js8BandDecode>(rows.GetString(0))!);
+            return decodes;
         }
     }
 
@@ -164,7 +227,8 @@ public sealed class HfLink
         using var command = db.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
-            SELECT callsign, simulated, last_heard, format FROM heard_stations
+            SELECT callsign, simulated, last_heard, format, location.value FROM heard_stations
+            LEFT JOIN settings location ON location.id = 'js8-grid:' || callsign AND simulated = 0
             WHERE $simulated IS NULL OR simulated = $simulated
             ORDER BY last_heard DESC, callsign
             """;
@@ -173,7 +237,8 @@ public sealed class HfLink
         var contacts = new List<HfHeardStation>();
         while (reader.Read())
             contacts.Add(new(reader.GetString(0), DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(2)),
-                (HfMessageFormat)reader.GetInt32(3), reader.GetBoolean(1)));
+                (HfMessageFormat)reader.GetInt32(3), reader.GetBoolean(1),
+                reader.IsDBNull(4) ? "" : JsonSerializer.Deserialize<string>(reader.GetString(4)) ?? ""));
         return contacts.ToArray();
     }
 
@@ -190,7 +255,8 @@ public sealed class HfLink
         command.Parameters.AddWithValue("$simulated", contact.Simulated);
         command.Parameters.AddWithValue("$time", contact.LastHeard.ToUnixTimeMilliseconds());
         command.Parameters.AddWithValue("$format", (int)contact.LastFormat);
-        command.ExecuteNonQuery();
+        if (command.ExecuteNonQuery() > 0 && !contact.Simulated && contact.Grid.Length > 0)
+            Write(db, "settings", "js8-grid:" + contact.Callsign, contact.Grid, transaction);
     }
 
     public HfStation Station()
@@ -324,12 +390,12 @@ public sealed class HfLink
         }
     }
 
-    public IReadOnlyList<HfMessage> Messages()
+    public IReadOnlyList<HfMessage> Messages(int limit = 500)
     {
         lock (_gate)
         {
             using var db = Open();
-            return ReadAll<HfMessage>(db, "messages", 500).ToArray();
+            return ReadAll<HfMessage>(db, "messages", limit).ToArray();
         }
     }
 

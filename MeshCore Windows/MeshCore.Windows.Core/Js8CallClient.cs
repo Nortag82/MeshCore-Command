@@ -21,24 +21,32 @@ public sealed record Js8LinkSettings(int Port = 2442, string PublicGroup = "@ALL
 }
 
 public sealed record Js8StationSettings(string Callsign, string Grid, string Input, string Output, string Ptt,
-    string SerialPort, decimal TxDelay, int Speed, int Offset, bool AutoReply)
+    string SerialPort, decimal TxDelay, int Speed, int Offset, bool AutoReply,
+    int DialHz = 14_078_000, string CatPort = "", int CatBaud = 4800)
 {
     public Js8StationSettings Validate()
     {
         string callsign = HfStation.Call(Callsign ?? "");
         string grid = Grid?.Trim().ToUpperInvariant() ?? "";
         string serial = SerialPort?.Trim().ToUpperInvariant() ?? "";
+        string cat = CatPort?.Trim().ToUpperInvariant() ?? "";
         if (!Regex.IsMatch(grid, @"\A[A-R]{2}[0-9]{2}(?:[A-X]{2})?\z"))
             throw new ArgumentException("Enter a four- or six-character Maidenhead grid locator.");
         if (!IsAudioEndpoint(Input) || !IsAudioEndpoint(Output))
             throw new ArgumentException("Choose the radio's receive and transmit audio devices.");
-        if (Ptt is not ("VOX" or "RTS" or "DTR") || (Ptt != "VOX" && !Regex.IsMatch(serial, @"\ACOM[1-9][0-9]{0,3}\z")))
-            throw new ArgumentException("Choose VOX, or choose RTS or DTR with a Windows COM port.");
+        if (Ptt is not ("VOX" or "RTS" or "DTR" or "CAT") || (Ptt is "RTS" or "DTR" && !IsComPort(serial)))
+            throw new ArgumentException("Choose VOX, CAT, or RTS/DTR with a Windows COM port.");
+        if ((cat.Length > 0 && !IsComPort(cat)) || (Ptt == "CAT" && cat.Length == 0) ||
+            (Ptt is "RTS" or "DTR" && cat == serial))
+            throw new ArgumentException("Select the FT-450 CAT port. RTS or DTR PTT needs a separate port when CAT is enabled.");
+        if (DialHz is < 100_000 or > 56_000_000 || CatBaud is not (4800 or 9600 or 19200 or 38400))
+            throw new ArgumentException("Check the dial frequency and CAT baud rate.");
         if (TxDelay is < 0.1m or > 2m || Speed is not (0 or 1 or 2 or 4 or 8) || Offset is < 100 or > 3500)
             throw new ArgumentException("Check the JS8 transmission delay, speed and audio offset.");
-        return this with { Callsign = callsign, Grid = grid, SerialPort = Ptt == "VOX" ? "" : serial };
+        return this with { Callsign = callsign, Grid = grid, SerialPort = Ptt is "RTS" or "DTR" ? serial : "", CatPort = cat };
     }
 
+    private static bool IsComPort(string value) => Regex.IsMatch(value, @"\ACOM[1-9][0-9]{0,3}\z");
     private static bool IsAudioEndpoint(string? value) =>
         value is not null && value.Length <= 150 && Regex.IsMatch(value, @"\A\{[0-9.]+\}\.\{[A-Fa-f0-9-]+\}\z");
 }
@@ -62,11 +70,12 @@ public sealed class Js8CallClient : IDisposable
         _writer = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true) { NewLine = "\n" };
     }
 
-    public async Task RequestAsync(string type, string value, CancellationToken stop)
+    public async Task RequestAsync(string type, string value, CancellationToken stop, int? dialHz = null)
     {
         var writer = _writer ?? throw new InvalidOperationException("Connect to JS8Call first.");
         long id = Interlocked.Increment(ref _requestId);
-        string line = JsonSerializer.Serialize(new { type, value, @params = new { _ID = id } });
+        object parameters = dialHz is { } dial ? new { _ID = id, DIAL = dial } : new { _ID = id };
+        string line = JsonSerializer.Serialize(new { type, value, @params = parameters });
         await _write.WaitAsync(stop);
         try
         {
